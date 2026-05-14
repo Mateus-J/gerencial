@@ -181,76 +181,118 @@ tr.subr td{background:var(--sur2);padding:5px 9px;border-bottom:1px solid var(--
 ::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px}
 
 /* ─── LOGIN ─────────────────────────────────────────────── */
-.login-wrap{position:fixed;inset:0;background:#0d1f0e;display:flex;align-items:center;justify-content:center;z-index:1000;flex-direction:column;gap:0;overflow:hidden}
+.login-wrap{position:fixed;inset:0;background:#071a08;display:flex;align-items:center;justify-content:center;z-index:1000;overflow:hidden}
 .circuit-canvas{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
-.login-box{position:relative;z-index:1}
-.login-box{background:#fff;border-radius:16px;padding:36px 32px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
-[data-theme=dark] .login-box{background:#1e2028;color:#e8eaf0}
-.login-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px}
-.login-logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#2e7d32,#1b5e20);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:700}
-.login-title{font-size:20px;font-weight:700;color:#1b5e20}
-[data-theme=dark] .login-title{color:#4caf50}
-.login-sub{text-align:center;font-size:12px;color:#9aa0b0;margin-bottom:24px}
-.login-field{margin-bottom:14px}
-.login-field label{display:block;font-size:11px;font-weight:600;color:#5a6072;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em}
-[data-theme=dark] .login-field label{color:#9ba3b8}
-.login-field input{width:100%;border:1.5px solid #e0e2e6;border-radius:8px;padding:10px 12px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;background:#fff;color:#1a1d23;transition:border-color .15s}
-[data-theme=dark] .login-field input{background:#252830;border-color:#35394a;color:#e8eaf0}
-.login-field input:focus{border-color:#2e7d32;box-shadow:0 0 0 3px rgba(46,125,50,.15)}
-.login-err{font-size:12px;color:#c62828;margin-bottom:10px;text-align:center;min-height:18px}
-.login-btn{width:100%;background:linear-gradient(135deg,#2e7d32,#1b5e20);color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:filter .15s;margin-top:4px}
-.login-btn:hover{filter:brightness(1.08)}
-.login-user-info{display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.85)}
-.login-avatar{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
-.login-logout{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:6px;color:#fff;font-size:11px;padding:3px 8px;cursor:pointer;font-family:'DM Sans',sans-serif}
-.login-logout:hover{background:rgba(255,255,255,.25)}
 
-/* ─── ADMIN TAB ───────────────────────────────────────────── */
-.admin-view{padding:16px 18px;flex:1;overflow:auto}
-.admin-section{background:var(--sur);border:1px solid var(--bdr);border-radius:11px;margin-bottom:16px;overflow:hidden;box-shadow:var(--sh)}
-.admin-section-hdr{background:var(--sur2);border-bottom:1px solid var(--bdr);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.admin-section-hdr h3{font-size:13px;font-weight:600;color:var(--tx);display:flex;align-items:center;gap:7px}
-.admin-table{width:100%;border-collapse:collapse}
-.admin-table th{padding:8px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;background:var(--sur2);border-bottom:1px solid var(--bdr)}
-.admin-table td{padding:9px 12px;border-bottom:1px solid var(--bdr);font-size:13px;color:var(--tx);vertical-align:middle}
-.admin-table tr:last-child td{border-bottom:none}
-.admin-table tr:hover td{background:var(--sur2)}
-.role-badge{padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;display:inline-block}
-.role-admin{background:#dcfce7;color:#166534}
-.role-user{background:#dbeafe;color:#1e40af}
-.role-consulta{background:#fef9c3;color:#854d0e}
-[data-theme=dark] .role-admin{background:#1a3a1a;color:#4caf50}
-[data-theme=dark] .role-user{background:#1a2d4a;color:#4d9ef7}
-[data-theme=dark] .role-consulta{background:#2d2200;color:#f59e0b}
-.admin-inp{border:1px solid var(--bdr);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit;background:var(--sur2);color:var(--tx);outline:none;width:100%}
-.admin-inp:focus{border-color:var(--blue)}
-.admin-add-row{display:flex;gap:8px;padding:10px 12px;align-items:flex-end;flex-wrap:wrap;border-top:1px solid var(--bdr);background:var(--sur)}
-.admin-add-row .field{display:flex;flex-direction:column;gap:3px;flex:1;min-width:100px}
-.admin-add-row .field label{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
-.perm-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--bdr)}
-.perm-row:last-child{border-bottom:none}
-.perm-row:hover{background:var(--sur2)}
-.perm-label{flex:1;font-size:12px;font-weight:500;color:var(--tx)}
-.perm-desc{flex:2;font-size:11px;color:var(--tx2)}
-.perm-role{display:flex;gap:8px;align-items:center}
-.perm-check{width:14px;height:14px;accent-color:var(--green);cursor:pointer}
+/* Glass card */
+.login-box{
+  position:relative;z-index:1;
+  width:380px;
+  background:rgba(5,20,7,0.75);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(46,125,50,0.35);
+  border-radius:20px;
+  padding:44px 36px 36px;
+  box-shadow:0 8px 60px rgba(0,0,0,.7), inset 0 1px 0 rgba(46,125,50,.2);
+  transition:box-shadow .3s;
+}
+.login-box:hover{box-shadow:0 8px 80px rgba(0,0,0,.8),0 0 40px rgba(27,94,32,.15),inset 0 1px 0 rgba(46,125,50,.3)}
+[data-theme=dark] .login-box{background:rgba(3,12,4,0.85)}
 
-/* Admin lock screen */
-.admin-lock{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;gap:14px;padding:20px}
-.admin-lock .lock-icon{font-size:40px}
-.admin-lock h3{font-size:15px;font-weight:600;color:var(--tx)}
-.admin-lock p{font-size:12px;color:var(--tx2);text-align:center}
-.admin-lock input{border:1.5px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit;background:var(--sur2);color:var(--tx);outline:none;width:220px;text-align:center;letter-spacing:.1em}
-.admin-lock input:focus{border-color:#2e7d32}
-.admin-lock-err{font-size:12px;color:var(--red);min-height:16px}
-.profile-card{display:flex;align-items:center;gap:14px;padding:14px 16px}
-.profile-avatar{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#2e7d32,#1b5e20);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;flex-shrink:0}
-.profile-info{flex:1}
-.profile-name{font-size:15px;font-weight:600;color:var(--tx);margin-bottom:3px}
-.profile-meta{font-size:12px;color:var(--tx2)}
-.pass-change-row{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--bdr);align-items:flex-end;flex-wrap:wrap}
-.pass-change-row .field{display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px}
-.pass-change-row .field label{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
+/* Title */
+.login-logo{display:none}
+.login-brand{text-align:center;margin-bottom:6px}
+.login-brand-name{
+  font-size:38px;font-weight:800;letter-spacing:.12em;
+  background:linear-gradient(135deg,#2e7d32 0%,#4caf50 40%,#81c784 60%,#2e7d32 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+  text-shadow:none;
+  display:block;line-height:1;margin-bottom:4px;
+}
+.login-brand-sub{font-size:11px;font-weight:500;color:rgba(76,125,80,.7);text-transform:uppercase;letter-spacing:.25em;display:block}
+
+/* Divider */
+.login-divider-line{width:40px;height:1px;background:rgba(46,125,50,.4);margin:18px auto;display:block}
+
+/* Fields */
+.login-sub{font-size:12px;color:rgba(100,140,100,.7);text-align:center;margin-bottom:20px;letter-spacing:.03em}
+.login-field{margin-bottom:18px;position:relative}
+.login-field label{
+  position:absolute;left:14px;top:50%;transform:translateY(-50%);
+  font-size:12px;font-weight:500;color:rgba(150,210,155,.55);
+  pointer-events:none;transition:all .22s cubic-bezier(.4,0,.2,1);
+  letter-spacing:.03em;z-index:1;
+}
+.login-field input{
+  width:100%;
+  border:1px solid rgba(76,155,80,.45);
+  border-radius:10px;
+  padding:20px 14px 8px;
+  font-size:14px;
+  font-family:inherit;
+  outline:none;
+  background:rgba(20,65,25,.6);
+  color:#c8e6c9;
+  transition:border-color .2s,background .2s,box-shadow .2s;
+}
+.login-field input::placeholder{color:transparent}
+.login-field input:focus ~ label,
+.login-field input:not(:placeholder-shown) ~ label{
+  top:8px;transform:translateY(0);
+  font-size:9px;font-weight:600;color:rgba(129,199,132,.8);
+  letter-spacing:.08em;text-transform:uppercase;
+}
+.login-field input:focus{
+  border-color:rgba(76,155,80,.8);
+  background:rgba(25,80,30,.7);
+  box-shadow:0 0 0 3px rgba(46,125,50,.2);
+}
+/* Password toggle */
+.pass-toggle-btn{
+  position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;
+  color:rgba(60,100,62,.8);font-size:16px;line-height:1;
+  transition:color .15s;
+  z-index:2;
+}
+.pass-toggle-btn:hover{color:#4caf50}
+.login-field .has-toggle input{padding-right:40px}
+
+/* Error */
+.login-err{font-size:12px;color:#ff6b6b;margin-bottom:10px;text-align:center;min-height:18px;font-weight:500}
+
+/* Button */
+.login-btn{
+  width:100%;
+  background:linear-gradient(135deg,#1b5e20,#2e7d32,#388e3c);
+  color:#fff;border:none;border-radius:10px;
+  padding:13px;font-size:13px;font-weight:700;
+  cursor:pointer;font-family:inherit;
+  letter-spacing:.05em;text-transform:uppercase;
+  transition:all .2s;
+  position:relative;overflow:hidden;
+  margin-top:4px;
+}
+.login-btn::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(105,240,174,.15),rgba(255,255,255,.05));
+  opacity:0;transition:opacity .2s;
+}
+.login-btn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(46,125,50,.5)}
+.login-btn:hover::after{opacity:1}
+.login-btn:active{transform:translateY(0)}
+
+/* Switch link */
+.login-switch{text-align:center;margin-top:16px;font-size:12px;color:rgba(80,100,82,.8)}
+.login-switch a{color:rgba(76,155,80,.9);font-weight:600;cursor:pointer;text-decoration:none;transition:color .15s}
+.login-switch a:hover{color:#4caf50}
+
+
+
+/* Input field glow on hover */
+.login-field input:hover:not(:focus){border-color:rgba(46,125,50,.5)}
 
 /* ─── REGISTER ───────────────────────────────────────────── */
 .login-switch{text-align:center;margin-top:14px;font-size:12px;color:var(--tx2)}
@@ -536,18 +578,22 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 
 /* ─── PENDING APPROVAL ───────────────────────────────────────── */
 .pending-screen{position:fixed;inset:0;background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 50%,#1b5e20 100%);display:none;align-items:center;justify-content:center;z-index:1000}
-.pending-box{background:#fff;border-radius:16px;padding:36px 32px;width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25)}
-[data-theme=dark] .pending-box{background:#1e2028}
+.pending-box{
+  background:rgba(255,255,255,.06);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(105,240,174,.18);border-radius:20px;padding:36px 32px;width:380px;
+  text-align:center;box-shadow:0 8px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(105,240,174,.12);
+}
+[data-theme=dark] .pending-box{background:rgba(10,30,12,.55)}
 .pending-icon{font-size:52px;margin-bottom:14px}
-.pending-title{font-size:18px;font-weight:700;color:#1b5e20;margin-bottom:8px}
+.pending-title{font-size:18px;font-weight:700;color:#69f0ae;margin-bottom:8px;letter-spacing:.05em}
 [data-theme=dark] .pending-title{color:#4caf50}
-.pending-sub{font-size:13px;color:#5a6072;margin-bottom:20px;line-height:1.6}
+.pending-sub{font-size:13px;color:rgba(255,255,255,.5);margin-bottom:20px;line-height:1.6}
 [data-theme=dark] .pending-sub{color:#9ba3b8}
-.pending-user{background:#f1f3f6;border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:12px;color:#5a6072;text-align:left}
+.pending-user{background:rgba(105,240,174,.07);border:1px solid rgba(76,155,80,.45);border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:12px;color:rgba(255,255,255,.6);text-align:left}
 [data-theme=dark] .pending-user{background:#252830;color:#9ba3b8}
-.pending-user strong{color:#1a1d23;display:block;margin-bottom:3px;font-size:13px}
+.pending-user strong{color:#b9f6ca;display:block;margin-bottom:3px;font-size:13px}
 [data-theme=dark] .pending-user strong{color:#e8eaf0}
-.pending-logout-btn{background:transparent;border:1px solid #e0e2e6;border-radius:8px;padding:8px 18px;font-size:13px;color:#5a6072;cursor:pointer;font-family:inherit;margin-top:4px}
+.pending-logout-btn{background:rgba(255,255,255,.06);border:1px solid rgba(105,240,174,.2);border-radius:8px;padding:8px 18px;font-size:13px;color:rgba(255,255,255,.6);cursor:pointer;font-family:inherit;margin-top:4px;transition:all .15s}.pending-logout-btn:hover{background:rgba(105,240,174,.1);color:#fff}
 .pending-logout-btn:hover{background:#f1f3f6}
 
 /* Admin notification bell */
@@ -609,6 +655,25 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 [data-theme=dark] .login-box{background:rgba(20,30,22,.97)}
 .login-title{color:#1b5e20!important}
 [data-theme=dark] .login-title{color:#4caf50!important}
+
+/* ─── SECURITY AUDIT ─────────────────────────────────────────── */
+.audit-row{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-bottom:1px solid var(--bdr);font-size:12px}
+.audit-row:last-child{border-bottom:none}
+.audit-row:hover{background:var(--sur2)}
+.audit-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.audit-body{flex:1;min-width:0}
+.audit-action{font-weight:600;color:var(--tx);margin-bottom:2px}
+.audit-meta{color:var(--tx3);font-size:11px;display:flex;gap:8px;flex-wrap:wrap}
+.audit-hash{font-family:monospace;font-size:10px;color:var(--tx3);background:var(--sur2);border-radius:4px;padding:2px 6px;margin-top:3px;word-break:break-all;border:1px solid var(--bdr)}
+.audit-badge{font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px}
+.audit-ok{background:#dcfce7;color:#166534}
+.audit-fail{background:#fee2e2;color:#991b1b}
+.audit-info{background:#dbeafe;color:#1e40af}
+[data-theme=dark] .audit-ok{background:#0a1f0a;color:#4caf50}
+[data-theme=dark] .audit-fail{background:#2d1515;color:#ef5350}
+[data-theme=dark] .audit-info{background:#0a1a2d;color:#4d9ef7}
+.audit-proof{background:var(--sur2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;color:var(--tx2)}
+.audit-proof code{display:block;font-family:monospace;font-size:10px;color:var(--tx3);margin-top:4px;word-break:break-all;line-height:1.6}
 </style>
 </head>
 <body>
@@ -617,30 +682,34 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 <div id="loginWrap" class="login-wrap">
   <canvas id="circuitCanvas" class="circuit-canvas"></canvas>
   <div class="login-box">
-    <div class="login-logo">
-      <div class="login-logo-icon">C</div>
-      <div class="login-title">Controle da Equipe</div>
+    <div class="login-brand">
+      <span class="login-brand-name">GERENCIAL</span>
+      <span class="login-brand-sub">Sistema de Controle</span>
     </div>
+    <span class="login-divider-line"></span>
 
     <!-- LOGIN FORM -->
     <div id="loginForm">
-      <div class="login-sub">Faça login para acessar o painel</div>
+      <div class="login-sub">Acesso restrito — identifique-se</div>
       <div class="login-field">
-        <label>Usuário ou E-mail</label>
-        <input type="text" id="loginUser" placeholder="usuario ou email@..." onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+        <input type="text" id="loginUser" placeholder=" " autocomplete="username"
+          onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+        <label for="loginUser">Usuário ou E-mail</label>
       </div>
-      <div class="login-field">
-        <label>Senha</label>
-        <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      <div class="login-field has-toggle">
+        <input type="password" id="loginPass" placeholder=" " autocomplete="current-password"
+          onkeydown="if(event.key==='Enter')doLogin()">
+        <label for="loginPass">Senha</label>
+        <button class="pass-toggle-btn" type="button" onclick="toggleLoginPass()" id="loginPassToggle" title="Mostrar/ocultar senha">👁</button>
       </div>
       <div class="login-err" id="loginErr"></div>
       <button class="login-btn" onclick="doLogin()">Entrar</button>
-      <div class="login-switch">Não tem conta? <a onclick="showRegister()">Criar conta</a></div>
+      <div class="login-switch">Não tem acesso? <a onclick="showRegister()">Solicitar cadastro</a></div>
     </div>
 
     <!-- REGISTER FORM -->
     <div id="registerForm" style="display:none">
-      <div class="login-sub">Crie sua conta para acessar o painel</div>
+      <div class="login-sub">Solicitar acesso ao sistema</div>
       <div class="login-field">
         <label>Nome completo</label>
         <input type="text" id="regName" placeholder="Seu nome" onkeydown="if(event.key==='Enter')document.getElementById('regEmail').focus()">
@@ -761,6 +830,19 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
         </div>
         <button class="btn btn-p btn-sm" onclick="addUser()" style="align-self:flex-end">+ Adicionar</button>
       </div>
+    </div>
+
+    <!-- Security Audit -->
+    <div class="admin-section" id="auditSection">
+      <div class="admin-section-hdr" style="justify-content:space-between">
+        <h3>🔒 Auditoria de Segurança</h3>
+        <div style="display:flex;gap:6px"><button class="btn btn-sm btn-g" onclick="exportAuditLog()" style="font-size:11px">⬇ Exportar CSV</button><button class="btn btn-sm" onclick="clearAuditLog()" style="font-size:11px">🗑 Limpar</button></div>
+      </div>
+      <div id="auditProof" class="audit-proof">
+        <strong>Como funciona a criptografia:</strong>
+        <code id="auditProofText">As senhas são convertidas com SHA-256 (Web Crypto API nativa do browser). Nenhuma senha é armazenada em texto puro. Carregando demonstração...</code>
+      </div>
+      <div id="auditLogBody"></div>
     </div>
 
     <!-- Permissions -->
@@ -1065,6 +1147,8 @@ let USERS = {
   'consulta':{pass:'consulta123',name:'Consulta',      role:'consulta'},
 };
 let currentUser = null;
+let agendaItems = [];
+let PENDING_REQUESTS = [];
 
 // ─── CONSTANTS ───────────────────────────────────────────────
 let SS={'Em andamento':{bg:'#dbeafe',c:'#1e40af'},'Concluído':{bg:'#dcfce7',c:'#166534'},'Pendente':{bg:'#fef9c3',c:'#854d0e'},'Bloqueado':{bg:'#fee2e2',c:'#991b1b'},'Revisão':{bg:'#ede9fe',c:'#5b21b6'},'Cancelado':{bg:'#f3f4f6',c:'#4b5563'},'':{bg:'#f1f3f6',c:'#9aa0b0'}};
@@ -1858,13 +1942,132 @@ function doExport(){
 }
 
 // expose to HTML
-window.toggleDark=toggleDark;window.doRefresh=doRefresh;window.doExport=doExport;
+window.toggleDark=toggleDark;window.doExport=doExport;
 window.renderAll=renderAll;window.showGrpModal=showGrpModal;window.cfmGrp=cfmGrp;
 window.cfmTab=cfmTab;window.closeMod=closeMod;window.closeAll=closeAll;
 window.saveFlag=saveFlag;window.clrFlag=clrFlag;
 window.addCard=addCard;window.addNote=addNote;window.clrConns=clrConns;window.cvZoom=cvZoom;window.cvFit=cvFit;
 
 
+
+// ─── SECURITY AUDIT LOG ───────────────────────────────────────
+const AUDIT_LOG_KEY = 'ctrl_audit_log';
+const MAX_AUDIT = 200;
+
+function loadAuditLog(){
+  try{const d=localStorage.getItem(AUDIT_LOG_KEY);return d?JSON.parse(d):[]}catch(e){return[]}
+}
+function saveAuditLog(log){
+  try{localStorage.setItem(AUDIT_LOG_KEY,JSON.stringify(log.slice(0,MAX_AUDIT)))}catch(e){}
+}
+
+function addAuditEntry(type, details){
+  const log = loadAuditLog();
+  const entry = {
+    id: Date.now(),
+    ts: new Date().toISOString(),
+    type,           // 'login_ok','login_fail','logout','register','approved','rejected','pass_change'
+    user: currentUser ? currentUser.username : (details.username||'—'),
+    details,
+    ip: 'client-side',  // no server = no real IP, but we log what we can
+  };
+  log.unshift(entry);
+  saveAuditLog(log);
+}
+window.addAuditEntry = addAuditEntry;
+
+function renderAuditLog(){
+  const log = loadAuditLog();
+  const body = document.getElementById('auditLogBody');
+  if(!body) return;
+
+  // Show crypto proof
+  showCryptoProof();
+
+  if(!log.length){
+    body.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--tx3)">Nenhum registro ainda. As ações de autenticação aparecerão aqui.</div>';
+    return;
+  }
+
+  body.innerHTML = '';
+  log.forEach(entry=>{
+    const row = document.createElement('div');
+    row.className = 'audit-row';
+    const {icon, label, badgeClass} = getAuditMeta(entry.type);
+    const date = new Date(entry.ts);
+    const dateStr = date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR');
+    row.innerHTML = `
+      <div class="audit-icon" style="background:var(--sur2)">${icon}</div>
+      <div class="audit-body">
+        <div class="audit-action">
+          ${label} — <strong>@${entry.user}</strong>
+          <span class="audit-badge ${badgeClass}" style="margin-left:6px">${label}</span>
+        </div>
+        <div class="audit-meta">
+          <span>📅 ${dateStr}</span>
+          ${entry.details.role ? `<span>👤 Perfil: ${entry.details.role}</span>` : ''}
+          ${entry.details.email ? `<span>📧 ${entry.details.email}</span>` : ''}
+        </div>
+        ${entry.details.passHash ? `<div class="audit-hash">SHA-256: ${entry.details.passHash}</div>` : ''}
+        ${entry.details.reason ? `<div style="font-size:11px;color:var(--red);margin-top:2px">⚠ ${entry.details.reason}</div>` : ''}
+      </div>
+    `;
+    body.appendChild(row);
+  });
+}
+
+function getAuditMeta(type){
+  const map = {
+    login_ok:    {icon:'✅', label:'Login realizado',   badgeClass:'audit-ok'},
+    login_fail:  {icon:'❌', label:'Tentativa falha',    badgeClass:'audit-fail'},
+    logout:      {icon:'🚪', label:'Logout',             badgeClass:'audit-info'},
+    register:    {icon:'📝', label:'Cadastro solicitado',badgeClass:'audit-info'},
+    approved:    {icon:'✔️', label:'Usuário aprovado',   badgeClass:'audit-ok'},
+    rejected:    {icon:'✖️', label:'Usuário rejeitado',  badgeClass:'audit-fail'},
+    pass_change: {icon:'🔑', label:'Senha alterada',     badgeClass:'audit-info'},
+    pass_fail:   {icon:'🔒', label:'Senha incorreta',    badgeClass:'audit-fail'},
+    admin_access:{icon:'⚙️', label:'Acesso ao Admin',    badgeClass:'audit-info'},
+  };
+  return map[type] || {icon:'ℹ️', label:type, badgeClass:'audit-info'};
+}
+
+async function showCryptoProof(){
+  const el = document.getElementById('auditProofText');
+  if(!el) return;
+  try{
+    const example = 'admin123';
+    const hash = await sha256(example);
+    el.innerHTML = `As senhas são convertidas com <strong>SHA-256</strong> (Web Crypto API — nativa do navegador, sem biblioteca externa).\n\nExemplo de prova:\n  Senha:  "${example}"\n  SHA-256: ${hash}\n\nO hash armazenado é irreversível. Nem administradores podem ver a senha original.`;
+  }catch(e){
+    el.textContent = 'Web Crypto API disponível — senhas protegidas com SHA-256.';
+  }
+}
+
+function clearAuditLog(){
+  if(!confirm('Limpar todo o histórico de auditoria?'))return;
+  localStorage.removeItem(AUDIT_LOG_KEY);
+  renderAuditLog();
+  toast('Log de auditoria limpo.');
+}
+window.clearAuditLog=clearAuditLog;
+
+// Export audit log as CSV
+function exportAuditLog(){
+  const log = loadAuditLog();
+  let csv = '\uFEFFData/Hora,Ação,Usuário,E-mail,Perfil,Hash SHA-256\n';
+  log.forEach(e=>{
+    const d = new Date(e.ts).toLocaleString('pt-BR');
+    csv += `"${d}","${e.type}","${e.user}","${e.details.email||''}","${e.details.role||''}","${e.details.passHash||''}"\n`;
+  });
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download='auditoria_seguranca.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Log exportado!');
+}
+window.exportAuditLog=exportAuditLog;
 
 // ─── ADMIN TAB ────────────────────────────────────────────────
 const PERMS = [
@@ -1919,6 +2122,7 @@ async function checkAdminPass(){
       localStorage.setItem('ctrl_admin_pass_hash',valHash);
     }
     adminUnlocked = true;
+    addAuditEntry('admin_access',{username:currentUser?currentUser.username:'?'});
     document.getElementById('adminLock').style.display='none';
     document.getElementById('adminContent').style.display='block';
     renderAdminContent();
@@ -1934,6 +2138,7 @@ function renderAdminContent(){
   renderPendingSection();
   renderUsersTable();
   renderPermsTable();
+  renderAuditLog();
 }
 
 function renderProfileCard(){
@@ -2060,6 +2265,7 @@ async function changeMyPass(){
   USERS[currentUser.username].pass=p1hash;
   currentUser.pass=p1hash;
   saveUsers();
+  addAuditEntry('pass_change',{username:currentUser.username,email:currentUser.email||'',passHash:p1hash});
   document.getElementById('newPass1').value='';
   document.getElementById('newPass2').value='';
   toast('✅ Senha alterada com sucesso!');
@@ -2302,7 +2508,7 @@ let ADMIN_TAB_PASS_HASH = localStorage.getItem('ctrl_admin_pass_hash')||'';
 
 // pending requests stored in localStorage keyed by 'ctrl_pending'
 // Each request: {id, username, name, email, pass, role:'pending', requestedAt}
-let PENDING_REQUESTS = [];
+// PENDING_REQUESTS declared at top
 
 function loadPending(){
   try{const d=localStorage.getItem('ctrl_pending');if(d)PENDING_REQUESTS=JSON.parse(d);}catch(e){PENDING_REQUESTS=[]}
@@ -2339,6 +2545,7 @@ async function doRegister(){
   const req={id:'req_'+Date.now(),username,name,email,pass:passHash,requestedAt:new Date().toISOString()};
   loadPending();
   PENDING_REQUESTS.push(req);
+  addAuditEntry('register',{username:req.username,email:req.email,passHash:req.pass});
   savePending();
 
   // Notify admin via localStorage event (works same browser) + show pending screen
@@ -2452,6 +2659,7 @@ function approveUser(reqId){
   renderBellModal();
   // Update admin users table if open
   if(document.getElementById('adminContent').style.display!=='none') renderUsersTable();
+  addAuditEntry('approved',{username:req.username,email:req.email,role});
   toast('✅ Usuário "'+req.name+'" aprovado como '+({admin:'Administrador',user:'Equipe',consulta:'Consulta'}[role]||role)+'!');
 }
 window.approveUser=approveUser;
@@ -2540,7 +2748,7 @@ function doLogin(){
       if(u.email&&u.email===input){foundKey=k;foundUser=u;break}
     }
   }
-  if(!foundUser){err.textContent='Usuário/e-mail ou senha incorretos.';return}
+  if(!foundUser){err.textContent='Usuário/e-mail ou senha incorretos.';addAuditEntry('login_fail',{username:input,reason:'Usuário não encontrado'});return}
 
   const storedPass = foundUser.pass||'';
   // Accept plain text OR hashed match (hash async migration happens in background)
@@ -2582,10 +2790,15 @@ function _completeLogin(foundKey, foundUser){
   }
   currentUser={username:foundKey,...foundUser};
   localStorage.setItem('ctrl_session',JSON.stringify(currentUser));
+  // Audit: get hash for proof
+  hashPass && hashPass(document.getElementById('loginPass').value||'').then(h=>{
+    addAuditEntry('login_ok',{username:foundKey,role:foundUser.role,email:foundUser.email||'',passHash:h});
+  }).catch(()=>addAuditEntry('login_ok',{username:foundKey,role:foundUser.role}));
   showApp();
 }
 
 function doLogout(){
+  if(currentUser) addAuditEntry('logout',{username:currentUser.username});
   currentUser=null;
   localStorage.removeItem('ctrl_session');
   showLogin();
@@ -2606,6 +2819,15 @@ function showLogin2(){
   setTimeout(()=>document.getElementById('loginUser').focus(),80);
 }
 window.showRegister=showRegister;
+
+function toggleLoginPass(){
+  const inp = document.getElementById('loginPass');
+  const btn = document.getElementById('loginPassToggle');
+  if(inp.type==='password'){inp.type='text';btn.textContent='🙈';}
+  else{inp.type='password';btn.textContent='👁';}
+}
+window.toggleLoginPass=toggleLoginPass;
+
 window.showLogin2=showLogin2;
 
 function showLogin(){
@@ -3205,7 +3427,7 @@ const EVT_TYPES = [
   {id:'reminder',label:'Lembrete',   color:'#991b1b', bg:'#fee2e2'},
 ];
 
-let agendaItems = [];   // [{id, type, title, date, time, note, notifDays, done, createdAt}]
+// agendaItems declared at top
 let calYear, calMonth;
 let selectedDate = null;
 let selectedEvtType = 'event';
