@@ -582,6 +582,25 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 .gdot-custom input[type=color]{width:28px;height:24px;border-radius:5px;border:1px solid var(--bdr);cursor:pointer;padding:0 2px;background:transparent}
 .gdot{cursor:pointer;transition:transform .15s}
 .gdot:hover{transform:scale(1.25)}
+
+/* ─── PASSWORD CELL ──────────────────────────────────────────── */
+.pass-cell-wrap{position:relative;display:flex;align-items:center;width:100%}
+.pass-cell-input{background:transparent;border:none;outline:none;font-size:13px;color:var(--tx);font-family:inherit;width:100%;padding:7px 32px 7px 10px;display:block;cursor:pointer}
+.pass-cell-input:not([data-unlocked]){color:transparent;text-shadow:0 0 8px rgba(0,0,0,.5);letter-spacing:2px;cursor:pointer;caret-color:transparent;user-select:none}
+[data-theme=dark] .pass-cell-input:not([data-unlocked]){text-shadow:0 0 8px rgba(255,255,255,.4)}
+.pass-cell-input[data-unlocked]{cursor:text}
+.pass-cell-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:13px;color:var(--tx3);padding:2px;line-height:1;z-index:2}
+.pass-cell-toggle:hover{color:var(--blue)}
+.pass-lock-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:950;display:flex;align-items:center;justify-content:center}
+.pass-lock-box{background:var(--sur);border-radius:12px;padding:24px 28px;min-width:300px;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,.25)}
+.pass-lock-box h4{font-size:14px;font-weight:600;color:var(--tx);margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:7px}
+.pass-lock-box p{font-size:12px;color:var(--tx2);margin-bottom:14px}
+.pass-lock-inp{width:100%;border:1.5px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;text-align:center;letter-spacing:.15em;background:var(--sur2);color:var(--tx);margin-bottom:10px}
+.pass-lock-inp:focus{border-color:#1b5e20;box-shadow:0 0 0 3px rgba(27,94,32,.15)}
+.pass-lock-err{font-size:12px;color:var(--red);min-height:16px;margin-bottom:8px}
+.pass-lock-actions{display:flex;gap:8px;justify-content:center}
+.pass-col-badge{font-size:9px;background:#fee2e2;color:#991b1b;border-radius:3px;padding:1px 4px;font-weight:600;flex-shrink:0}
+[data-theme=dark] .pass-col-badge{background:#2d1515;color:#ef5350}
 </style>
 </head>
 <body>
@@ -970,6 +989,21 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
     <input type="color" id="gdotCustomColor" onchange="applyGdotCustomColor(this.value)">
   </div>
 </div>
+
+<!-- PASSWORD REVEAL MODAL -->
+<div id="passLockOverlay" class="pass-lock-overlay" style="display:none">
+  <div class="pass-lock-box">
+    <h4>🔒 Coluna protegida</h4>
+    <p>Digite a senha para visualizar este campo</p>
+    <input type="password" class="pass-lock-inp" id="passLockInp" placeholder="••••" maxlength="20"
+      onkeydown="if(event.key==='Enter')submitPassLock()">
+    <div class="pass-lock-err" id="passLockErr"></div>
+    <div class="pass-lock-actions">
+      <button class="btn" onclick="closePassLock()">Cancelar</button>
+      <button class="btn btn-p" onclick="submitPassLock()">🔓 Revelar</button>
+    </div>
+  </div>
+</div>
 <div id="ov" class="ov" style="display:none" onclick="closeAll()"></div>
 <div id="spkr" class="spkr" style="display:none"></div>
 <div id="ctpkr" class="ctpkr" style="display:none"></div>
@@ -1211,6 +1245,7 @@ function start(){
   loadStatuses();
   loadAgenda();
   loadPending();
+  migratePasswords(); // hash any plain-text passwords
   // Load localStorage immediately
   const local=lsLoad();
   if(!migrate(local)){
@@ -1420,10 +1455,15 @@ function buildGroup(g,filter,search){
     const ti=document.createElement('input');ti.className='thinp';ti.type='text';ti.value=col.label;ti.readOnly=!!col.fixed;
     ti.ondragstart=e=>e.stopPropagation();
     if(!col.fixed){
-      ti.addEventListener('blur',e=>{if(col.label!==e.target.value){col.label=e.target.value;save()}});
+      ti.addEventListener('blur',e=>{if(col.label!==e.target.value){col.label=e.target.value;checkAutoPassCol(col);renderAll();save()}});
       ti.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
     }
     tw.appendChild(ti);
+    // password badge for protected columns
+    if(col.type==='text' && isPassCol(col)){
+      const pb=document.createElement('span');pb.className='pass-col-badge';pb.textContent='🔒';pb.title='Coluna protegida por senha';
+      tw.appendChild(pb);
+    }
     // format badge for number columns
     if(col.type==='number'){
       const fmt=getColFormat(col);
@@ -1468,14 +1508,20 @@ function buildGroup(g,filter,search){
       const td=document.createElement('td');const val=row.cells[col.id]??'';
       if(col.type==='text'){
         td.className='ct';
-        const i=document.createElement('input');
-        i.type='text';i.value=val;i.placeholder='...';
-        i.addEventListener('focus',e=>{e.target.select&&e.target.select()});
-        i.addEventListener('blur',e=>{
-          if(row.cells[col.id]!==e.target.value){row.cells[col.id]=e.target.value;save()}
-        });
-        i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.target.blur()}});
-        td.appendChild(i)
+        if(isPassCol(col)){
+          // Password protected cell
+          td.style.padding='0';
+          td.appendChild(buildPassCell(col,row,val));
+        } else {
+          const i=document.createElement('input');
+          i.type='text';i.value=val;i.placeholder='...';
+          i.addEventListener('focus',e=>{e.target.select&&e.target.select()});
+          i.addEventListener('blur',e=>{
+            if(row.cells[col.id]!==e.target.value){row.cells[col.id]=e.target.value;save()}
+          });
+          i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.target.blur()}});
+          td.appendChild(i);
+        }
       }
       else if(col.type==='status'){
         td.className='cs';
@@ -1680,7 +1726,7 @@ function openCtPkr(e,g){
     const opt=document.createElement('div');opt.className='ctopt';
     const ic=document.createElement('div');ic.className='cticon';ic.textContent=ct.i;
     const lb=document.createElement('span');lb.textContent=ct.l;opt.appendChild(ic);opt.appendChild(lb);
-    opt.onclick=()=>{const col={id:'c'+(cid++),label:ct.l,type:ct.t,w:CW[ct.t]||140};g.columns.push(col);g.rows.forEach(r=>{if(!r.sub)r.cells[col.id]=ct.t==='flag'?false:''});closeAll();save();renderAll();toast('Coluna "'+ct.l+'" adicionada!')};
+    opt.onclick=()=>{const col={id:'c'+(cid++),label:ct.l,type:ct.t,w:CW[ct.t]||140};g.columns.push(col);g.rows.forEach(r=>{if(!r.sub)r.cells[col.id]=ct.t==='flag'?false:''});checkAutoPassCol(col);closeAll();save();renderAll();toast('Coluna "'+ct.l+'" adicionada!')};
     p.appendChild(opt);
   });
   const r=e.target.getBoundingClientRect();let top=r.bottom+4,left=r.left;
@@ -1767,9 +1813,6 @@ function buildSwatches(containerId,selected,onSelect){
 }
 function closeAll(){document.getElementById('ctpkr').style.display='none';document.getElementById('spkr').style.display='none';document.getElementById('nfmtPkr').style.display='none';document.getElementById('gdotPicker').style.display='none';document.getElementById('ov').style.display='none'}
 function closeMod(id){document.getElementById(id).style.display='none'}
-  catch(e){toast('Erro ao atualizar')}
-  finally{setTimeout(()=>{btn.classList.remove('spin');btn.disabled=false},600)}
-}
 function doExport(){
   const tab=curTab();if(!tab||tab.type!=='table'){toast('Export apenas em abas Tabela');return}
   const filter=document.getElementById('fltSt').value;let csv='\uFEFF';
@@ -1825,9 +1868,19 @@ function switchFromAdmin(){
 }
 window.switchToAdmin=switchToAdmin;
 window.switchFromAdmin=switchFromAdmin;
-function checkAdminPass(){
+async function checkAdminPass(){
   const val = document.getElementById('adminPassInp').value;
-  if(val === ADMIN_TAB_PASS){
+  const valHash = await hashPass(val);
+  // Support both: compare with hash OR raw (for first run before migration)
+  const adminMatch = isHashed(ADMIN_TAB_PASS_HASH)
+    ? valHash===ADMIN_TAB_PASS_HASH
+    : val===ADMIN_TAB_PASS_RAW;
+  if(adminMatch){
+    // Store hash for future
+    if(!isHashed(ADMIN_TAB_PASS_HASH)){
+      ADMIN_TAB_PASS_HASH=valHash;
+      localStorage.setItem('ctrl_admin_pass_hash',valHash);
+    }
     adminUnlocked = true;
     document.getElementById('adminLock').style.display='none';
     document.getElementById('adminContent').style.display='block';
@@ -1882,7 +1935,7 @@ function renderUsersTable(){
           <option value="user"${u.role==='user'?' selected':''}>Equipe</option>
           <option value="consulta"${u.role==='consulta'?' selected':''}>Consulta</option>
         </select></td>
-        <td><input type="password" class="admin-inp" value="${u.pass}" onchange="USERS['${key}'].pass=this.value;saveUsers()" style="width:110px"></td>
+        <td><input type="password" class="admin-inp" placeholder="Nova senha..." onchange="updateUserPass('${key}',this.value)" style="width:110px" title="Digite uma nova senha para alterar"></td>
         <td>${key!==currentUser.username?`<button class="btn btn-d btn-sm" onclick="removeUser('${key}')">Remover</button>`:'<span style="font-size:11px;color:var(--tx3)">Você</span>'}</td>
       `;
     } else {
@@ -1918,7 +1971,7 @@ function renderPermsTable(){
   });
 }
 
-function addUser(){
+async function addUser(){
   const user=document.getElementById('nuUser').value.trim().toLowerCase();
   const name=document.getElementById('nuName').value.trim();
   const email=document.getElementById('nuEmail').value.trim().toLowerCase();
@@ -1926,7 +1979,8 @@ function addUser(){
   const role=document.getElementById('nuRole').value;
   if(!user||!name||!pass){toast('⚠️ Preencha todos os campos');return}
   if(USERS[user]){toast('⚠️ Usuário já existe');return}
-  USERS[user]={pass,name,email,role};
+  const passHash=await hashPass(pass);
+  USERS[user]={pass:passHash,name,email,role};
   saveUsers();
   ['nuUser','nuName','nuEmail','nuPass'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('nuRole').value='user';
@@ -1959,14 +2013,15 @@ function loadUsers(){
   }catch(e){}
 }
 
-function changeMyPass(){
+async function changeMyPass(){
   const p1=document.getElementById('newPass1').value;
   const p2=document.getElementById('newPass2').value;
   if(!p1){toast('⚠️ Digite a nova senha');return}
   if(p1!==p2){toast('⚠️ Senhas não conferem');return}
   if(p1.length<4){toast('⚠️ Senha muito curta (mín. 4 caracteres)');return}
-  USERS[currentUser.username].pass=p1;
-  currentUser.pass=p1;
+  const p1hash=await hashPass(p1);
+  USERS[currentUser.username].pass=p1hash;
+  currentUser.pass=p1hash;
   saveUsers();
   document.getElementById('newPass1').value='';
   document.getElementById('newPass2').value='';
@@ -1978,6 +2033,41 @@ window.changeMyPass = changeMyPass;
 function canSeeAdminTab(){
   return currentUser && currentUser.role === 'admin';
 }
+
+
+// ─── CRYPTO (SHA-256) ─────────────────────────────────────────
+async function sha256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// Hash a password (returns promise)
+async function hashPass(pass){ return await sha256(pass) }
+
+// Migrate plain-text passwords to hashed on first login
+// If pass doesn't look like a sha256 hash (64 hex chars), it's plain text
+function isHashed(pass){ return /^[a-f0-9]{64}$/.test(pass||'') }
+
+async function migratePasswords(){
+  let changed=false;
+  for(const [key,u] of Object.entries(USERS)){
+    if(u.pass && !isHashed(u.pass)){
+      u.pass = await hashPass(u.pass);
+      changed=true;
+    }
+  }
+  // Also migrate ADMIN_TAB_PASS
+  if(ADMIN_TAB_PASS_RAW && !isHashed(ADMIN_TAB_PASS_HASH)){
+    ADMIN_TAB_PASS_HASH = await hashPass(ADMIN_TAB_PASS_RAW);
+    localStorage.setItem('ctrl_admin_pass_hash', ADMIN_TAB_PASS_HASH);
+    changed=true;
+  }
+  if(changed) saveUsers();
+}
+
+// Admin tab password hashing
+let ADMIN_TAB_PASS_RAW = '99212136';
+let ADMIN_TAB_PASS_HASH = localStorage.getItem('ctrl_admin_pass_hash')||'';
 
 // ─── PENDING APPROVAL SYSTEM ──────────────────────────────────
 
@@ -1993,7 +2083,7 @@ function savePending(){
 }
 
 // Override doRegister to put user in pending state instead of auto-login
-function doRegister(){
+async function doRegister(){
   const name  = document.getElementById('regName').value.trim();
   const email = document.getElementById('regEmail').value.trim().toLowerCase();
   const pass  = document.getElementById('regPass').value;
@@ -2016,7 +2106,8 @@ function doRegister(){
   if(PENDING_REQUESTS.find(r=>r.email===email)){err.textContent='Já existe uma solicitação com este e-mail aguardando aprovação.';return}
 
   // Add to pending
-  const req={id:'req_'+Date.now(),username,name,email,pass,requestedAt:new Date().toISOString()};
+  const passHash = await hashPass(pass);
+  const req={id:'req_'+Date.now(),username,name,email,pass:passHash,requestedAt:new Date().toISOString()};
   loadPending();
   PENDING_REQUESTS.push(req);
   savePending();
@@ -2210,31 +2301,43 @@ let USERS = {
   'equipe':  {pass:'equipe2024',name:'Equipe',         role:'user'},
   'consulta':{pass:'consulta123',name:'Consulta',      role:'consulta'},
 };
-const ADMIN_TAB_PASS = '99212136';
+// ADMIN_TAB_PASS handled via ADMIN_TAB_PASS_HASH (see crypto section)
 
 
 let currentUser = null;
 
-function doLogin(){
+async function doLogin(){
   const input = document.getElementById('loginUser').value.trim().toLowerCase();
   const pass  = document.getElementById('loginPass').value;
   const err   = document.getElementById('loginErr');
   if(!input||!pass){err.textContent='Preencha usuário e senha.';return}
+  err.textContent='Verificando...';
 
   // Find by username or email
   let foundKey=null, foundUser=null;
   if(USERS[input]){
     foundKey=input; foundUser=USERS[input];
   } else {
-    // search by email
     for(const [k,u] of Object.entries(USERS)){
       if(u.email&&u.email===input){foundKey=k;foundUser=u;break}
     }
   }
-  if(!foundUser||foundUser.pass!==pass){err.textContent='Usuário/e-mail ou senha incorretos.';return}
+  if(!foundUser){err.textContent='Usuário/e-mail ou senha incorretos.';return}
+
+  // Compare: support both hashed and plain (for migration)
+  const passHash = await hashPass(pass);
+  const storedPass = foundUser.pass||'';
+  const match = isHashed(storedPass) ? storedPass===passHash : storedPass===pass;
+  if(!match){err.textContent='Usuário/e-mail ou senha incorretos.';return}
+
+  // If stored pass is plain text, migrate it now
+  if(!isHashed(storedPass)){
+    foundUser.pass = passHash;
+    saveUsers();
+  }
+
   err.textContent='';
-  // Check if user is pending approval
-  if(foundUser.role==='pending'||(!foundUser.role&&false)){
+  if(foundUser.role==='pending'){
     currentUser={username:foundKey,...foundUser};
     localStorage.setItem('ctrl_session',JSON.stringify(currentUser));
     showPendingScreen();return;
@@ -2267,45 +2370,6 @@ function showLogin2(){
 window.showRegister=showRegister;
 window.showLogin2=showLogin2;
 
-function doRegister(){
-  const name  = document.getElementById('regName').value.trim();
-  const email = document.getElementById('regEmail').value.trim().toLowerCase();
-  const pass  = document.getElementById('regPass').value;
-  const pass2 = document.getElementById('regPass2').value;
-  const err   = document.getElementById('regErr');
-
-  if(!name)       {err.textContent='Digite seu nome completo.';return}
-  if(!email||!email.includes('@')){err.textContent='Digite um e-mail válido.';return}
-  if(pass.length<6){err.textContent='Senha deve ter no mínimo 6 caracteres.';return}
-  if(pass!==pass2){err.textContent='As senhas não conferem.';return}
-
-  // generate username from email (part before @)
-  let username = email.split('@')[0].replace(/[^a-z0-9_]/gi,'').toLowerCase();
-  if(!username) username = name.split(' ')[0].toLowerCase();
-  // ensure unique username
-  let base=username, n=2;
-  while(USERS[username]) username=base+n++;
-
-  // check if email already registered
-  const emailExists = Object.values(USERS).some(u=>u.email===email);
-  if(emailExists){err.textContent='Este e-mail já está cadastrado.';return}
-
-  // New accounts start as 'pending' - admin needs to approve or they get 'user' role
-  USERS[username]={pass, name, email, role:'user', createdAt: new Date().toISOString()};
-  saveUsers();
-
-  err.style.color='#2e7d32';
-  err.textContent='✅ Conta criada! Entrando...';
-
-  // Auto login after register
-  setTimeout(()=>{
-    err.style.color='';
-    currentUser={username,...USERS[username]};
-    localStorage.setItem('ctrl_session', JSON.stringify(currentUser));
-    showApp();
-  },900);
-}
-window.doRegister=doRegister;
 function showLogin(){
   document.getElementById('loginWrap').style.display='flex';
   document.getElementById('mainHdr').style.display='none';
@@ -2548,6 +2612,110 @@ function applyGdotCustomColor(color){
   applyGdotColor(color);
 }
 window.applyGdotCustomColor=applyGdotCustomColor;
+
+
+// ─── PASSWORD COLUMN ──────────────────────────────────────────
+const PASS_COL_NAMES = /^(senha|password|pass|senha de acesso|pw|chave|acesso)$/i;
+const PASS_REVEAL_PIN = '0305';
+// Session-level unlocked cells: Set of colId
+const unlockedCols = new Set();
+
+function isPassCol(col){
+  return PASS_COL_NAMES.test((col.label||'').trim()) || col.isPassword;
+}
+
+// Called when col label changes - auto-detect
+function checkAutoPassCol(col){
+  const was = col.isPassword;
+  col.isPassword = PASS_COL_NAMES.test((col.label||'').trim());
+  if(col.isPassword !== was) save();
+}
+
+// Password lock modal context
+let passLockCtx = null; // {colId, onSuccess}
+
+function openPassLock(colId, onSuccess){
+  if(unlockedCols.has(colId)){onSuccess();return}
+  passLockCtx = {colId, onSuccess};
+  document.getElementById('passLockInp').value='';
+  document.getElementById('passLockErr').textContent='';
+  document.getElementById('passLockOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('passLockInp').focus(),80);
+}
+
+async function submitPassLock(){
+  const val = document.getElementById('passLockInp').value;
+  const err = document.getElementById('passLockErr');
+  if(!val){err.textContent='Digite a senha.';return}
+  // Support both raw and hash comparison
+  const isCorrect = val === PASS_REVEAL_PIN ||
+    (await sha256(val)) === (await sha256(PASS_REVEAL_PIN));
+  if(!isCorrect){err.textContent='Senha incorreta.';document.getElementById('passLockInp').value='';document.getElementById('passLockInp').focus();return}
+  if(passLockCtx){
+    unlockedCols.add(passLockCtx.colId);
+    passLockCtx.onSuccess();
+  }
+  closePassLock();
+}
+window.submitPassLock=submitPassLock;
+
+function closePassLock(){
+  document.getElementById('passLockOverlay').style.display='none';
+  passLockCtx=null;
+}
+window.closePassLock=closePassLock;
+
+function buildPassCell(col, row, val){
+  const isUnlocked = unlockedCols.has(col.id);
+  const wrap = document.createElement('div');
+  wrap.className = 'pass-cell-wrap';
+
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'pass-cell-input';
+  inp.value = val||'';
+  inp.placeholder = isUnlocked ? '...' : '••••••••';
+  inp.autocomplete = 'off';
+  if(isUnlocked) inp.setAttribute('data-unlocked','1');
+
+  // Toggle button
+  const toggle = document.createElement('button');
+  toggle.className = 'pass-cell-toggle';
+  toggle.textContent = isUnlocked ? '🔓' : '🔒';
+  toggle.title = isUnlocked ? 'Ocultar' : 'Revelar (requer senha)';
+
+  toggle.onclick = e => {
+    e.stopPropagation();
+    if(isUnlocked){
+      // Lock again
+      unlockedCols.delete(col.id);
+      renderAll();
+    } else {
+      openPassLock(col.id, ()=>renderAll());
+    }
+  };
+
+  inp.addEventListener('click', e => {
+    if(!isUnlocked){
+      e.preventDefault();
+      openPassLock(col.id, ()=>renderAll());
+    }
+  });
+  inp.addEventListener('focus', e => {
+    if(!isUnlocked){e.target.blur();openPassLock(col.id,()=>renderAll());return}
+    e.target.select&&e.target.select();
+  });
+  inp.addEventListener('blur', e => {
+    if(isUnlocked && row.cells[col.id]!==e.target.value){
+      row.cells[col.id]=e.target.value;save();
+    }
+  });
+  inp.addEventListener('keydown', e=>{if(e.key==='Enter')e.target.blur()});
+  if(!isUnlocked) inp.readOnly = true;
+
+  wrap.appendChild(inp);wrap.appendChild(toggle);
+  return wrap;
+}
 
 // ─── DRAG FILL STATUS ─────────────────────────────────────────
 let fillDrag = null; // {sourceRow, colId, group, sourceTr, sourceVal, rows}
