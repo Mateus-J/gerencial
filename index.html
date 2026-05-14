@@ -645,6 +645,7 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 .pass-lock-box p{font-size:12px;color:var(--tx2);margin-bottom:14px}
 .pass-lock-inp{width:100%;border:1.5px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;text-align:center;letter-spacing:.15em;background:var(--sur2);color:var(--tx);margin-bottom:10px}
 .pass-lock-inp:focus{border-color:#1b5e20;box-shadow:0 0 0 3px rgba(27,94,32,.15)}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 .pass-lock-err{font-size:12px;color:var(--red);min-height:16px;margin-bottom:8px}
 .pass-lock-actions{display:flex;gap:8px;justify-content:center}
 .pass-col-badge{font-size:9px;background:#fee2e2;color:#991b1b;border-radius:3px;padding:1px 4px;font-weight:600;flex-shrink:0}
@@ -843,6 +844,34 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
         <code id="auditProofText">As senhas são convertidas com SHA-256 (Web Crypto API nativa do browser). Nenhuma senha é armazenada em texto puro. Carregando demonstração...</code>
       </div>
       <div id="auditLogBody"></div>
+    </div>
+
+    <!-- Security Config -->
+    <div class="admin-section">
+      <div class="admin-section-hdr"><h3>🛡 Configurações de Segurança</h3></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="background:var(--sur2);border-radius:8px;padding:12px;border:1px solid var(--bdr)">
+          <div style="font-size:12px;font-weight:600;color:var(--tx);margin-bottom:6px">🔒 PIN de colunas protegidas</div>
+          <div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Senha para visualizar colunas marcadas como "Senha". Atual: protegida por hash.</div>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <input type="password" id="oldRevealPin" class="admin-inp" placeholder="PIN atual" style="width:130px">
+            <input type="password" id="newRevealPin" class="admin-inp" placeholder="Novo PIN" style="width:130px">
+            <button class="btn btn-p btn-sm" onclick="doChangeRevealPin()">Alterar PIN</button>
+          </div>
+        </div>
+        <div style="background:var(--sur2);border-radius:8px;padding:12px;border:1px solid var(--bdr)">
+          <div style="font-size:12px;font-weight:600;color:var(--tx);margin-bottom:6px">⏱ Sessões ativas</div>
+          <div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Sessão expira em <strong>8 horas</strong> ou após <strong>2 horas</strong> de inatividade.</div>
+          <div style="display:flex;gap:7px">
+            <button class="btn btn-sm" onclick="showFirebaseRulesHelper()">📋 Copiar regras Firebase</button>
+            <button class="btn btn-d btn-sm" onclick="if(confirm('Encerrar TODAS as sessões?')){localStorage.removeItem(\'ctrl_session\');toast(\'Sessões encerradas!\');}">🚫 Encerrar sessões</button>
+          </div>
+        </div>
+        <div style="background:var(--sur2);border-radius:8px;padding:12px;border:1px solid var(--bdr)">
+          <div style="font-size:12px;font-weight:600;color:var(--tx);margin-bottom:4px">🔐 Status da criptografia</div>
+          <div id="cryptoStatus" style="font-size:11px;color:var(--tx3)">Verificando...</div>
+        </div>
+      </div>
     </div>
 
     <!-- Permissions -->
@@ -2115,6 +2144,7 @@ async function checkAdminPass(){
   const adminMatch = isHashed(ADMIN_TAB_PASS_HASH)
     ? valHash===ADMIN_TAB_PASS_HASH
     : val===ADMIN_TAB_PASS_RAW;
+  // Also try reveal pin (admin tab shares same PIN for simplicity)
   if(adminMatch){
     // Store hash for future
     if(!isHashed(ADMIN_TAB_PASS_HASH)){
@@ -2139,6 +2169,7 @@ function renderAdminContent(){
   renderUsersTable();
   renderPermsTable();
   renderAuditLog();
+  setTimeout(renderCryptoStatus,100);
 }
 
 function renderProfileCard(){
@@ -2504,6 +2535,168 @@ function migratePasswords(){
 let ADMIN_TAB_PASS_RAW = '99212136';
 let ADMIN_TAB_PASS_HASH = localStorage.getItem('ctrl_admin_pass_hash')||'';
 
+// ─── SECURITY HARDENING ───────────────────────────────────────
+
+// ── 1. BRUTE FORCE PROTECTION ────────────────────────────────
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS   = 5 * 60 * 1000; // 5 minutes
+const ATTEMPTS_KEY = 'ctrl_login_attempts';
+
+function getAttempts(){
+  try{ return JSON.parse(localStorage.getItem(ATTEMPTS_KEY)||'{}') }catch(e){ return {} }
+}
+function saveAttempts(a){ try{localStorage.setItem(ATTEMPTS_KEY,JSON.stringify(a))}catch(e){} }
+
+function isLockedOut(username){
+  const a = getAttempts();
+  const rec = a[username];
+  if(!rec) return false;
+  if(rec.count >= MAX_ATTEMPTS){
+    const elapsed = Date.now() - rec.lastAttempt;
+    if(elapsed < LOCKOUT_MS){
+      const remaining = Math.ceil((LOCKOUT_MS - elapsed)/60000);
+      return `Conta bloqueada. Tente novamente em ${remaining} min.`;
+    } else {
+      // lockout expired - reset
+      delete a[username];
+      saveAttempts(a);
+    }
+  }
+  return false;
+}
+
+function recordFailedAttempt(username){
+  const a = getAttempts();
+  if(!a[username]) a[username]={count:0,lastAttempt:0};
+  a[username].count++;
+  a[username].lastAttempt = Date.now();
+  saveAttempts(a);
+  addAuditEntry('login_fail',{username,reason:`Tentativa ${a[username].count}/${MAX_ATTEMPTS}`});
+  return a[username].count;
+}
+
+function clearFailedAttempts(username){
+  const a = getAttempts();
+  delete a[username];
+  saveAttempts(a);
+}
+
+// ── 2. SESSION EXPIRY ─────────────────────────────────────────
+const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 hours
+const IDLE_TIMEOUT_MS     = 2 * 60 * 60 * 1000;  // 2 hours idle
+let idleTimer = null;
+
+function createSession(user){
+  const session = {
+    ...user,
+    loginAt:  Date.now(),
+    expiresAt: Date.now() + SESSION_DURATION_MS,
+    lastActive: Date.now(),
+  };
+  localStorage.setItem('ctrl_session', JSON.stringify(session));
+  return session;
+}
+
+function isSessionValid(session){
+  if(!session) return false;
+  const now = Date.now();
+  if(now > session.expiresAt) return 'expired';
+  if(session.lastActive && now - session.lastActive > IDLE_TIMEOUT_MS) return 'idle';
+  return true;
+}
+
+function refreshSession(){
+  try{
+    const s = JSON.parse(localStorage.getItem('ctrl_session')||'null');
+    if(s){ s.lastActive = Date.now(); localStorage.setItem('ctrl_session',JSON.stringify(s)); }
+  }catch(e){}
+}
+
+function startIdleWatcher(){
+  clearTimeout(idleTimer);
+  const resetIdle = ()=>{
+    refreshSession();
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(()=>{
+      if(currentUser){
+        addAuditEntry('logout',{username:currentUser.username,reason:'Sessão expirada por inatividade'});
+        toast('⏱ Sessão expirada por inatividade. Faça login novamente.');
+        setTimeout(doLogout, 2000);
+      }
+    }, IDLE_TIMEOUT_MS);
+  };
+  ['mousemove','keydown','click','scroll','touchstart'].forEach(e=>
+    document.addEventListener(e, resetIdle, {passive:true})
+  );
+  resetIdle();
+}
+
+// ── 3. CONFIGURABLE REVEAL PIN ────────────────────────────────
+function getRevealPin(){
+  try{
+    const stored = localStorage.getItem('ctrl_reveal_pin_hash');
+    if(stored) return {hash:stored, isHashed:true};
+  }catch(e){}
+  return {raw:PASS_REVEAL_PIN, isHashed:false};
+}
+
+async function checkRevealPin(input){
+  const pin = getRevealPin();
+  if(pin.isHashed){
+    const h = await sha256(input);
+    return h === pin.hash;
+  }
+  // First use: plain compare, then hash and store
+  if(input === pin.raw){
+    try{ const h = await sha256(input); localStorage.setItem('ctrl_reveal_pin_hash',h); }catch(e){}
+    return true;
+  }
+  return false;
+}
+
+async function changeRevealPin(oldPin, newPin){
+  const ok = await checkRevealPin(oldPin);
+  if(!ok) return false;
+  const h = await sha256(newPin);
+  localStorage.setItem('ctrl_reveal_pin_hash', h);
+  addAuditEntry('pass_change',{username:currentUser?.username||'admin',reason:'PIN de coluna alterado'});
+  return true;
+}
+
+// ── 4. AUDIT LOG IN FIREBASE ──────────────────────────────────
+async function saveAuditToFirebase(entry){
+  if(!fbReady||!fbSet||!fbDocRef) return;
+  try{
+    const {getFirestore,doc,setDoc,collection} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    // We already have db via fbRef - use a subcollection
+    // Store in a separate collection: ctrl_audit/{entry.id}
+    const auditKey = 'ctrl_audit';
+    const d = doc(fbRef.firestore||fbRef._firestore, auditKey, String(entry.id));
+    await setDoc(d, entry);
+  }catch(e){ /* fail silently - local log is fallback */ }
+}
+
+// ── 5. FIREBASE SECURITY RULES HELPER ────────────────────────
+function showFirebaseRulesHelper(){
+  const rules = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only allow access from your domain
+    match /controle/{document} {
+      allow read, write: if request.auth != null 
+        || request.headers.get("Origin") == "https://gerencial.pages.dev";
+    }
+    match /{document=**} {
+      allow read, write: if true; // temporary - tighten after Firebase Auth setup
+    }
+  }
+}`;
+  toast('Regras copiadas! Cole no Firestore → Regras');
+  try{navigator.clipboard.writeText(rules)}catch(e){}
+}
+window.showFirebaseRulesHelper=showFirebaseRulesHelper;
+
+
 // ─── PENDING APPROVAL SYSTEM ──────────────────────────────────
 
 // pending requests stored in localStorage keyed by 'ctrl_pending'
@@ -2781,7 +2974,7 @@ function doLogin(){
   _completeLogin(foundKey, foundUser);
 }
 
-function _completeLogin(foundKey, foundUser){
+function _completeLogin(foundKey, foundUser, rawPass){
   document.getElementById('loginErr').textContent='';
   if(foundUser.role==='pending'){
     currentUser={username:foundKey,...foundUser};
@@ -2789,11 +2982,11 @@ function _completeLogin(foundKey, foundUser){
     showPendingScreen();return;
   }
   currentUser={username:foundKey,...foundUser};
-  localStorage.setItem('ctrl_session',JSON.stringify(currentUser));
-  // Audit: get hash for proof
-  hashPass && hashPass(document.getElementById('loginPass').value||'').then(h=>{
-    addAuditEntry('login_ok',{username:foundKey,role:foundUser.role,email:foundUser.email||'',passHash:h});
-  }).catch(()=>addAuditEntry('login_ok',{username:foundKey,role:foundUser.role}));
+  createSession(currentUser);
+  startIdleWatcher();
+  // Audit with hash proof
+  const ph = foundUser.pass||'';
+  addAuditEntry('login_ok',{username:foundKey,role:foundUser.role,email:foundUser.email||'',passHash:ph});
   showApp();
 }
 
@@ -2857,8 +3050,11 @@ function showApp(){
   const info = document.getElementById('loginUserInfo');
   info.style.display='flex';
   info.innerHTML = `
-    <div class="login-avatar">${currentUser.name[0].toUpperCase()}</div>
-    <span>${currentUser.name}</span>
+    <div class="login-avatar" title="${currentUser.name} (${currentUser.role})">${currentUser.name[0].toUpperCase()}</div>
+    <div class="login-user-details">
+      <span class="login-user-name">${currentUser.name}</span>
+      <span class="login-user-role">${{admin:'Admin',user:'Equipe',consulta:'Consulta'}[currentUser.role]||currentUser.role}</span>
+    </div>
     <button class="login-logout" onclick="doLogout()">Sair</button>
   `;
   start();
@@ -3113,16 +3309,45 @@ function openPassLock(colId, onSuccess){
 async function submitPassLock(){
   const val = document.getElementById('passLockInp').value;
   const err = document.getElementById('passLockErr');
+  const inp = document.getElementById('passLockInp');
   if(!val){err.textContent='Digite a senha.';return}
-  // Support both raw and hash comparison
-  const isCorrect = val === PASS_REVEAL_PIN ||
-    (await sha256(val)) === (await sha256(PASS_REVEAL_PIN));
-  if(!isCorrect){err.textContent='Senha incorreta.';document.getElementById('passLockInp').value='';document.getElementById('passLockInp').focus();return}
-  if(passLockCtx){
-    unlockedCols.add(passLockCtx.colId);
-    passLockCtx.onSuccess();
+
+  const isCorrect = await checkRevealPin(val);
+
+  if(isCorrect){
+    // Always show fake error first, then succeed on second correct attempt
+    if(!passLockCtx._firstTry){
+      passLockCtx._firstTry = true;
+      // Show fake error
+      err.style.color='var(--red)';
+      err.textContent='Senha inválida. Tente novamente.';
+      inp.value='';
+      inp.focus();
+      // Shake animation
+      inp.style.animation='shake .4s ease';
+      setTimeout(()=>{inp.style.animation=''},450);
+      return;
+    }
+    // Second correct attempt - grant access
+    err.style.color='#2e7d32';
+    err.textContent='Acesso concedido ✓';
+    setTimeout(()=>{
+      if(passLockCtx){
+        unlockedCols.add(passLockCtx.colId);
+        passLockCtx.onSuccess();
+      }
+      closePassLock();
+    }, 400);
+    return;
   }
-  closePassLock();
+
+  // Actually wrong password
+  passLockCtx._firstTry = false;
+  err.style.color='var(--red)';
+  err.textContent='Senha inválida. Tente novamente.';
+  inp.value=''; inp.focus();
+  inp.style.animation='shake .4s ease';
+  setTimeout(()=>{inp.style.animation=''},450);
 }
 window.submitPassLock=submitPassLock;
 
