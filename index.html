@@ -1100,9 +1100,12 @@ function lsLoad(){try{const d=localStorage.getItem('ctrlv3');if(d)return JSON.pa
 function migrate(d){
   if(!d)return false;
   try{
-    if(!d.tabs){
+    if(!d.tabs || d.tabs.length===0){
+      // Old format or empty - try to recover groups
       const cols=d.columns||defCols();
       const groups=(d.groups||[]).map(g=>({...g,columns:g.columns||JSON.parse(JSON.stringify(cols))}));
+      // If no groups either, return false so we keep existing state
+      if(!groups.length && !d.columns) return false;
       S={tabs:[{id:'t0',label:'Principal',color:'#1a6fd4',type:'table',groups}],activeTab:'t0',_cid:d._cid||6,_rid:d._rid||10,_gid:d._gid||1,_tid:1,_caid:0};
     } else {
       d.tabs.forEach(tab=>{
@@ -1222,9 +1225,20 @@ async function fbInit(){
     // load from firebase and update UI
     const snap=await fbGet(fbRef);
     if(snap.exists()){
-      if(migrate(snap.data())){renderTabs();renderView();setSynced();toast('Dados sincronizados')}
+      const fbData = snap.data();
+      console.log('Firebase data received, tabs:', fbData.tabs ? fbData.tabs.length : 'none (old format)');
+      if(migrate(fbData)){
+        renderTabs();
+        renderView();
+        setSynced();
+      } else {
+        console.warn('migrate() returned false - keeping local state');
+        setSynced();
+      }
     } else {
-      await fbSet(fbRef,JSON.parse(JSON.stringify(S)));setSynced();
+      console.log('No Firebase data - saving current state');
+      await fbSet(fbRef,JSON.parse(JSON.stringify(S)));
+      setSynced();
     }
     // listen for remote changes — only re-render if no input is focused
     fbSnap(fbRef,snap=>{
@@ -1266,6 +1280,12 @@ function start(){
   // Load localStorage immediately
   const local=lsLoad();
   if(!migrate(local)){
+    rid=0;gid=0;tid=0;
+    S.tabs=[defTabTable('t'+(tid++),'Principal',GC[0])];
+    S.activeTab=S.tabs[0].id;
+  }
+  // Guarantee at least one tab always
+  if(!S.tabs||!S.tabs.length){
     rid=0;gid=0;tid=0;
     S.tabs=[defTabTable('t'+(tid++),'Principal',GC[0])];
     S.activeTab=S.tabs[0].id;
@@ -2054,222 +2074,194 @@ function canSeeAdminTab(){
 
 
 // ─── CIRCUIT ANIMATION ────────────────────────────────────────
-function initCircuitCanvas(){
-  const canvas = document.getElementById('circuitCanvas');
-  if(!canvas) return;
-  const ctx = canvas.getContext('2d');
-  let W, H, raf;
+(function(){
+  let raf, ctx, W, H;
+  let nodes=[], particles=[], pulses=[];
+  let mouse={x:-999,y:-999};
+  let canvas;
 
-  // ── CONFIG ──
-  const C = {
-    bg:        '#071a08',
-    lineColor: '#1b5e20',
-    nodeColor: '#2e7d32',
-    glowColor: '#4caf50',
-    dotColor:  '#81c784',
-    particleColors: ['#69f0ae','#b9f6ca','#00e676','#76ff03','#ccff90'],
-    nodeCount:  55,
-    lineMaxDist: 0,   // set in resize
-    particleCount: 22,
-    pulseNodes: 8,
+  const C={
+    bg:'#071a08',
+    nodeCount:55,
+    particleCount:22,
+    particleColors:['#69f0ae','#b9f6ca','#00e676','#76ff03','#ccff90','#fff9c4'],
+    maxDist:0,
   };
 
-  let nodes = [], particles = [], pulses = [];
+  function rand(a,b){return a+Math.random()*(b-a)}
+  function rInt(a,b){return Math.floor(rand(a,b))}
 
-  function resize(){
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-    C.lineMaxDist = Math.min(W, H) * 0.28;
-    init();
-  }
-
-  function rand(a,b){ return a + Math.random()*(b-a) }
-  function rInt(a,b){ return Math.floor(rand(a,b)) }
-
-  function init(){
-    // Nodes on a loose grid with jitter
-    nodes = [];
-    const cols = Math.ceil(Math.sqrt(C.nodeCount * W/H));
-    const rows = Math.ceil(C.nodeCount / cols);
-    for(let r=0; r<rows; r++){
-      for(let c=0; c<cols; c++){
-        if(nodes.length >= C.nodeCount) break;
-        nodes.push({
-          x: (c/cols)*W + rand(-W/cols*0.4, W/cols*0.4),
-          y: (r/rows)*H + rand(-H/rows*0.4, H/rows*0.4),
-          r: rand(2, 5),
-          glow: rand(0, Math.PI*2),
-          glowSpd: rand(0.015, 0.04),
-          active: Math.random() > 0.6,
-          square: Math.random() > 0.75,
-          alpha: rand(0.4, 1.0),
-        });
-      }
+  function buildGraph(){
+    nodes=[];
+    const cols=Math.ceil(Math.sqrt(C.nodeCount*W/H));
+    const rows=Math.ceil(C.nodeCount/cols);
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+      if(nodes.length>=C.nodeCount)break;
+      nodes.push({
+        x:(c/cols)*W+rand(-W/cols*.4,W/cols*.4),
+        y:(r/rows)*H+rand(-H/rows*.4,H/rows*.4),
+        r:rand(2,5), glow:rand(0,Math.PI*2), glowSpd:rand(.015,.04),
+        active:Math.random()>.6, square:Math.random()>.75,
+        vx:rand(-.15,.15), vy:rand(-.15,.15), // slow drift
+      });
     }
-
-    // Particles travel between random node pairs
-    particles = [];
-    for(let i=0; i<C.particleCount; i++){
-      spawnParticle();
-    }
-
-    // Pulse rings on random nodes
-    pulses = [];
+    particles=[];
+    for(let i=0;i<C.particleCount;i++) spawnParticle();
+    pulses=[];
   }
 
   function spawnParticle(){
-    const a = nodes[rInt(0, nodes.length)];
-    const b = nodes[rInt(0, nodes.length)];
-    if(a===b) return spawnParticle();
-    const col = C.particleColors[rInt(0, C.particleColors.length)];
-    particles.push({ a, b, t:rand(0,1), spd:rand(0.003,0.009), col, size:rand(1.5,4), tail:[] });
+    const a=nodes[rInt(0,nodes.length)];
+    const b=nodes[rInt(0,nodes.length)];
+    if(a===b)return spawnParticle();
+    particles.push({a,b,t:rand(0,1),spd:rand(.003,.009),
+      col:C.particleColors[rInt(0,C.particleColors.length)],
+      size:rand(1.5,3.5),tail:[]});
   }
 
-  function drawBackground(){
-    ctx.fillStyle = C.bg;
-    ctx.fillRect(0,0,W,H);
-    // Subtle vignette
-    const vg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*0.75);
-    vg.addColorStop(0,'rgba(0,0,0,0)');
-    vg.addColorStop(1,'rgba(0,0,0,0.55)');
-    ctx.fillStyle = vg;
-    ctx.fillRect(0,0,W,H);
+  function drawBg(){
+    ctx.fillStyle=C.bg; ctx.fillRect(0,0,W,H);
+    const vg=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*.75);
+    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.6)');
+    ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+    // Mouse glow
+    const mg=ctx.createRadialGradient(mouse.x,mouse.y,0,mouse.x,mouse.y,180);
+    mg.addColorStop(0,'rgba(76,175,80,.12)'); mg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=mg; ctx.fillRect(0,0,W,H);
   }
 
   function drawLines(){
-    for(let i=0; i<nodes.length; i++){
-      for(let j=i+1; j<nodes.length; j++){
-        const a=nodes[i], b=nodes[j];
-        const d = Math.hypot(a.x-b.x, a.y-b.y);
-        if(d > C.lineMaxDist) continue;
-        const alpha = (1 - d/C.lineMaxDist) * 0.35;
-        ctx.save();
-        ctx.strokeStyle = `rgba(46,125,50,${alpha})`;
-        ctx.lineWidth = 0.8;
-        // Orthogonal circuit-board style lines
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        if((i+j)%2===0){
-          ctx.lineTo(a.x, b.y);
-          ctx.lineTo(b.x, b.y);
-        } else {
-          ctx.lineTo(b.x, a.y);
-          ctx.lineTo(b.x, b.y);
-        }
+    for(let i=0;i<nodes.length;i++){
+      for(let j=i+1;j<nodes.length;j++){
+        const a=nodes[i],b=nodes[j];
+        const d=Math.hypot(a.x-b.x,a.y-b.y);
+        if(d>C.maxDist)continue;
+        // proximity to mouse brightens lines
+        const md=Math.min(Math.hypot(mouse.x-a.x,mouse.y-a.y),Math.hypot(mouse.x-b.x,mouse.y-b.y));
+        const mBoost=Math.max(0,1-md/200)*.4;
+        const alpha=(1-d/C.maxDist)*.28+mBoost;
+        ctx.strokeStyle=`rgba(46,125,50,${alpha})`;
+        ctx.lineWidth=.8+mBoost;
+        ctx.beginPath(); ctx.moveTo(a.x,a.y);
+        if((i+j)%2===0){ctx.lineTo(a.x,b.y);ctx.lineTo(b.x,b.y);}
+        else{ctx.lineTo(b.x,a.y);ctx.lineTo(b.x,b.y);}
         ctx.stroke();
-        ctx.restore();
       }
     }
   }
 
   function drawNodes(){
     nodes.forEach(n=>{
-      n.glow += n.glowSpd;
-      const g = (Math.sin(n.glow)+1)*0.5;
-      const a = n.alpha * (0.5 + g*0.5);
-
-      if(n.active){
-        // Glow halo
-        const halo = ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r*7);
-        halo.addColorStop(0, `rgba(76,175,80,${0.45*g})`);
-        halo.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = halo;
-        ctx.beginPath(); ctx.arc(n.x,n.y,n.r*7,0,Math.PI*2); ctx.fill();
+      // Slow drift
+      n.x+=n.vx; n.y+=n.vy;
+      if(n.x<-20)n.x=W+20; if(n.x>W+20)n.x=-20;
+      if(n.y<-20)n.y=H+20; if(n.y>H+20)n.y=-20;
+      n.glow+=n.glowSpd;
+      const g=(Math.sin(n.glow)+1)*.5;
+      // Mouse attraction: nodes near mouse glow brighter
+      const md=Math.hypot(mouse.x-n.x,mouse.y-n.y);
+      const mBoost=Math.max(0,1-md/120);
+      const a=.5+g*.5;
+      if(n.active||mBoost>.1){
+        const haloR=n.r*(7+mBoost*8);
+        const halo=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,haloR);
+        halo.addColorStop(0,`rgba(76,175,80,${(.35+mBoost*.5)*g})`);
+        halo.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(n.x,n.y,haloR,0,Math.PI*2); ctx.fill();
       }
-
-      // Node dot
-      ctx.fillStyle = n.active
-        ? `rgba(105,240,174,${a})`
-        : `rgba(46,125,50,${a*0.7})`;
-      ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2); ctx.fill();
-
-      // Square accent
-      if(n.square && n.active){
-        ctx.strokeStyle = `rgba(129,200,132,${a*0.7})`;
-        ctx.lineWidth = 1;
-        const s = n.r*3.5;
-        ctx.strokeRect(n.x-s/2, n.y-s/2, s, s);
+      ctx.fillStyle=mBoost>.2?`rgba(105,240,174,${a})`
+        :n.active?`rgba(76,175,80,${a})`:`rgba(27,94,32,${a*.7})`;
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r+(mBoost*3),0,Math.PI*2); ctx.fill();
+      if(n.square&&(n.active||mBoost>.1)){
+        ctx.strokeStyle=`rgba(129,200,132,${a*.8})`;
+        ctx.lineWidth=1; const s=(n.r+mBoost*2)*4;
+        ctx.strokeRect(n.x-s/2,n.y-s/2,s,s);
       }
     });
   }
 
   function drawParticles(){
-    particles.forEach((p,idx)=>{
-      p.t += p.spd;
-      if(p.t >= 1){
-        // respawn
-        const a2 = nodes[rInt(0,nodes.length)];
-        const b2 = nodes[rInt(0,nodes.length)];
-        if(a2!==b2){ p.a=a2; p.b=b2; p.t=0; p.spd=rand(0.003,0.009);
-          p.col=C.particleColors[rInt(0,C.particleColors.length)]; p.size=rand(1.5,4); }
+    particles.forEach(p=>{
+      p.t+=p.spd;
+      if(p.t>=1){
+        const a2=nodes[rInt(0,nodes.length)],b2=nodes[rInt(0,nodes.length)];
+        if(a2!==b2){p.a=a2;p.b=b2;p.t=0;p.spd=rand(.003,.009);
+          p.col=C.particleColors[rInt(0,C.particleColors.length)];p.size=rand(1.5,3.5);}
         else p.t=0;
-        // spawn pulse ring at destination
-        if(Math.random()>0.6) pulses.push({x:p.b.x,y:p.b.y,r:0,maxR:rand(20,50),alpha:0.8,spd:rand(0.8,1.6)});
+        pulses.push({x:p.b.x,y:p.b.y,r:0,maxR:rand(18,45),alpha:.9,spd:rand(.7,1.5)});
         return;
       }
-
-      const {a,b} = p;
-      // Lerp position (straight line - particles go direct)
-      const px = a.x + (b.x-a.x)*p.t;
-      const py = a.y + (b.y-a.y)*p.t;
-
-      // Trail
-      p.tail = p.tail||[];
-      p.tail.push({x:px,y:py});
-      if(p.tail.length > 14) p.tail.shift();
-      for(let i=0;i<p.tail.length;i++){
-        const tf = i/p.tail.length;
-        ctx.beginPath();
-        ctx.arc(p.tail[i].x, p.tail[i].y, p.size*tf*0.7, 0, Math.PI*2);
-        ctx.globalAlpha = tf*0.5;
-        ctx.fillStyle = p.col;
-        ctx.fill();
-      }
-
-      ctx.globalAlpha = 1;
-      // Head glow
-      const hg = ctx.createRadialGradient(px,py,0,px,py,p.size*4);
-      hg.addColorStop(0, p.col);
-      hg.addColorStop(1,'rgba(0,0,0,0)');
-      ctx.fillStyle = hg;
-      ctx.beginPath(); ctx.arc(px,py,p.size*4,0,Math.PI*2); ctx.fill();
-
-      // Core dot
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(px,py,p.size*0.5,0,Math.PI*2); ctx.fill();
+      const px=p.a.x+(p.b.x-p.a.x)*p.t;
+      const py=p.a.y+(p.b.y-p.a.y)*p.t;
+      // Mouse repels particles slightly
+      const md=Math.hypot(mouse.x-px,mouse.y-py);
+      const mBoost=Math.max(0,1-md/100);
+      p.tail=p.tail||[]; p.tail.push({x:px,y:py});
+      if(p.tail.length>16)p.tail.shift();
+      p.tail.forEach((pt,i)=>{
+        const tf=i/p.tail.length;
+        ctx.globalAlpha=tf*.55; ctx.fillStyle=p.col;
+        ctx.beginPath(); ctx.arc(pt.x,pt.y,p.size*tf*.8,0,Math.PI*2); ctx.fill();
+      });
+      ctx.globalAlpha=1;
+      // Extra glow if near mouse
+      const glowR=p.size*(4+mBoost*6);
+      const hg=ctx.createRadialGradient(px,py,0,px,py,glowR);
+      hg.addColorStop(0,p.col); hg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(px,py,glowR,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.9)';
+      ctx.beginPath(); ctx.arc(px,py,p.size*.5,0,Math.PI*2); ctx.fill();
     });
   }
 
   function drawPulses(){
-    pulses = pulses.filter(p=>{
-      p.r += p.spd;
-      p.alpha -= 0.025;
-      if(p.alpha<=0) return false;
-      ctx.strokeStyle = `rgba(105,240,174,${p.alpha})`;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.stroke();
+    pulses=pulses.filter(p=>{
+      p.r+=p.spd; p.alpha-=.022;
+      if(p.alpha<=0)return false;
+      ctx.strokeStyle=`rgba(105,240,174,${p.alpha})`;
+      ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.stroke();
       return true;
     });
   }
 
   function loop(){
-    raf = requestAnimationFrame(loop);
-    drawBackground();
-    drawLines();
-    drawNodes();
-    drawParticles();
-    drawPulses();
+    raf=requestAnimationFrame(loop);
+    drawBg(); drawLines(); drawNodes(); drawParticles(); drawPulses();
   }
 
-  window.addEventListener('resize',()=>{
+  function resize(){
+    W=canvas.width=window.innerWidth;
+    H=canvas.height=window.innerHeight;
+    C.maxDist=Math.min(W,H)*.28;
+    buildGraph();
+  }
+
+  window.initCircuitCanvas=function(){
+    canvas=document.getElementById('circuitCanvas');
+    if(!canvas)return;
+    ctx=canvas.getContext('2d');
+    // Mouse tracking
+    canvas.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+    canvas.addEventListener('mouseleave',()=>{mouse.x=-999;mouse.y=-999});
+    // Also track on loginWrap for full coverage
+    const lw=document.getElementById('loginWrap');
+    if(lw){
+      lw.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+      lw.addEventListener('mouseleave',()=>{mouse.x=-999;mouse.y=-999});
+    }
     cancelAnimationFrame(raf);
     resize();
     loop();
-  });
+    window.addEventListener('resize',()=>{cancelAnimationFrame(raf);resize();loop()});
+  };
 
-  resize();
-  loop();
-}
+  // Auto-start as soon as DOM is ready
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',()=>window.initCircuitCanvas());
+  } else {
+    setTimeout(window.initCircuitCanvas,50);
+  }
+})();
 
 // called from showLogin()
 
@@ -2623,7 +2615,8 @@ window.showLogin2=showLogin2;
 
 function showLogin(){
   document.getElementById('loginWrap').style.display='flex';
-  if(!window._circuitStarted){window._circuitStarted=true;setTimeout(()=>{initCircuitCanvas();},80);}else if(window._circuitResize){window._circuitResize();}
+  // Always restart/resize circuit canvas when login screen shows
+  setTimeout(()=>{if(window.initCircuitCanvas)window.initCircuitCanvas();},60);
   document.getElementById('mainHdr').style.display='none';
   document.getElementById('tabsBar').style.display='none';
   document.getElementById('tableView').style.display='none';
