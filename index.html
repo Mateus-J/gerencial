@@ -31,7 +31,7 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
 .btn-g{background:var(--green);color:#fff;border-color:var(--green)}.btn-g:hover{filter:brightness(.9)}
 .btn-d{background:var(--redl);color:var(--red);border-color:var(--red)}.btn-d:hover{filter:brightness(.93)}
 .btn-sm{padding:3px 7px;font-size:11px}
-.btn-ref{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3)}.btn-ref:hover{background:rgba(255,255,255,.25);color:#fff}.btn-ref.spin svg{animation:sp .7s linear infinite}
+
 @keyframes sp{to{transform:rotate(360deg)}}
 
 /* TABS */
@@ -569,6 +569,19 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 .bell-modal-hdr button{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:5px;padding:2px 8px;cursor:pointer;font-family:inherit;font-size:11px}
 .bell-modal-body{overflow-y:auto;padding:12px;flex:1}
 .bell-empty{text-align:center;padding:20px;font-size:12px;color:var(--tx3)}
+
+/* ─── GROUP COLOR PICKER ─────────────────────────────────────── */
+.gdot-picker{position:fixed;background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:10px;z-index:300;box-shadow:0 8px 28px rgba(0,0,0,.18);display:none}
+.gdot-picker-title{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.gdot-colors{display:flex;gap:6px;flex-wrap:wrap;max-width:180px}
+.gdot-swatch{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .1s,border-color .1s;flex-shrink:0}
+.gdot-swatch:hover{transform:scale(1.2)}
+.gdot-swatch.active{border-color:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.3)}
+.gdot-custom{margin-top:7px;display:flex;align-items:center;gap:6px;border-top:1px solid var(--bdr);padding-top:7px}
+.gdot-custom label{font-size:11px;color:var(--tx2)}
+.gdot-custom input[type=color]{width:28px;height:24px;border-radius:5px;border:1px solid var(--bdr);cursor:pointer;padding:0 2px;background:transparent}
+.gdot{cursor:pointer;transition:transform .15s}
+.gdot:hover{transform:scale(1.25)}
 </style>
 </head>
 <body>
@@ -628,10 +641,7 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
   <div class="sync"><div class="sdot ok" id="sdot"></div><span id="slbl">Sincronizado</span></div>
   <div id="loginUserInfo" class="login-user-info" style="display:none"></div><div id="presenceWrap" class="presence-wrap"></div><div class="hdr-r">
     <div class="admin-bell" id="adminBellWrap" style="display:none"><button class="notif-bell-btn" onclick="toggleBellModal()" id="adminBellBtn">🔔 <span id="adminBellCount"></span></button><div class="admin-bell-badge" id="adminBellBadge" style="display:none">0</div></div>
-    <button class="btn btn-ref" id="refBtn" onclick="doRefresh()">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
-      Atualizar
-    </button>
+
     <input class="srch" type="text" id="srch" placeholder="🔍 Buscar..." oninput="renderAll()">
     <button class="btn-agenda" id="agendaHdrBtn" onclick="toggleAgendaFromHeader()" onmouseenter="showHdrTooltip(event)" onmouseleave="hideHdrTooltip()">
       📅 Agenda <span id="agendaHdrBadge" style="display:none" class="agenda-notif-badge">0</span>
@@ -948,6 +958,16 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
       <button class="btn" onclick="closeMod('stEditorMov')">Fechar</button>
       <button class="btn btn-p" onclick="saveStatusEditor()">✅ Salvar</button>
     </div>
+  </div>
+</div>
+
+<!-- GROUP COLOR PICKER -->
+<div id="gdotPicker" class="gdot-picker">
+  <div class="gdot-picker-title">Cor do grupo</div>
+  <div class="gdot-colors" id="gdotColors"></div>
+  <div class="gdot-custom">
+    <label>Personalizada:</label>
+    <input type="color" id="gdotCustomColor" onchange="applyGdotCustomColor(this.value)">
   </div>
 </div>
 <div id="ov" class="ov" style="display:none" onclick="closeAll()"></div>
@@ -1325,6 +1345,8 @@ function buildGroup(g,filter,search){
   // drag handle
   const dragHandle=document.createElement('span');dragHandle.className='ghdr-drag';dragHandle.textContent='⠿';dragHandle.title='Arrastar para reordenar';
   const dot=document.createElement('div');dot.className='gdot';dot.style.background=g.color;
+  dot.title='Clique para mudar a cor';
+  dot.onclick=e=>{e.stopPropagation();openGdotPicker(e,g,hdr,dot)};
   const ni=document.createElement('input');ni.className='gname';ni.value=g.label;ni.type='text';
   ni.addEventListener('blur',e=>{if(g.label!==e.target.value){g.label=e.target.value;save()}});
   ni.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
@@ -1743,11 +1765,8 @@ function buildSwatches(containerId,selected,onSelect){
   const sw=document.getElementById(containerId);sw.innerHTML='';
   GC.forEach(c=>{const s=document.createElement('div');s.className='sw'+(c===selected?' on':'');s.style.background=c;s.onclick=()=>{onSelect(c);sw.querySelectorAll('.sw').forEach(x=>x.classList.remove('on'));s.classList.add('on')};sw.appendChild(s)});
 }
-function closeAll(){document.getElementById('ctpkr').style.display='none';document.getElementById('spkr').style.display='none';document.getElementById('nfmtPkr').style.display='none';document.getElementById('ov').style.display='none'}
+function closeAll(){document.getElementById('ctpkr').style.display='none';document.getElementById('spkr').style.display='none';document.getElementById('nfmtPkr').style.display='none';document.getElementById('gdotPicker').style.display='none';document.getElementById('ov').style.display='none'}
 function closeMod(id){document.getElementById(id).style.display='none'}
-async function doRefresh(){
-  const btn=document.getElementById('refBtn');btn.classList.add('spin');btn.disabled=true;
-  try{if(fbReady&&fbGet){const snap=await fbGet(fbRef);if(snap.exists()&&migrate(snap.data())){renderTabs();renderView();toast('Atualizado!');setSynced()}}}
   catch(e){toast('Erro ao atualizar')}
   finally{setTimeout(()=>{btn.classList.remove('spin');btn.disabled=false},600)}
 }
@@ -2476,6 +2495,59 @@ function openNfmtPkr(e, col, g){
 }
 window.openNfmtPkr = openNfmtPkr;
 
+
+
+// ─── GROUP COLOR PICKER ───────────────────────────────────────
+let gdotCtx = null; // {g, hdr, dot}
+const EXTRA_COLORS = ['#1a6fd4','#2e7d32','#c62828','#e65100','#6a1b9a','#00695c','#ad1457','#37474f','#0277bd','#558b2f','#6d4c41','#546e7a','#f57f17','#4a148c','#880e4f','#1a237e','#006064','#33691e','#bf360c','#212121'];
+
+function openGdotPicker(e, g, hdr, dot){
+  e.stopPropagation();
+  gdotCtx={g,hdr,dot};
+  const picker=document.getElementById('gdotPicker');
+  const colorsWrap=document.getElementById('gdotColors');
+  colorsWrap.innerHTML='';
+  EXTRA_COLORS.forEach(c=>{
+    const sw=document.createElement('div');
+    sw.className='gdot-swatch'+(c===g.color?' active':'');
+    sw.style.background=c;
+    sw.title=c;
+    sw.onclick=()=>applyGdotColor(c);
+    colorsWrap.appendChild(sw);
+  });
+  document.getElementById('gdotCustomColor').value=g.color||'#1a6fd4';
+  // Position
+  const rect=e.target.getBoundingClientRect();
+  let left=rect.left, top=rect.bottom+6;
+  if(left+200>window.innerWidth) left=window.innerWidth-210;
+  if(top+200>window.innerHeight) top=rect.top-200;
+  picker.style.cssText=`display:block;top:${top}px;left:${left}px`;
+  document.getElementById('ov').style.display='block';
+}
+
+function applyGdotColor(color){
+  if(!gdotCtx)return;
+  const {g,hdr,dot}=gdotCtx;
+  g.color=color;
+  hdr.style.background=color;
+  dot.style.background=color;
+  // Update active swatch
+  document.querySelectorAll('.gdot-swatch').forEach(s=>{
+    s.classList.toggle('active',s.style.background===color||s.title===color);
+  });
+  save();
+  // Also update board border/dot elsewhere without full re-render
+  renderAll();
+  document.getElementById('gdotPicker').style.display='none';
+  document.getElementById('ov').style.display='none';
+  gdotCtx=null;
+}
+window.applyGdotColor=applyGdotColor;
+
+function applyGdotCustomColor(color){
+  applyGdotColor(color);
+}
+window.applyGdotCustomColor=applyGdotCustomColor;
 
 // ─── DRAG FILL STATUS ─────────────────────────────────────────
 let fillDrag = null; // {sourceRow, colId, group, sourceTr, sourceVal, rows}
