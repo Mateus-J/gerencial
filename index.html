@@ -182,7 +182,7 @@ tr.subr td{background:var(--sur2);padding:5px 9px;border-bottom:1px solid var(--
 
 /* ─── LOGIN ─────────────────────────────────────────────── */
 .login-wrap{position:fixed;inset:0;background:#0d1f0e;display:flex;align-items:center;justify-content:center;z-index:1000;flex-direction:column;gap:0;overflow:hidden}
-.circuit-canvas{position:absolute;inset:0;z-index:0;pointer-events:none}
+.circuit-canvas{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
 .login-box{position:relative;z-index:1}
 .login-box{background:#fff;border-radius:16px;padding:36px 32px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 [data-theme=dark] .login-box{background:#1e2028;color:#e8eaf0}
@@ -1058,6 +1058,14 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 <div id="toast" class="toast" style="display:none"></div>
 
 <script>
+// ─── USERS & AUTH VARS (declared first to avoid reference errors) ──────
+let USERS = {
+  'admin':   {pass:'admin123',  name:'Administrador', role:'admin'},
+  'equipe':  {pass:'equipe2024',name:'Equipe',         role:'user'},
+  'consulta':{pass:'consulta123',name:'Consulta',      role:'consulta'},
+};
+let currentUser = null;
+
 // ─── CONSTANTS ───────────────────────────────────────────────
 let SS={'Em andamento':{bg:'#dbeafe',c:'#1e40af'},'Concluído':{bg:'#dcfce7',c:'#166534'},'Pendente':{bg:'#fef9c3',c:'#854d0e'},'Bloqueado':{bg:'#fee2e2',c:'#991b1b'},'Revisão':{bg:'#ede9fe',c:'#5b21b6'},'Cancelado':{bg:'#f3f4f6',c:'#4b5563'},'':{bg:'#f1f3f6',c:'#9aa0b0'}};
 function loadStatuses(){try{const s=localStorage.getItem('ctrl_statuses');if(s){const d=JSON.parse(s);SS={...d,'':{bg:'#f1f3f6',c:'#9aa0b0'}}};}catch(e){}}
@@ -2050,140 +2058,220 @@ function initCircuitCanvas(){
   const canvas = document.getElementById('circuitCanvas');
   if(!canvas) return;
   const ctx = canvas.getContext('2d');
-  let W, H, nodes, particles, animId;
-  const GREEN = '#2e7d32';
-  const GREEN_BRIGHT = '#4caf50';
-  const GREEN_DIM = '#1b5e20';
-  const NODE_COUNT = 40;
-  const PARTICLE_COUNT = 18;
+  let W, H, raf;
+
+  // ── CONFIG ──
+  const C = {
+    bg:        '#071a08',
+    lineColor: '#1b5e20',
+    nodeColor: '#2e7d32',
+    glowColor: '#4caf50',
+    dotColor:  '#81c784',
+    particleColors: ['#69f0ae','#b9f6ca','#00e676','#76ff03','#ccff90'],
+    nodeCount:  55,
+    lineMaxDist: 0,   // set in resize
+    particleCount: 22,
+    pulseNodes: 8,
+  };
+
+  let nodes = [], particles = [], pulses = [];
 
   function resize(){
-    W = canvas.width = window.innerWidth;
+    W = canvas.width  = window.innerWidth;
     H = canvas.height = window.innerHeight;
-    buildGraph();
+    C.lineMaxDist = Math.min(W, H) * 0.28;
+    init();
   }
 
-  function buildGraph(){
+  function rand(a,b){ return a + Math.random()*(b-a) }
+  function rInt(a,b){ return Math.floor(rand(a,b)) }
+
+  function init(){
+    // Nodes on a loose grid with jitter
     nodes = [];
-    for(let i=0;i<NODE_COUNT;i++){
-      nodes.push({
-        x: Math.random()*W,
-        y: Math.random()*H,
-        r: Math.random()*3+2,
-        pulse: Math.random()*Math.PI*2,
-        pulseSpeed: 0.02+Math.random()*0.02,
-        bright: Math.random()>0.7
-      });
-    }
-    // Build edges (connect nearby nodes)
-    nodes.forEach(n=>{
-      n.edges=[];
-      nodes.forEach(m=>{
-        if(m===n) return;
-        const d=Math.hypot(n.x-m.x,n.y-m.y);
-        if(d<W*0.22 && n.edges.length<3) n.edges.push(m);
-      });
-    });
-    // Build particles along edges
-    particles=[];
-    nodes.forEach(n=>{
-      n.edges.forEach(m=>{
-        if(Math.random()>0.5) particles.push({
-          from:n, to:m, t:Math.random(),
-          speed: 0.003+Math.random()*0.004,
-          size: 2+Math.random()*2
+    const cols = Math.ceil(Math.sqrt(C.nodeCount * W/H));
+    const rows = Math.ceil(C.nodeCount / cols);
+    for(let r=0; r<rows; r++){
+      for(let c=0; c<cols; c++){
+        if(nodes.length >= C.nodeCount) break;
+        nodes.push({
+          x: (c/cols)*W + rand(-W/cols*0.4, W/cols*0.4),
+          y: (r/rows)*H + rand(-H/rows*0.4, H/rows*0.4),
+          r: rand(2, 5),
+          glow: rand(0, Math.PI*2),
+          glowSpd: rand(0.015, 0.04),
+          active: Math.random() > 0.6,
+          square: Math.random() > 0.75,
+          alpha: rand(0.4, 1.0),
         });
-      });
+      }
+    }
+
+    // Particles travel between random node pairs
+    particles = [];
+    for(let i=0; i<C.particleCount; i++){
+      spawnParticle();
+    }
+
+    // Pulse rings on random nodes
+    pulses = [];
+  }
+
+  function spawnParticle(){
+    const a = nodes[rInt(0, nodes.length)];
+    const b = nodes[rInt(0, nodes.length)];
+    if(a===b) return spawnParticle();
+    const col = C.particleColors[rInt(0, C.particleColors.length)];
+    particles.push({ a, b, t:rand(0,1), spd:rand(0.003,0.009), col, size:rand(1.5,4), tail:[] });
+  }
+
+  function drawBackground(){
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0,0,W,H);
+    // Subtle vignette
+    const vg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*0.75);
+    vg.addColorStop(0,'rgba(0,0,0,0)');
+    vg.addColorStop(1,'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  function drawLines(){
+    for(let i=0; i<nodes.length; i++){
+      for(let j=i+1; j<nodes.length; j++){
+        const a=nodes[i], b=nodes[j];
+        const d = Math.hypot(a.x-b.x, a.y-b.y);
+        if(d > C.lineMaxDist) continue;
+        const alpha = (1 - d/C.lineMaxDist) * 0.35;
+        ctx.save();
+        ctx.strokeStyle = `rgba(46,125,50,${alpha})`;
+        ctx.lineWidth = 0.8;
+        // Orthogonal circuit-board style lines
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        if((i+j)%2===0){
+          ctx.lineTo(a.x, b.y);
+          ctx.lineTo(b.x, b.y);
+        } else {
+          ctx.lineTo(b.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawNodes(){
+    nodes.forEach(n=>{
+      n.glow += n.glowSpd;
+      const g = (Math.sin(n.glow)+1)*0.5;
+      const a = n.alpha * (0.5 + g*0.5);
+
+      if(n.active){
+        // Glow halo
+        const halo = ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r*7);
+        halo.addColorStop(0, `rgba(76,175,80,${0.45*g})`);
+        halo.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(n.x,n.y,n.r*7,0,Math.PI*2); ctx.fill();
+      }
+
+      // Node dot
+      ctx.fillStyle = n.active
+        ? `rgba(105,240,174,${a})`
+        : `rgba(46,125,50,${a*0.7})`;
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2); ctx.fill();
+
+      // Square accent
+      if(n.square && n.active){
+        ctx.strokeStyle = `rgba(129,200,132,${a*0.7})`;
+        ctx.lineWidth = 1;
+        const s = n.r*3.5;
+        ctx.strokeRect(n.x-s/2, n.y-s/2, s, s);
+      }
     });
   }
 
-  function drawGrid(){
-    // Faint dot grid
-    ctx.fillStyle='rgba(46,125,50,0.07)';
-    const step=40;
-    for(let x=0;x<W;x+=step) for(let y=0;y<H;y+=step){
-      ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill();
-    }
+  function drawParticles(){
+    particles.forEach((p,idx)=>{
+      p.t += p.spd;
+      if(p.t >= 1){
+        // respawn
+        const a2 = nodes[rInt(0,nodes.length)];
+        const b2 = nodes[rInt(0,nodes.length)];
+        if(a2!==b2){ p.a=a2; p.b=b2; p.t=0; p.spd=rand(0.003,0.009);
+          p.col=C.particleColors[rInt(0,C.particleColors.length)]; p.size=rand(1.5,4); }
+        else p.t=0;
+        // spawn pulse ring at destination
+        if(Math.random()>0.6) pulses.push({x:p.b.x,y:p.b.y,r:0,maxR:rand(20,50),alpha:0.8,spd:rand(0.8,1.6)});
+        return;
+      }
+
+      const {a,b} = p;
+      // Lerp position (straight line - particles go direct)
+      const px = a.x + (b.x-a.x)*p.t;
+      const py = a.y + (b.y-a.y)*p.t;
+
+      // Trail
+      p.tail = p.tail||[];
+      p.tail.push({x:px,y:py});
+      if(p.tail.length > 14) p.tail.shift();
+      for(let i=0;i<p.tail.length;i++){
+        const tf = i/p.tail.length;
+        ctx.beginPath();
+        ctx.arc(p.tail[i].x, p.tail[i].y, p.size*tf*0.7, 0, Math.PI*2);
+        ctx.globalAlpha = tf*0.5;
+        ctx.fillStyle = p.col;
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+      // Head glow
+      const hg = ctx.createRadialGradient(px,py,0,px,py,p.size*4);
+      hg.addColorStop(0, p.col);
+      hg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(px,py,p.size*4,0,Math.PI*2); ctx.fill();
+
+      // Core dot
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(px,py,p.size*0.5,0,Math.PI*2); ctx.fill();
+    });
   }
 
-  function drawEdge(a,b,alpha){
-    ctx.beginPath();
-    ctx.moveTo(a.x,a.y);
-    // Orthogonal routing like circuit board
-    const mx=(a.x+b.x)/2;
-    ctx.lineTo(mx,a.y);
-    ctx.lineTo(mx,b.y);
-    ctx.lineTo(b.x,b.y);
-    ctx.strokeStyle=`rgba(46,125,50,${alpha})`;
-    ctx.lineWidth=0.8;
-    ctx.stroke();
+  function drawPulses(){
+    pulses = pulses.filter(p=>{
+      p.r += p.spd;
+      p.alpha -= 0.025;
+      if(p.alpha<=0) return false;
+      ctx.strokeStyle = `rgba(105,240,174,${p.alpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.stroke();
+      return true;
+    });
   }
 
-  function drawNode(n){
-    n.pulse+=n.pulseSpeed;
-    const glow = (Math.sin(n.pulse)+1)*0.5;
-    const col = n.bright ? GREEN_BRIGHT : GREEN;
-    // Glow
-    const grad=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r*4);
-    grad.addColorStop(0,`rgba(76,175,80,${0.3*glow})`);
-    grad.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=grad;ctx.beginPath();ctx.arc(n.x,n.y,n.r*4,0,Math.PI*2);ctx.fill();
-    // Node dot
-    ctx.fillStyle=col;
-    ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fill();
-    // Bright nodes get a small square
-    if(n.bright){
-      ctx.strokeStyle=GREEN_BRIGHT;ctx.lineWidth=1;
-      ctx.strokeRect(n.x-n.r*2,n.y-n.r*2,n.r*4,n.r*4);
-    }
+  function loop(){
+    raf = requestAnimationFrame(loop);
+    drawBackground();
+    drawLines();
+    drawNodes();
+    drawParticles();
+    drawPulses();
   }
 
-  function drawParticle(p){
-    p.t+=p.speed;
-    if(p.t>=1){p.t=0;const tmp=p.from;p.from=p.to;p.to=tmp}
-    const a=p.from, b=p.to;
-    const mx=(a.x+b.x)/2;
-    let px,py;
-    const t=p.t;
-    if(t<0.5){
-      const tt=t*2;px=a.x+(mx-a.x)*tt;py=a.y;
-    } else {
-      const tt=(t-0.5)*2;
-      px=mx+(b.x-mx)*tt;py=a.y+(b.y-a.y)*tt;
-    }
-    // Trail
-    const grad=ctx.createRadialGradient(px,py,0,px,py,p.size*3);
-    grad.addColorStop(0,'rgba(76,175,80,0.9)');
-    grad.addColorStop(0.4,'rgba(46,125,50,0.4)');
-    grad.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=grad;
-    ctx.beginPath();ctx.arc(px,py,p.size*3,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#a5d6a7';
-    ctx.beginPath();ctx.arc(px,py,p.size*0.7,0,Math.PI*2);ctx.fill();
-  }
+  window.addEventListener('resize',()=>{
+    cancelAnimationFrame(raf);
+    resize();
+    loop();
+  });
 
-  function animate(){
-    animId=requestAnimationFrame(animate);
-    ctx.clearRect(0,0,W,H);
-    // Background
-    ctx.fillStyle='#0d1f0e';ctx.fillRect(0,0,W,H);
-    drawGrid();
-    // Edges
-    nodes.forEach(n=>n.edges.forEach(m=>drawEdge(n,m,0.25)));
-    // Nodes
-    nodes.forEach(drawNode);
-    // Particles
-    particles.forEach(drawParticle);
-  }
-
-  window.addEventListener('resize',()=>{cancelAnimationFrame(animId);resize();animate()});
-  resize();animate();
+  resize();
+  loop();
 }
 
-// Start circuit when login screen is visible
-document.addEventListener('DOMContentLoaded',()=>{
-  if(document.getElementById('circuitCanvas')) initCircuitCanvas();
-});
+// called from showLogin()
 
 // ─── CRYPTO (SHA-256) ─────────────────────────────────────────
 async function sha256(str){
@@ -2198,21 +2286,25 @@ async function hashPass(pass){ return await sha256(pass) }
 // If pass doesn't look like a sha256 hash (64 hex chars), it's plain text
 function isHashed(pass){ return /^[a-f0-9]{64}$/.test(pass||'') }
 
-async function migratePasswords(){
-  let changed=false;
-  for(const [key,u] of Object.entries(USERS)){
-    if(u.pass && !isHashed(u.pass)){
-      u.pass = await hashPass(u.pass);
-      changed=true;
-    }
-  }
-  // Also migrate ADMIN_TAB_PASS
-  if(ADMIN_TAB_PASS_RAW && !isHashed(ADMIN_TAB_PASS_HASH)){
-    ADMIN_TAB_PASS_HASH = await hashPass(ADMIN_TAB_PASS_RAW);
-    localStorage.setItem('ctrl_admin_pass_hash', ADMIN_TAB_PASS_HASH);
-    changed=true;
-  }
-  if(changed) saveUsers();
+function migratePasswords(){
+  // Run migration async in background - doesn't block login
+  setTimeout(async()=>{
+    try{
+      let changed=false;
+      for(const [key,u] of Object.entries(USERS)){
+        if(u.pass && !isHashed(u.pass)){
+          u.pass = await hashPass(u.pass);
+          changed=true;
+        }
+      }
+      if(ADMIN_TAB_PASS_RAW && !isHashed(ADMIN_TAB_PASS_HASH)){
+        ADMIN_TAB_PASS_HASH = await hashPass(ADMIN_TAB_PASS_RAW);
+        localStorage.setItem('ctrl_admin_pass_hash', ADMIN_TAB_PASS_HASH);
+        changed=true;
+      }
+      if(changed) saveUsers();
+    }catch(e){}
+  }, 2000);
 }
 
 // Admin tab password hashing
@@ -2444,19 +2536,9 @@ function approveFromAdmin(reqId){
 }
 window.approveFromAdmin=approveFromAdmin;
 
-// ─── AUTH ─────────────────────────────────────────────────────
-// Roles: admin=tudo, user=editar, consulta=só leitura
-let USERS = {
-  'admin':   {pass:'admin123',  name:'Administrador', role:'admin'},
-  'equipe':  {pass:'equipe2024',name:'Equipe',         role:'user'},
-  'consulta':{pass:'consulta123',name:'Consulta',      role:'consulta'},
-};
-// ADMIN_TAB_PASS handled via ADMIN_TAB_PASS_HASH (see crypto section)
+// USERS and currentUser declared at top of script
 
-
-let currentUser = null;
-
-async function doLogin(){
+function doLogin(){
   const input = document.getElementById('loginUser').value.trim().toLowerCase();
   const pass  = document.getElementById('loginPass').value;
   const err   = document.getElementById('loginErr');
@@ -2474,23 +2556,38 @@ async function doLogin(){
   if(!foundUser){err.textContent='Usuário/e-mail ou senha incorretos.';return}
 
   const storedPass = foundUser.pass||'';
-  let match = false;
-  try{
-    // Try hash comparison first
-    const passHash = await hashPass(pass);
-    match = isHashed(storedPass) ? storedPass===passHash : storedPass===pass;
-    // Migrate plain to hash
-    if(match && !isHashed(storedPass)){
-      foundUser.pass = passHash;
-      saveUsers();
-    }
-  } catch(e){
-    // Fallback: plain text comparison (crypto not available)
-    match = storedPass===pass || storedPass===pass;
+  // Accept plain text OR hashed match (hash async migration happens in background)
+  const plainMatch = storedPass === pass;
+  const match = plainMatch || isHashed(storedPass); // if hashed, will verify async below
+
+  if(isHashed(storedPass)){
+    // Verify hash async without blocking UI
+    hashPass(pass).then(passHash=>{
+      if(passHash!==storedPass){
+        document.getElementById('loginErr').textContent='Usuário/e-mail ou senha incorretos.';
+        return;
+      }
+      _completeLogin(foundKey, foundUser);
+    }).catch(()=>{
+      // crypto not available - try plain
+      if(storedPass!==pass){
+        document.getElementById('loginErr').textContent='Usuário/e-mail ou senha incorretos.';
+        return;
+      }
+      _completeLogin(foundKey, foundUser);
+    });
+    return;
   }
 
-  if(!match){err.textContent='Usuário/e-mail ou senha incorretos.';return}
-  err.textContent='';
+  // Plain text match
+  if(!plainMatch){err.textContent='Usuário/e-mail ou senha incorretos.';return}
+  // Migrate to hash in background
+  hashPass(pass).then(h=>{foundUser.pass=h;saveUsers();}).catch(()=>{});
+  _completeLogin(foundKey, foundUser);
+}
+
+function _completeLogin(foundKey, foundUser){
+  document.getElementById('loginErr').textContent='';
   if(foundUser.role==='pending'){
     currentUser={username:foundKey,...foundUser};
     localStorage.setItem('ctrl_session',JSON.stringify(currentUser));
@@ -2526,6 +2623,7 @@ window.showLogin2=showLogin2;
 
 function showLogin(){
   document.getElementById('loginWrap').style.display='flex';
+  if(!window._circuitStarted){window._circuitStarted=true;setTimeout(()=>{initCircuitCanvas();},80);}else if(window._circuitResize){window._circuitResize();}
   document.getElementById('mainHdr').style.display='none';
   document.getElementById('tabsBar').style.display='none';
   document.getElementById('tableView').style.display='none';
@@ -4115,6 +4213,8 @@ function parseImportDate(val){
 }
 
 // ─── START ────────────────────────────────────────────────────
+// Pre-start circuit canvas in case login screen shows
+setTimeout(()=>{if(!window._circuitStarted&&document.getElementById("loginWrap").style.display!=="none"){window._circuitStarted=true;initCircuitCanvas()}},100);
 checkSession();
 </script>
 </body>
