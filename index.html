@@ -62,20 +62,20 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
 
 /* BOARD/GROUP */
 .board{margin-bottom:10px;background:var(--sur);border:1px solid var(--bdr);border-radius:11px;overflow:hidden;box-shadow:var(--sh)}
-.ghdr{display:flex;align-items:center;gap:7px;padding:7px 11px;background:var(--sur2);border-bottom:1px solid var(--bdr);cursor:default}
-.ghdr-drag{cursor:grab;color:var(--tx3);font-size:14px;padding:0 2px;user-select:none;flex-shrink:0;line-height:1}
-.ghdr-drag:hover{color:var(--tx)}
+.ghdr{display:flex;align-items:center;gap:7px;padding:7px 11px;background:var(--sur2);border-bottom:1px solid var(--bdr);cursor:default;transition:background .2s}
+.ghdr-drag{cursor:grab;color:rgba(255,255,255,.6);font-size:14px;padding:0 2px;user-select:none;flex-shrink:0;line-height:1}
+.ghdr-drag:hover{color:#fff}
 .board.dragging-group{opacity:.4;transform:scale(.99)}
 .board.drag-over-group{outline:2px dashed var(--blue);outline-offset:2px;border-radius:11px}
-.gdot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.gname{background:transparent;border:none;outline:none;font-size:12px;font-weight:600;color:var(--tx);font-family:inherit;cursor:pointer;min-width:30px;max-width:220px}
+.gdot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.7);box-shadow:0 0 0 1px rgba(0,0,0,.15);flex-shrink:0}
+.gname{background:transparent;border:none;outline:none;font-size:12px;font-weight:700;color:inherit;font-family:inherit;cursor:pointer;min-width:30px;max-width:220px}
 .gname:focus{background:var(--sur);border-radius:4px;padding:1px 5px;cursor:text}
-.gbadge{font-size:10px;color:var(--tx2);background:var(--sur3);border-radius:20px;padding:1px 6px;font-weight:500}
+.gbadge{font-size:10px;border-radius:20px;padding:1px 7px;font-weight:600;background:rgba(255,255,255,.25);color:inherit}
 .gact{margin-left:auto;display:flex;align-items:center;gap:5px}
-.gcol-btn{background:none;border:1px dashed var(--bdr2);border-radius:5px;cursor:pointer;color:var(--tx3);font-size:11px;padding:2px 7px;font-family:inherit}
-.gcol-btn:hover{background:var(--bluel);color:var(--blue);border-color:var(--blue)}
-.gcoll{background:none;border:none;cursor:pointer;color:var(--tx3);font-size:11px;font-family:inherit;padding:2px 5px;border-radius:4px}
-.gcoll:hover{background:var(--sur3);color:var(--tx)}
+.gcol-btn{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:5px;cursor:pointer;color:#fff;font-size:11px;padding:2px 7px;font-family:inherit;font-weight:500}
+.gcol-btn:hover{background:rgba(255,255,255,.35);color:#fff;border-color:rgba(255,255,255,.6)}
+.gcoll{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);cursor:pointer;color:#fff;font-size:11px;font-family:inherit;padding:2px 7px;border-radius:4px;font-weight:500}
+.gcoll:hover{background:rgba(255,255,255,.35);color:#fff}
 
 /* TABLE */
 .tscroll{overflow-x:auto}
@@ -520,6 +520,8 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 .btn-agenda:hover{background:rgba(255,255,255,.25);color:#fff}
 .btn-agenda.active-agenda{background:#fff;color:#1b5e20}
 .agenda-notif-badge{background:#c62828;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;line-height:1.4}
+.ghdr .btn-d{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);font-weight:600}
+.ghdr .btn-d:hover{background:rgba(220,50,50,.6);border-color:rgba(255,255,255,.5)}
 </style>
 </head>
 <body>
@@ -1142,6 +1144,10 @@ function buildGroup(g,filter,search){
   const wrap=document.createElement('div');wrap.className='board';
   // header
   const hdr=document.createElement('div');hdr.className='ghdr';
+  // Color header with group color (semi-transparent for readability)
+  hdr.style.background=g.color;
+  hdr.style.color='#fff';
+  hdr.style.borderBottom='1px solid rgba(0,0,0,.12)';
   // drag handle
   const dragHandle=document.createElement('span');dragHandle.className='ghdr-drag';dragHandle.textContent='⠿';dragHandle.title='Arrastar para reordenar';
   const dot=document.createElement('div');dot.className='gdot';dot.style.background=g.color;
