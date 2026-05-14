@@ -181,7 +181,9 @@ tr.subr td{background:var(--sur2);padding:5px 9px;border-bottom:1px solid var(--
 ::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px}
 
 /* ─── LOGIN ─────────────────────────────────────────────── */
-.login-wrap{position:fixed;inset:0;background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 50%,#1b5e20 100%);display:flex;align-items:center;justify-content:center;z-index:1000;flex-direction:column;gap:0}
+.login-wrap{position:fixed;inset:0;background:#0d1f0e;display:flex;align-items:center;justify-content:center;z-index:1000;flex-direction:column;gap:0;overflow:hidden}
+.circuit-canvas{position:absolute;inset:0;z-index:0;pointer-events:none}
+.login-box{position:relative;z-index:1}
 .login-box{background:#fff;border-radius:16px;padding:36px 32px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 [data-theme=dark] .login-box{background:#1e2028;color:#e8eaf0}
 .login-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px}
@@ -601,12 +603,19 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 .pass-lock-actions{display:flex;gap:8px;justify-content:center}
 .pass-col-badge{font-size:9px;background:#fee2e2;color:#991b1b;border-radius:3px;padding:1px 4px;font-weight:600;flex-shrink:0}
 [data-theme=dark] .pass-col-badge{background:#2d1515;color:#ef5350}
+
+/* ─── CIRCUIT ANIMATION ──────────────────────────────────────── */
+.login-box{background:rgba(255,255,255,.97);backdrop-filter:blur(2px)}
+[data-theme=dark] .login-box{background:rgba(20,30,22,.97)}
+.login-title{color:#1b5e20!important}
+[data-theme=dark] .login-title{color:#4caf50!important}
 </style>
 </head>
 <body>
 
 <!-- LOGIN SCREEN -->
 <div id="loginWrap" class="login-wrap">
+  <canvas id="circuitCanvas" class="circuit-canvas"></canvas>
   <div class="login-box">
     <div class="login-logo">
       <div class="login-logo-icon">C</div>
@@ -2035,6 +2044,147 @@ function canSeeAdminTab(){
 }
 
 
+
+// ─── CIRCUIT ANIMATION ────────────────────────────────────────
+function initCircuitCanvas(){
+  const canvas = document.getElementById('circuitCanvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let W, H, nodes, particles, animId;
+  const GREEN = '#2e7d32';
+  const GREEN_BRIGHT = '#4caf50';
+  const GREEN_DIM = '#1b5e20';
+  const NODE_COUNT = 40;
+  const PARTICLE_COUNT = 18;
+
+  function resize(){
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    buildGraph();
+  }
+
+  function buildGraph(){
+    nodes = [];
+    for(let i=0;i<NODE_COUNT;i++){
+      nodes.push({
+        x: Math.random()*W,
+        y: Math.random()*H,
+        r: Math.random()*3+2,
+        pulse: Math.random()*Math.PI*2,
+        pulseSpeed: 0.02+Math.random()*0.02,
+        bright: Math.random()>0.7
+      });
+    }
+    // Build edges (connect nearby nodes)
+    nodes.forEach(n=>{
+      n.edges=[];
+      nodes.forEach(m=>{
+        if(m===n) return;
+        const d=Math.hypot(n.x-m.x,n.y-m.y);
+        if(d<W*0.22 && n.edges.length<3) n.edges.push(m);
+      });
+    });
+    // Build particles along edges
+    particles=[];
+    nodes.forEach(n=>{
+      n.edges.forEach(m=>{
+        if(Math.random()>0.5) particles.push({
+          from:n, to:m, t:Math.random(),
+          speed: 0.003+Math.random()*0.004,
+          size: 2+Math.random()*2
+        });
+      });
+    });
+  }
+
+  function drawGrid(){
+    // Faint dot grid
+    ctx.fillStyle='rgba(46,125,50,0.07)';
+    const step=40;
+    for(let x=0;x<W;x+=step) for(let y=0;y<H;y+=step){
+      ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  function drawEdge(a,b,alpha){
+    ctx.beginPath();
+    ctx.moveTo(a.x,a.y);
+    // Orthogonal routing like circuit board
+    const mx=(a.x+b.x)/2;
+    ctx.lineTo(mx,a.y);
+    ctx.lineTo(mx,b.y);
+    ctx.lineTo(b.x,b.y);
+    ctx.strokeStyle=`rgba(46,125,50,${alpha})`;
+    ctx.lineWidth=0.8;
+    ctx.stroke();
+  }
+
+  function drawNode(n){
+    n.pulse+=n.pulseSpeed;
+    const glow = (Math.sin(n.pulse)+1)*0.5;
+    const col = n.bright ? GREEN_BRIGHT : GREEN;
+    // Glow
+    const grad=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r*4);
+    grad.addColorStop(0,`rgba(76,175,80,${0.3*glow})`);
+    grad.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=grad;ctx.beginPath();ctx.arc(n.x,n.y,n.r*4,0,Math.PI*2);ctx.fill();
+    // Node dot
+    ctx.fillStyle=col;
+    ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fill();
+    // Bright nodes get a small square
+    if(n.bright){
+      ctx.strokeStyle=GREEN_BRIGHT;ctx.lineWidth=1;
+      ctx.strokeRect(n.x-n.r*2,n.y-n.r*2,n.r*4,n.r*4);
+    }
+  }
+
+  function drawParticle(p){
+    p.t+=p.speed;
+    if(p.t>=1){p.t=0;const tmp=p.from;p.from=p.to;p.to=tmp}
+    const a=p.from, b=p.to;
+    const mx=(a.x+b.x)/2;
+    let px,py;
+    const t=p.t;
+    if(t<0.5){
+      const tt=t*2;px=a.x+(mx-a.x)*tt;py=a.y;
+    } else {
+      const tt=(t-0.5)*2;
+      px=mx+(b.x-mx)*tt;py=a.y+(b.y-a.y)*tt;
+    }
+    // Trail
+    const grad=ctx.createRadialGradient(px,py,0,px,py,p.size*3);
+    grad.addColorStop(0,'rgba(76,175,80,0.9)');
+    grad.addColorStop(0.4,'rgba(46,125,50,0.4)');
+    grad.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=grad;
+    ctx.beginPath();ctx.arc(px,py,p.size*3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#a5d6a7';
+    ctx.beginPath();ctx.arc(px,py,p.size*0.7,0,Math.PI*2);ctx.fill();
+  }
+
+  function animate(){
+    animId=requestAnimationFrame(animate);
+    ctx.clearRect(0,0,W,H);
+    // Background
+    ctx.fillStyle='#0d1f0e';ctx.fillRect(0,0,W,H);
+    drawGrid();
+    // Edges
+    nodes.forEach(n=>n.edges.forEach(m=>drawEdge(n,m,0.25)));
+    // Nodes
+    nodes.forEach(drawNode);
+    // Particles
+    particles.forEach(drawParticle);
+  }
+
+  window.addEventListener('resize',()=>{cancelAnimationFrame(animId);resize();animate()});
+  resize();animate();
+}
+
+// Start circuit when login screen is visible
+document.addEventListener('DOMContentLoaded',()=>{
+  if(document.getElementById('circuitCanvas')) initCircuitCanvas();
+});
+
 // ─── CRYPTO (SHA-256) ─────────────────────────────────────────
 async function sha256(str){
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -2311,7 +2461,6 @@ async function doLogin(){
   const pass  = document.getElementById('loginPass').value;
   const err   = document.getElementById('loginErr');
   if(!input||!pass){err.textContent='Preencha usuário e senha.';return}
-  err.textContent='Verificando...';
 
   // Find by username or email
   let foundKey=null, foundUser=null;
@@ -2324,26 +2473,31 @@ async function doLogin(){
   }
   if(!foundUser){err.textContent='Usuário/e-mail ou senha incorretos.';return}
 
-  // Compare: support both hashed and plain (for migration)
-  const passHash = await hashPass(pass);
   const storedPass = foundUser.pass||'';
-  const match = isHashed(storedPass) ? storedPass===passHash : storedPass===pass;
-  if(!match){err.textContent='Usuário/e-mail ou senha incorretos.';return}
-
-  // If stored pass is plain text, migrate it now
-  if(!isHashed(storedPass)){
-    foundUser.pass = passHash;
-    saveUsers();
+  let match = false;
+  try{
+    // Try hash comparison first
+    const passHash = await hashPass(pass);
+    match = isHashed(storedPass) ? storedPass===passHash : storedPass===pass;
+    // Migrate plain to hash
+    if(match && !isHashed(storedPass)){
+      foundUser.pass = passHash;
+      saveUsers();
+    }
+  } catch(e){
+    // Fallback: plain text comparison (crypto not available)
+    match = storedPass===pass || storedPass===pass;
   }
 
+  if(!match){err.textContent='Usuário/e-mail ou senha incorretos.';return}
   err.textContent='';
   if(foundUser.role==='pending'){
     currentUser={username:foundKey,...foundUser};
     localStorage.setItem('ctrl_session',JSON.stringify(currentUser));
     showPendingScreen();return;
   }
-  currentUser = {username:foundKey,...foundUser};
-  localStorage.setItem('ctrl_session', JSON.stringify(currentUser));
+  currentUser={username:foundKey,...foundUser};
+  localStorage.setItem('ctrl_session',JSON.stringify(currentUser));
   showApp();
 }
 
