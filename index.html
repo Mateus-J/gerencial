@@ -2255,12 +2255,7 @@ function canSeeAdminTab(){
     window.addEventListener('resize',()=>{cancelAnimationFrame(raf);resize();loop()});
   };
 
-  // Auto-start as soon as DOM is ready
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded',()=>window.initCircuitCanvas());
-  } else {
-    setTimeout(window.initCircuitCanvas,50);
-  }
+  // Canvas starts from showLogin() - not here since loginWrap is hidden initially
 })();
 
 // called from showLogin()
@@ -2614,9 +2609,14 @@ window.showRegister=showRegister;
 window.showLogin2=showLogin2;
 
 function showLogin(){
-  document.getElementById('loginWrap').style.display='flex';
-  // Always restart/resize circuit canvas when login screen shows
-  setTimeout(()=>{if(window.initCircuitCanvas)window.initCircuitCanvas();},60);
+  const lw = document.getElementById('loginWrap');
+  lw.style.display='flex';
+  // Force browser to paint first, then init canvas with correct dimensions
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      if(window.initCircuitCanvas) window.initCircuitCanvas();
+    });
+  });
   document.getElementById('mainHdr').style.display='none';
   document.getElementById('tabsBar').style.display='none';
   document.getElementById('tableView').style.display='none';
