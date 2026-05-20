@@ -4699,7 +4699,7 @@ checkSession();
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="iof-btn" id="iofBtnExportar">&#128190; Exportar</button>
-      <label class="iof-btn" style="cursor:pointer">&#128193; Importar<input type="file" id="iofInputImportar" accept=".json" style="display:none"></label>
+      <label class="iof-btn" style="cursor:pointer">&#128196; Importar Extrato CSV<input type="file" id="iofInputImportar" accept=".csv,.CSV" style="display:none"></label>
       <div class="iof-badge" id="iofSaldoBadge">Carregando&hellip;</div>
     </div>
   </div>
@@ -5475,27 +5475,154 @@ document.getElementById('iofBtnExportar').addEventListener('click', function() {
   a.click();
 });
 document.getElementById('iofInputImportar').addEventListener('change', function(e) {
-  var file = e.target.files[0];
-  if (!file) return;
+  var file = e.target.files[0]; if (!file) return;
+  var badge = document.getElementById('iofSaldoBadge');
+  badge.textContent = 'Processando...';
   var reader = new FileReader();
   reader.onload = function(ev) {
     try {
-      var obj = JSON.parse(ev.target.result);
-      if (obj.notas)      iof_notas      = obj.notas;
-      if (obj.resolvidos) iof_resolvidos = obj.resolvidos;
-      iof_idbSaveAll();
-      iof_renderBatePage(iof_getBateFilt());
-      if (document.getElementById('iof-tab-divergencias').classList.contains('active')) iof_renderDiv();
-      alert('Importado com sucesso!');
-    } catch(err) { alert('Arquivo inválido.'); }
+      var result = iof_parseCSV(ev.target.result);
+      if (!result || !result.daily.length) { badge.textContent = 'CSV vazio'; alert('Nenhum dado encontrado no CSV.'); return; }
+      DAILY_IOF   = result.daily;
+      TXNS_IOF    = result.txns;
+      MONTHLY_IOF = result.monthly;
+      KPIS_IOF    = result.kpis;
+      iof_saveExtrato(result);
+      iof_initialized = false;
+      iof_lazyInit();
+      badge.textContent = 'Extrato carregado \u2705 ' + result.daily.length + ' dias';
+    } catch(err) {
+      badge.textContent = 'Erro \u274c';
+      alert('Erro ao processar CSV: ' + err.message);
+      console.error(err);
+    }
   };
-  reader.readAsText(file);
+  reader.readAsText(file, 'latin1');
   this.value = '';
 });
-// ── fim Exportar / Importar ────────────────────────────────────────────
 
+function iof_saveExtrato(result) {
+  if (typeof fbReady !== 'undefined' && fbReady && typeof fbSet === 'function' && typeof doc === 'function') {
+    try {
+      fbSet(doc(db,'ir_iof','extrato'), { daily:result.daily, monthly:result.monthly, kpis:result.kpis, updatedAt:new Date().toISOString() })
+        .then(function(){ document.getElementById('iofSaldoBadge').textContent = 'Salvo na nuvem \u2705'; })
+        .catch(function(e){ console.warn('Firebase extrato:', e); });
+      fbSet(doc(db,'ir_iof','txns'), { txns:result.txns })
+        .catch(function(e){ console.warn('Firebase txns:', e); });
+    } catch(e) { console.warn('Firebase save error:', e); }
+  }
+}
 
-// ── Exportar / Importar ───────────────────────────────────────────────
+function iof_parseCSV(text) {
+  var lines = text.split('\n').filter(function(l){ return l.trim().length > 0; });
+  if (lines.length < 2) throw new Error('CSV vazio ou formato inválido');
+
+  function parseLine(line) {
+    var cols=[], cur='', inQ=false;
+    for (var i=0; i<line.length; i++) {
+      var c=line[i];
+      if (c==='"') { inQ=!inQ; }
+      else if (c===';' && !inQ) { cols.push(cur.trim()); cur=''; }
+      else { cur+=c; }
+    }
+    cols.push(cur.trim()); return cols;
+  }
+  function parseValor(s){ return parseFloat((s||'').replace(/"/g,'').replace(/\./g,'').replace(',','.'))||0; }
+  function parseData(s){
+    var p=(s||'').replace(/"/g,'').trim().split(' ')[0].split('/');
+    return p.length===3 ? p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0') : s;
+  }
+  function classifica(desc, dc){
+    var d=(desc||'').toUpperCase();
+    if (d.indexOf('PAGAMENTO BOLETO')>=0 && d.indexOf('ESTORNO')<0) return 'boleto';
+    if (d.indexOf('PIX - ENVIADO')>=0) return 'pix_saida';
+    if (d.indexOf('TED - ENVIADA')>=0) return 'ted_saida';
+    if (d.indexOf('TRANSFERENCIA ENTRE CONTAS - DEBITO')>=0) return 'transf_debito';
+    if (d.indexOf('TEC - ESTORNO')>=0) return 'tec_estorno';
+    if (d.indexOf('TARIFA')>=0) return 'tarifa';
+    if (d.indexOf('ESTORNO')>=0 || d.indexOf('DEVOL')>=0) return 'estorno';
+    if (dc==='C') return 'entrada';
+    return 'outros_debito';
+  }
+
+  var rows=[];
+  for (var i=1; i<lines.length; i++) {
+    var cols=parseLine(lines[i]);
+    if (cols.length<9) continue;
+    var dc=(cols[4]||'').replace(/"/g,'').trim();
+    var desc=(cols[6]||'').replace(/"/g,'').trim();
+    var valor=parseValor(cols[8]);
+    var data=parseData(cols[1]);
+    var comp=(cols[10]||'').replace(/"/g,'').trim().slice(0,80);
+    if (!dc||!valor||!data||data.length<10) continue;
+    rows.push({id:i, data:data, dc:dc, descricao:desc, complemento:comp, valor:valor, tipo:classifica(desc,dc)});
+  }
+  rows.sort(function(a,b){ return a.data<b.data?-1:a.data>b.data?1:a.id-b.id; });
+
+  var acum=0;
+  rows.forEach(function(r){ r.valor_signed=r.dc==='C'?r.valor:-r.valor; acum+=r.valor_signed; r.saldo_acum=Math.round(acum*100)/100; });
+
+  var dailyMap={};
+  rows.forEach(function(r){ if(!dailyMap[r.data]) dailyMap[r.data]=[]; dailyMap[r.data].push(r); });
+
+  var daily=[];
+  Object.keys(dailyMap).sort().forEach(function(data){
+    var grp=dailyMap[data];
+    var c=0,d=0,bl=0,px=0,td=0,tf=0,trd=0,te=0,od=0;
+    grp.forEach(function(r){
+      if(r.dc==='C') c+=r.valor; else d+=r.valor;
+      if(r.tipo==='boleto') bl+=r.valor;
+      if(r.tipo==='pix_saida') px+=r.valor;
+      if(r.tipo==='ted_saida') td+=r.valor;
+      if(r.tipo==='tarifa'&&r.dc==='D') tf+=r.valor;
+      if(r.tipo==='transf_debito') trd+=r.valor;
+      if(r.tipo==='tec_estorno') te+=r.valor;
+      if(r.tipo==='outros_debito') od+=r.valor;
+    });
+    var r2=function(v){return Math.round(v*100)/100;};
+    daily.push({data:data, creditos:r2(c), debitos:r2(d), boleto:r2(bl), pix:r2(px), ted:r2(td),
+      tarifa:r2(tf), transf_debito:r2(trd), tec_estorno:r2(te), outros_debito:r2(od),
+      saldo_dia:r2(c-d), saldo_acum:grp[grp.length-1].saldo_acum, qtd:grp.length});
+  });
+
+  var txns=rows.map(function(r){ return {data:r.data,dc:r.dc,descricao:r.descricao,complemento:r.complemento,valor:r.valor,tipo:r.tipo,saldo_acum:r.saldo_acum}; });
+
+  var mMap={};
+  daily.forEach(function(d){
+    var m=d.data.slice(0,7);
+    if(!mMap[m]) mMap[m]={mes:m,creditos:0,debitos:0,boleto:0,pix:0,ted:0};
+    mMap[m].creditos+=d.creditos; mMap[m].debitos+=d.debitos;
+    mMap[m].boleto+=d.boleto; mMap[m].pix+=d.pix; mMap[m].ted+=d.ted;
+  });
+  var monthly=Object.keys(mMap).sort().map(function(m){
+    var v=mMap[m]; var r2=function(x){return Math.round(x*100)/100;};
+    return {mes:m,creditos:r2(v.creditos),debitos:r2(v.debitos),boleto:r2(v.boleto),pix:r2(v.pix),ted:r2(v.ted)};
+  });
+
+  var tc=0,td2=0,tb=0,tp=0,tt=0,ttd=0,tte=0,ttar=0,tod=0,ds=0;
+  rows.forEach(function(r){
+    if(r.dc==='C') tc+=r.valor; else td2+=r.valor;
+    if(r.tipo==='boleto') tb+=r.valor;
+    if(r.tipo==='pix_saida') tp+=r.valor;
+    if(r.tipo==='ted_saida') tt+=r.valor;
+    if(r.tipo==='transf_debito') ttd+=r.valor;
+    if(r.tipo==='tec_estorno') tte+=r.valor;
+    if(r.tipo==='tarifa'&&r.dc==='D') ttar+=r.valor;
+    if(r.tipo==='outros_debito') tod+=r.valor;
+  });
+  daily.forEach(function(d){ if(Math.abs(d.saldo_dia)>0.05) ds++; });
+  var r2=function(v){return Math.round(v*100)/100;};
+  var kpis={
+    saldo_final:r2(tc-td2), total_creditos:r2(tc), total_debitos:r2(td2),
+    total_boleto:r2(tb), total_pix:r2(tp), total_ted:r2(tt),
+    total_transf_d:r2(ttd), total_tec_est:r2(tte), total_tarifa:r2(ttar), total_outros_d:r2(tod),
+    total_dias:daily.length, dias_com_saldo:ds,
+    data_inicio:daily[0]?daily[0].data:'', data_fim:daily[daily.length-1]?daily[daily.length-1].data:''
+  };
+  return {daily:daily, txns:txns, monthly:monthly, kpis:kpis};
+}
+
+// ── fim Exportar / Importar ───────────────────────────────────────────────// ── Exportar / Importar ───────────────────────────────────────────────
 document.getElementById('iofBtnExportar').addEventListener('click', function() {
   var data = JSON.stringify({ iof_notas: notas, resolvidos: iof_resolvidos }, null, 2);
   var blob = new Blob([data], { type: 'application/json' });
@@ -5522,7 +5649,32 @@ document.getElementById('iofInputImportar').addEventListener('change', function(
 // ── fim Exportar / Importar ───────────────────────────────────────────
 
 // ── INIT IOF ──────────────────────────────────────────
-function iof_init() { iof_renderBate(); }
+function iof_init() {
+  // Tentar carregar extrato salvo no Firebase
+  if (typeof fbReady !== 'undefined' && fbReady && typeof doc === 'function') {
+    try {
+      var iofRef = doc(db, 'ir_iof', 'extrato');
+      fbGet(iofRef).then(function(snap) {
+        if (snap.exists()) {
+          var d = snap.data();
+          if (d.daily && d.daily.length) {
+            DAILY_IOF   = d.daily;
+            MONTHLY_IOF = d.monthly;
+            KPIS_IOF    = d.kpis;
+          }
+        }
+        // Carregar txns separado
+        var txRef = doc(db, 'ir_iof', 'txns');
+        fbGet(txRef).then(function(snap2) {
+          if (snap2.exists() && snap2.data().txns) TXNS_IOF = snap2.data().txns;
+          iof_renderBate();
+        }).catch(function() { iof_renderBate(); });
+      }).catch(function() { iof_renderBate(); });
+    } catch(e) { iof_renderBate(); }
+  } else {
+    iof_renderBate();
+  }
+}
 // chamado quando a aba IOF é ativada pela primeira vez
 var iof_initialized = false;
 function iof_lazyInit() { if(!iof_initialized){ iof_initialized=true; iof_init(); } }
