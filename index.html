@@ -5661,42 +5661,34 @@ document.getElementById('iofInputImportar').addEventListener('change', function(
 
 // ── INIT IOF ──────────────────────────────────────────
 function iof_initFromFirebase() {
-  // Tentar carregar extrato salvo no Firebase
-  if (typeof fbReady !== 'undefined' && fbReady && typeof doc === 'function') {
+  // Renderizar IMEDIATAMENTE com dados embutidos — sem esperar Firebase
+  iof_renderAll();
+
+  // Em background: verificar se Firebase tem extrato mais recente
+  setTimeout(function() {
     try {
-      var iofRef = doc(db, 'ir_iof', 'extrato');
-      fbGet(iofRef).then(function(snap) {
-        if (snap.exists()) {
-          var d = snap.data();
-          if (d.daily && d.daily.length) {
-            DAILY_IOF   = d.daily;
-            MONTHLY_IOF = d.monthly;
-            KPIS_IOF    = d.kpis;
-          }
-        }
-        // Carregar txns separado
-        var txRef = doc(db, 'ir_iof', 'txns');
-        fbGet(txRef).then(function(snap2) {
-          if (snap2.exists() && snap2.data().txns) TXNS_IOF = snap2.data().txns;
+      if (typeof fbReady === 'undefined' || !fbReady || typeof doc !== 'function') return;
+      fbGet(doc(db, 'ir_iof', 'extrato')).then(function(snap) {
+        if (!snap.exists()) return;
+        var d = snap.data();
+        if (!d.daily || !d.daily.length) return;
+        var temMaisRecente = d.daily.length > DAILY_IOF.length ||
+          (d.kpis && d.kpis.data_fim && KPIS_IOF.data_fim && d.kpis.data_fim > KPIS_IOF.data_fim);
+        if (!temMaisRecente) return;
+        DAILY_IOF   = d.daily;
+        MONTHLY_IOF = d.monthly;
+        KPIS_IOF    = d.kpis;
+        fbGet(doc(db, 'ir_iof', 'txns')).then(function(s2) {
+          if (s2.exists() && s2.data().txns) TXNS_IOF = s2.data().txns;
           iof_renderAll();
-        }).catch(function() { iof_renderAll(); });
-      }).catch(function() { iof_renderAll(); });
-    } catch(e) { iof_renderBate(); }
-  } else {
-    iof_renderAll();
-  }
+          var b = document.getElementById('iofSaldoBadge');
+          if (b) b.textContent = 'Atualizado da nuvem ✅';
+        }).catch(function(){});
+      }).catch(function(){});
+    } catch(e) {}
+  }, 1500);
 }
-// chamado quando a aba IOF é ativada pela primeira vez
-var iof_initialized = false;
-function iof_lazyInit() {
-  if (!iof_initialized) {
-    iof_initialized = true;
-    iof_initFromFirebase();
-  } else {
-    // já inicializado — só re-renderizar com os dados atuais
-    iof_renderAll();
-  }
-}
+
 function iof_renderAll() {
   iof_updateKPIs();
   iof_buildCharts();
