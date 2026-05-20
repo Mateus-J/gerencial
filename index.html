@@ -4933,8 +4933,9 @@ let iof_iof_currentModalDate = null;
 let iof_batePage = 1, iof_txPage = 1, iof_divPage = 1;
 const PAGE = 30;
 
+function iof_updateKPIs() {
+  var totalPago = KPIS_IOF.total_debitos;
 // ── KPIs ──────────────────────────────────────────
-const totalPago = KPIS_IOF.total_debitos;
 document.getElementById('iof-kpi-saldo').textContent    = fmt(KPIS_IOF.saldo_final);
 document.getElementById('iof-kpi-entrada').textContent  = fmt(KPIS_IOF.total_creditos);
 document.getElementById('iof-kpi-pago').textContent     = fmt(KPIS_IOF.total_debitos);
@@ -4981,6 +4982,16 @@ var chartBase = {
   }
 };
 
+}
+
+function iof_buildCharts() {
+// Destruir charts anteriores se existirem
+['iof-chartSaldo','iof-chartMensal','iof-chartPizza','iof-chartModal','iof-chartDonut'].forEach(function(id) {
+  var canvas = document.getElementById(id);
+  if (canvas && canvas._chart) { canvas._chart.destroy(); canvas._chart = null; }
+  var existing = Chart.getChart(id);
+  if (existing) existing.destroy();
+});
 new Chart(document.getElementById('iof-chartSaldo'), {
   type: 'bar',
   data: {
@@ -5488,8 +5499,8 @@ document.getElementById('iofInputImportar').addEventListener('change', function(
       MONTHLY_IOF = result.monthly;
       KPIS_IOF    = result.kpis;
       iof_saveExtrato(result);
-      iof_initialized = false;
-      iof_lazyInit();
+      iof_initialized = true; // marcar como inicializado
+      iof_renderAll();
       badge.textContent = 'Extrato carregado \u2705 ' + result.daily.length + ' dias';
     } catch(err) {
       badge.textContent = 'Erro \u274c';
@@ -5649,7 +5660,7 @@ document.getElementById('iofInputImportar').addEventListener('change', function(
 // ── fim Exportar / Importar ───────────────────────────────────────────
 
 // ── INIT IOF ──────────────────────────────────────────
-function iof_init() {
+function iof_initFromFirebase() {
   // Tentar carregar extrato salvo no Firebase
   if (typeof fbReady !== 'undefined' && fbReady && typeof doc === 'function') {
     try {
@@ -5667,19 +5678,35 @@ function iof_init() {
         var txRef = doc(db, 'ir_iof', 'txns');
         fbGet(txRef).then(function(snap2) {
           if (snap2.exists() && snap2.data().txns) TXNS_IOF = snap2.data().txns;
-          iof_renderBate();
-        }).catch(function() { iof_renderBate(); });
-      }).catch(function() { iof_renderBate(); });
+          iof_renderAll();
+        }).catch(function() { iof_renderAll(); });
+      }).catch(function() { iof_renderAll(); });
     } catch(e) { iof_renderBate(); }
   } else {
-    iof_renderBate();
+    iof_renderAll();
   }
 }
 // chamado quando a aba IOF é ativada pela primeira vez
 var iof_initialized = false;
-function iof_lazyInit() { if(!iof_initialized){ iof_initialized=true; iof_init(); } }
+function iof_lazyInit() {
+  if (!iof_initialized) {
+    iof_initialized = true;
+    iof_initFromFirebase();
+  } else {
+    // já inicializado — só re-renderizar com os dados atuais
+    iof_renderAll();
+  }
+}
+function iof_renderAll() {
+  iof_updateKPIs();
+  iof_buildCharts();
+  iof_renderBate();
+  iof_renderTxns();
+}
 
 
 </script>
 </body>
-</html>
+</html>}
+
+
