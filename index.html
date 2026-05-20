@@ -1572,12 +1572,32 @@ function renderTabs(){
       const [moved]=S.tabs.splice(fi,1);S.tabs.splice(ti,0,moved);
       save();renderTabs();
     });
-    el.onclick=e=>{if(e.target===del)return;S.activeTab=tab.id;cv={pan:{x:0,y:0},zoom:1,drag:null,crz:null,connFrom:null,panning:false,ps:{x:0,y:0},po:{x:0,y:0}};document.getElementById('adminView').style.display='none';save();renderTabs();renderView()};
+    el.onclick=e=>{if(e.target===del)return;S.activeTab=tab.id;cv={pan:{x:0,y:0},zoom:1,drag:null,crz:null,connFrom:null,panning:false,ps:{x:0,y:0},po:{x:0,y:0}};document.getElementById('adminView').style.display='none';if(document.getElementById('iofView'))document.getElementById('iofView').style.display='none';save();renderTabs();renderView()};
     leftArea.appendChild(el);
   });
   // Add Tab button (hidden for consulta)
   if(currentUser&&currentUser.role!=='consulta'){
     const ab=document.createElement('button');ab.className='tadd';ab.textContent='+';ab.title='Nova aba';ab.onclick=showTabModal;leftArea.appendChild(ab);
+  }
+  // IR/IOF tab - always visible for admin
+  if(currentUser&&currentUser.role==='admin'){
+    const iofEl=document.createElement('div');
+    const iofActive=document.getElementById('iofView')&&document.getElementById('iofView').style.display!=='none';
+    iofEl.className='tab-admin'+(iofActive?' active':'');
+    iofEl.style.color='#1565c0';
+    iofEl.innerHTML='<span style="font-size:13px">💰</span><span>IR/IOF</span>';
+    iofEl.onclick=()=>{
+      document.getElementById('tableView').style.display='none';
+      document.getElementById('canvasView').style.display='none';
+      document.getElementById('dashView').style.display='none';
+      document.getElementById('adminView').style.display='none';
+      if(document.getElementById('agendaView')) document.getElementById('agendaView').style.display='none';
+      document.getElementById('iofView').style.display='block';
+      if(typeof iof_lazyInit==='function') iof_lazyInit();
+      S.activeTab='';
+      renderTabs();
+    };
+    rightArea.appendChild(iofEl);
   }
   // Admin tab - always last, only for admin role
   if(currentUser&&currentUser.role==='admin'){
@@ -4934,7 +4954,7 @@ function iof_stBg(s)   { return s==='resolvido'?'rgba(46,204,113,.15)':s==='anal
 function iof_stBorder(s){ return s==='resolvido'?'var(--iof-green)':s==='analise'?'var(--iof-yellow)':'var(--iof-border)'; }
 function iof_stIcon(s)  { return s==='resolvido'?'\u2705':s==='analise'?'\uD83D\uDD0D':'\u25CB'; }
 function iof_stPillCls(s){ return s==='resolvido'?'iof-pill-green':s==='analise'?'iof-pill-yellow':'iof-pill-red'; }
-function iof_nextSt(s)  { return !s?'analise':s==='analise'?'resolvido':null; }
+function iof_nextSt(s)  { return s==='resolvido'?null:'resolvido'; }
 
 // ── Tabs ───────────────────────────────────────────────
 function iof_showTab(id) {
