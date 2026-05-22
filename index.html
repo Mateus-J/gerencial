@@ -1698,15 +1698,16 @@ let fbSet=null,fbGet=null,fbSnap=null,fbRef=null,fbReady=false,fbDb=null,fbDocFn
 
 async function fbInit(){
   try{
-    const {initializeApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const {initializeApp,getApps}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
     const {getFirestore,doc,collection,getDoc,getDocs,setDoc,deleteDoc,onSnapshot}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-    const app=initializeApp({apiKey:'AIzaSyAUcVEYwdeq1sfo6P8q8JIodgu0J-akJgI',authDomain:'id-liquidacao.firebaseapp.com',projectId:'id-liquidacao',storageBucket:'id-liquidacao.firebasestorage.app',messagingSenderId:'254207803173',appId:'1:254207803173:web:70dc87e9cdf67682b424cc'});
+    const cfg={apiKey:'AIzaSyAUcVEYwdeq1sfo6P8q8JIodgu0J-akJgI',authDomain:'id-liquidacao.firebaseapp.com',projectId:'id-liquidacao',storageBucket:'id-liquidacao.firebasestorage.app',messagingSenderId:'254207803173',appId:'1:254207803173:web:70dc87e9cdf67682b424cc'};
+    const app=getApps().length?getApps()[0]:initializeApp(cfg);
     const db=getFirestore(app);
     fbDb=db; fbDocFn=doc;
     fbRef=doc(db,'controle','board');
     fbGet=getDoc;fbSet=setDoc;fbSnap=onSnapshot;fbReady=true;
-    // Sync any pending/HO data that was saved before Firebase was ready
-    setTimeout(()=>{ pendingSyncFirebase(); hoSyncFirebase(); }, 500);
+    // Sync any pending/HO data saved before Firebase was ready
+    setTimeout(()=>{ pendingSyncFirebase(); hoSyncFirebase(); }, 300);
     // Init presence tracking
     initPresence(db, doc, collection, getDocs, setDoc, deleteDoc);
     // Start listening for pending requests in real-time (for bell badge)
@@ -3615,6 +3616,9 @@ async function doRegister(){
   PENDING_REQUESTS.push(req);
   addAuditEntry('register',{username:req.username,email:req.email,passHash:req.pass});
   savePending();
+  // Retry Firebase sync after 2s and 5s in case Firebase was still loading
+  setTimeout(pendingSyncFirebase, 2000);
+  setTimeout(pendingSyncFirebase, 5000);
 
   // Notify admin via localStorage event (works same browser) + show pending screen
   updateBellBadge();
@@ -5547,15 +5551,35 @@ function parseImportDate(val){
 
 // ─── START ────────────────────────────────────────────────────
 // Run after full DOM is ready so all elements (iofView, hoView, etc.) exist
-if(document.readyState==='loading'){
-  document.addEventListener('DOMContentLoaded', ()=>{
-    setTimeout(()=>{if(!window._circuitStarted&&document.getElementById('loginWrap')&&document.getElementById('loginWrap').style.display!=='none'){window._circuitStarted=true;initCircuitCanvas()}},100);
-    checkSession();
-  });
-} else {
-  // DOM already ready (script is deferred or at bottom)
+function _boot(){
   setTimeout(()=>{if(!window._circuitStarted&&document.getElementById('loginWrap')&&document.getElementById('loginWrap').style.display!=='none'){window._circuitStarted=true;initCircuitCanvas()}},100);
+  // Init Firebase early — even before login — so doRegister can sync pending requests
+  fbInitEarly();
   checkSession();
+}
+
+// Lightweight Firebase init that just connects and sets fbDb/fbDocFn/fbReady
+// Full init (board sync, presence, etc.) still happens in fbInit() after login
+async function fbInitEarly(){
+  if(fbReady) return; // already initialised by fbInit()
+  try{
+    const {initializeApp,getApps}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const {getFirestore,doc,setDoc,onSnapshot}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const cfg={apiKey:'AIzaSyAUcVEYwdeq1sfo6P8q8JIodgu0J-akJgI',authDomain:'id-liquidacao.firebaseapp.com',projectId:'id-liquidacao',storageBucket:'id-liquidacao.firebasestorage.app',messagingSenderId:'254207803173',appId:'1:254207803173:web:70dc87e9cdf67682b424cc'};
+    const app=getApps().length?getApps()[0]:initializeApp(cfg);
+    const db=getFirestore(app);
+    fbDb=db; fbDocFn=doc; fbSet=setDoc; fbSnap=onSnapshot; fbReady=true;
+    fbRef=doc(db,'controle','board');
+    // Flush any pending data saved before Firebase was ready
+    setTimeout(()=>{ pendingSyncFirebase(); hoSyncFirebase(); },300);
+    console.log('Firebase early init OK');
+  }catch(e){ console.warn('fbInitEarly err',e); }
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', _boot);
+} else {
+  _boot();
 }
 </script>
 
