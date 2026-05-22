@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Controle da Equipe</title>
+<meta name="app-version" content="__APP_VERSION__">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Sora:wght@300;400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -179,6 +180,14 @@ tr.subr td{background:var(--sur2);padding:5px 9px;border-bottom:1px solid var(--
 @keyframes tin{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px}
+
+/* ─── UPDATE BANNER ──────────────────────────────────────────── */
+.update-banner{position:fixed;top:0;left:0;right:0;z-index:9999;background:#1b5e20;color:#fff;display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 18px;font-size:13px;font-weight:500;box-shadow:0 2px 12px rgba(0,0,0,.25);animation:tin .3s ease}
+.update-banner strong{font-weight:700}
+.update-banner-btn{background:#fff;color:#1b5e20;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.update-banner-btn:hover{opacity:.85}
+.update-banner-dismiss{background:none;border:none;color:rgba(255,255,255,.65);font-size:18px;cursor:pointer;padding:0 4px;line-height:1;margin-left:4px}
+.update-banner-dismiss:hover{color:#fff}
 
 /* ─── LOGIN ─────────────────────────────────────────────── */
 .login-wrap{position:fixed;inset:0;background:#071a08;display:flex;align-items:center;justify-content:center;z-index:1000;overflow:hidden}
@@ -1723,6 +1732,8 @@ async function fbInit(){
     setTimeout(()=>{ pendingSyncFirebase(); hoSyncFirebase(); }, 300);
     // Carregar dados de HO do Firebase para todos os usuários e iniciar listener em tempo real
     setTimeout(()=>{ hoLoadFromFirebase(); hoSubscribeFirebase(); }, 500);
+    // Carregar agenda do Firebase e iniciar listener em tempo real
+    setTimeout(()=>{ agendaLoadFromFirebase(); agendaSubscribeFirebase(); }, 700);
     // Init presence tracking
     initPresence(db, doc, collection, getDocs, setDoc, deleteDoc);
     // Start real-time listeners
@@ -4702,6 +4713,50 @@ function loadAgenda(){
 function saveAgenda(){
   try{localStorage.setItem('ctrl_agenda',JSON.stringify(agendaItems));}catch(e){}
   if(document.getElementById('agendaHdrBadge')) updateAgendaHdrBadge();
+  // Sincroniza agenda no Firebase para todos os usuários verem
+  agendaSyncFirebase();
+}
+function agendaSyncFirebase(){
+  try{
+    if(!fbReady||!fbDb||!fbDocFn||!fbSet)return;
+    fbSet(fbDocFn(fbDb,'controle','agenda'),{items:agendaItems,updatedAt:new Date().toISOString()}).catch(e=>console.warn('agendaSync err',e));
+  }catch(e){}
+}
+function agendaLoadFromFirebase(){
+  try{
+    if(!fbReady||!fbDb||!fbDocFn||!fbGet)return;
+    fbGet(fbDocFn(fbDb,'controle','agenda')).then(snap=>{
+      if(!snap.exists())return;
+      const d=snap.data();
+      if(!d.items||!d.items.length)return;
+      // Usar Firebase se tiver mais itens ou for mais recente
+      const localUpdated=agendaItems.length?agendaItems[0].createdAt||'':'';
+      const fbUpdated=d.updatedAt||'';
+      if(d.items.length>agendaItems.length||fbUpdated>localUpdated){
+        agendaItems=d.items;
+        try{localStorage.setItem('ctrl_agenda',JSON.stringify(agendaItems));}catch(e){}
+        updateAgendaHdrBadge();
+        checkAndShowNotifications();
+        const agv=document.getElementById('agendaView');
+        if(agv&&agv.style.display!=='none'){renderCalendar();renderAgendaList(selectedDate);}
+      }
+    }).catch(e=>console.warn('agendaLoad err',e));
+  }catch(e){}
+}
+function agendaSubscribeFirebase(){
+  try{
+    if(!fbReady||!fbDb||!fbDocFn||!fbSnap)return;
+    fbSnap(fbDocFn(fbDb,'controle','agenda'),snap=>{
+      if(!snap.exists())return;
+      const d=snap.data();
+      if(!d.items)return;
+      agendaItems=d.items;
+      try{localStorage.setItem('ctrl_agenda',JSON.stringify(agendaItems));}catch(e){}
+      updateAgendaHdrBadge();
+      const agv=document.getElementById('agendaView');
+      if(agv&&agv.style.display!=='none'){renderCalendar();renderAgendaList(selectedDate);}
+    },e=>console.warn('agendaSnap err',e));
+  }catch(e){}
 }
 
 function toggleAgendaFromHeader(){
@@ -6516,6 +6571,45 @@ function iof_doInit(){
   },1500);
 }
 // ═══════════════════════════════════════════════════════
+
+// ─── SISTEMA DE ATUALIZAÇÃO VIA GITHUB ───────────────────────────
+// INSTRUÇÕES: substitua a URL abaixo pela URL raw do seu index.html no GitHub
+// Ex: https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/index.html
+const GITHUB_RAW_URL = 'https://gerencial.pages.dev/index.html';
+
+const APP_VERSION = (document.querySelector('meta[name="app-version"]')||{}).content||'__APP_VERSION__';
+
+function checkForUpdate(){
+  if(!GITHUB_RAW_URL) return; // URL não configurada ainda
+  fetch(GITHUB_RAW_URL+'?nc='+Date.now())
+    .then(r=>r.text())
+    .then(html=>{
+      const m=html.match(/<meta name="app-version" content="([^"]+)"/);
+      if(!m)return;
+      const remoteVersion=m[1];
+      if(remoteVersion!==APP_VERSION&&remoteVersion!=='__APP_VERSION__'){
+        showUpdateBanner(remoteVersion);
+      }
+    })
+    .catch(()=>{}); // silencioso se offline
+}
+
+function showUpdateBanner(newVersion){
+  if(document.getElementById('updateBanner'))return; // já está visível
+  const banner=document.createElement('div');
+  banner.id='updateBanner';
+  banner.className='update-banner';
+  banner.innerHTML=`
+    <span>🚀 <strong>Nova versão disponível!</strong> O sistema foi atualizado.</span>
+    <button class="update-banner-btn" onclick="window.location.reload(true)">↻ Atualizar agora</button>
+    <button class="update-banner-dismiss" title="Ignorar" onclick="this.closest('.update-banner').remove()">✕</button>
+  `;
+  document.body.prepend(banner);
+}
+
+// Verificar ao iniciar (após 4s para não atrasar o login) e a cada 5 minutos
+setTimeout(checkForUpdate, 4000);
+setInterval(checkForUpdate, 5 * 60 * 1000);
 
 </script>
 </body>
