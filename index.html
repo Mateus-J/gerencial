@@ -6595,18 +6595,21 @@ const GITHUB_RAW_URL = 'https://gerencial.pages.dev/index.html';
 const APP_VERSION = (document.querySelector('meta[name="app-version"]')||{}).content||'__APP_VERSION__';
 
 function checkForUpdate(){
-  if(!GITHUB_RAW_URL) return; // URL não configurada ainda
+  if(!GITHUB_RAW_URL) return;
+  // Se versão local ainda é placeholder, o build não rodou — não verificar
+  if(!APP_VERSION||APP_VERSION==='__APP_VERSION__') return;
   fetch(GITHUB_RAW_URL+'?nc='+Date.now())
     .then(r=>r.text())
     .then(html=>{
       const m=html.match(/<meta name="app-version" content="([^"]+)"/);
       if(!m)return;
       const remoteVersion=m[1];
-      if(remoteVersion!==APP_VERSION&&remoteVersion!=='__APP_VERSION__'){
+      // Só mostra banner se ambas versões são válidas e diferentes
+      if(remoteVersion&&remoteVersion!=='__APP_VERSION__'&&remoteVersion!==APP_VERSION){
         showUpdateBanner(remoteVersion);
       }
     })
-    .catch(()=>{}); // silencioso se offline
+    .catch(()=>{});
 }
 
 function showUpdateBanner(newVersion){
