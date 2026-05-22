@@ -1706,6 +1706,8 @@ async function fbInit(){
     fbGet=getDoc;fbSet=setDoc;fbSnap=onSnapshot;fbReady=true;
     // Init presence tracking
     initPresence(db, doc, collection, getDocs, setDoc, deleteDoc);
+    // Start listening for pending requests in real-time (for bell badge)
+    if(currentUser&&currentUser.role==='admin') loadPendingFromFirebase();
     // load from firebase and update UI
     const snap=await fbGet(fbRef);
     if(snap.exists()){
@@ -3443,10 +3445,11 @@ function createSession(user){
 }
 
 function isSessionValid(session){
-  if(!session) return false;
+  if(!session||!session.username) return false;
   const now = Date.now();
-  if(now > session.expiresAt) return 'expired';
-  if(session.lastActive && now - session.lastActive > IDLE_TIMEOUT_MS) return 'idle';
+  // Sessions without expiresAt (old format) are treated as valid
+  if(session.expiresAt && now > session.expiresAt) return 'expired';
+  if(session.lastActive && session.expiresAt && now - session.lastActive > IDLE_TIMEOUT_MS) return 'idle';
   return true;
 }
 
@@ -3553,6 +3556,43 @@ function loadPending(){
 }
 function savePending(){
   try{localStorage.setItem('ctrl_pending',JSON.stringify(PENDING_REQUESTS));}catch(e){}
+  // Sync to Firebase so admin sees requests from other users/devices
+  pendingSyncFirebase();
+}
+function pendingSyncFirebase(){
+  try{
+    if(!fbReady||!fbRef)return;
+    const fs=fbRef.firestore||fbRef._firestore;
+    if(!fs)return;
+    import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(({doc,setDoc})=>{
+      setDoc(doc(fs,'controle','pending_requests'),{requests:PENDING_REQUESTS,updatedAt:Date.now()}).catch(()=>{});
+    }).catch(()=>{});
+  }catch(e){}
+}
+function loadPendingFromFirebase(){
+  try{
+    if(!fbReady||!fbRef)return;
+    const fs=fbRef.firestore||fbRef._firestore;
+    if(!fs)return;
+    import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(({doc,onSnapshot})=>{
+      onSnapshot(doc(fs,'controle','pending_requests'),snap=>{
+        if(!snap.exists())return;
+        const d=snap.data();
+        if(!d.requests)return;
+        // Merge: keep local + firebase, deduplicate by id
+        const merged=[...PENDING_REQUESTS];
+        d.requests.forEach(r=>{
+          if(!merged.find(x=>x.id===r.id)) merged.push(r);
+        });
+        PENDING_REQUESTS=merged;
+        try{localStorage.setItem('ctrl_pending',JSON.stringify(PENDING_REQUESTS));}catch(e){}
+        updateBellBadge();
+        // If bell modal is open, refresh it
+        const bm=document.getElementById('bellModal');
+        if(bm&&bm.style.display!=='none') renderBellModal();
+      });
+    }).catch(()=>{});
+  }catch(e){}
 }
 
 // Override doRegister to put user in pending state instead of auto-login
@@ -3903,31 +3943,54 @@ function showApp(){
     </div>
     <button class="login-logout" onclick="doLogout()">Sair</button>
   `;
+  // If admin and Firebase already ready, start listening for pending requests
+  if(currentUser.role==='admin' && fbReady) loadPendingFromFirebase();
   start();
 }
 
 function checkSession(){
   try{
-    const s = localStorage.getItem('ctrl_session');
-    if(s){
-      currentUser=JSON.parse(s);
+    const raw = localStorage.getItem('ctrl_session');
+    if(raw){
+      const s = JSON.parse(raw);
+      if(!s||!s.username){showLogin();return;}
+
+      // Sessions saved before session expiry system won't have expiresAt — treat as valid
+      const validity = isSessionValid(s);
+      if(validity === 'expired'){
+        localStorage.removeItem('ctrl_session');
+        showLogin();
+        setTimeout(()=>{
+          try{document.getElementById('loginErr').textContent='Sessão expirada. Faça login novamente.';}catch(e){}
+        },100);
+        return;
+      }
+      if(validity === 'idle'){
+        localStorage.removeItem('ctrl_session');
+        showLogin();
+        setTimeout(()=>{
+          try{document.getElementById('loginErr').textContent='Sessão encerrada por inatividade.';}catch(e){}
+        },100);
+        return;
+      }
+
+      currentUser = s;
       if(currentUser.role==='pending'){
-        // Re-check if approved since last session
         loadUsers();
         const approved=USERS[currentUser.username];
         if(approved&&approved.role!=='pending'){
-          // User was approved! Update session
           currentUser={username:currentUser.username,...approved};
           localStorage.setItem('ctrl_session',JSON.stringify(currentUser));
           showApp();return;
         }
         showPendingScreen();return;
       }
+      startIdleWatcher();
       showApp();return;
     }
-  }catch(e){}
+  }catch(e){console.warn('checkSession err',e);}
   showLogin();
-  setTimeout(()=>document.getElementById('loginUser').focus(),100);
+  setTimeout(()=>{try{document.getElementById('loginUser').focus();}catch(e){}},100);
 }
 
 window.doLogin=doLogin;
