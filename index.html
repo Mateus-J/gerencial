@@ -834,6 +834,11 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 /* Admin clickable cells */
 .ho-sched-table tbody td[style*="pointer"]:hover .ho-pill{filter:brightness(.92);transform:scale(.97)}
 .ho-collab-info{display:flex;align-items:center;gap:10px}
+.ho-drag-handle{color:var(--tx3);font-size:14px;cursor:grab;padding:0 4px 0 0;opacity:0;transition:opacity .15s;user-select:none;flex-shrink:0;line-height:1}
+.ho-drag-handle:active{cursor:grabbing}
+tr:hover .ho-drag-handle{opacity:1}
+.ho-sched-table tbody tr.ho-dragging{opacity:.35;background:var(--bluel)}
+.ho-sched-table tbody tr.ho-drag-over{outline:2px dashed var(--blue);outline-offset:-2px;background:var(--bluel)}
 .ho-collab-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;letter-spacing:0}
 .ho-collab-name{font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap}
 .ho-collab-del{background:none;border:none;cursor:pointer;color:var(--tx3);font-size:12px;padding:2px 4px;border-radius:4px;font-family:inherit;opacity:0;transition:opacity .15s;margin-left:auto;flex-shrink:0}
@@ -2701,15 +2706,55 @@ function renderHoSchedule(){
     tr2.appendChild(td);tbody.appendChild(tr2);return;
   }
 
-  allCollabs.forEach(collab=>{
+  allCollabs.forEach((collab, collabIdx)=>{
     const row=document.createElement('tr');
+    row.dataset.collabId=collab.id;
     // Name cell
     const td0=document.createElement('td');
     const initials=(collab.name||'?').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
     const col=collab.color||strToColor(collab.name||'x');
+    const dragHandle=isAdmin?`<span class="ho-drag-handle" title="Arrastar para reordenar">⠿</span>`:'';
     const delBtn=isAdmin?`<button class="ho-collab-del" title="Remover colaborador" onclick="removeCollab('${collab.id}')">✕</button>`:'';
-    td0.innerHTML=`<div class="ho-collab-info"><div class="ho-collab-avatar" style="background:${col}">${initials}</div><div><div class="ho-collab-name">${collab.name}</div>${collab.role?`<div style="font-size:10px;color:var(--tx3)">${collab.role}</div>`:''}</div>${delBtn}</div>`;
+    td0.innerHTML=`<div class="ho-collab-info">${dragHandle}<div class="ho-collab-avatar" style="background:${col}">${initials}</div><div><div class="ho-collab-name">${collab.name}</div>${collab.role?`<div style="font-size:10px;color:var(--tx3)">${collab.role}</div>`:''}</div>${delBtn}</div>`;
     row.appendChild(td0);
+
+    // Drag-and-drop reordering (admin only)
+    if(isAdmin){
+      row.draggable=true;
+      row.addEventListener('dragstart',e=>{
+        e.dataTransfer.effectAllowed='move';
+        e.dataTransfer.setData('hoCollabId',collab.id);
+        setTimeout(()=>row.classList.add('ho-dragging'),0);
+      });
+      row.addEventListener('dragend',()=>{
+        row.classList.remove('ho-dragging');
+        document.querySelectorAll('.ho-sched-table tbody tr').forEach(r=>r.classList.remove('ho-drag-over'));
+      });
+      row.addEventListener('dragover',e=>{
+        e.preventDefault();
+        e.dataTransfer.dropEffect='move';
+        document.querySelectorAll('.ho-sched-table tbody tr').forEach(r=>r.classList.remove('ho-drag-over'));
+        row.classList.add('ho-drag-over');
+      });
+      row.addEventListener('dragleave',e=>{
+        if(!row.contains(e.relatedTarget)) row.classList.remove('ho-drag-over');
+      });
+      row.addEventListener('drop',e=>{
+        e.preventDefault();
+        row.classList.remove('ho-drag-over');
+        const fromId=e.dataTransfer.getData('hoCollabId');
+        if(!fromId||fromId===collab.id)return;
+        loadHoCollabs();
+        const fi=HO_COLLABORATORS.findIndex(c=>c.id===fromId);
+        const ti=HO_COLLABORATORS.findIndex(c=>c.id===collab.id);
+        // Handle auto-collabs (not in HO_COLLABORATORS) — skip reorder
+        if(fi<0||ti<0){toast('⚠ Só é possível reordenar colaboradores adicionados manualmente.');return;}
+        const[moved]=HO_COLLABORATORS.splice(fi,1);
+        HO_COLLABORATORS.splice(ti,0,moved);
+        saveHoCollabs();
+        renderHoSchedule();
+      });
+    }
 
     days.forEach(d=>{
       const iso=toISO(d);
