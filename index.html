@@ -677,6 +677,61 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 .audit-proof{background:var(--sur2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;color:var(--tx2)}
 .audit-proof code{display:block;font-family:monospace;font-size:10px;color:var(--tx3);margin-top:4px;word-break:break-all;line-height:1.6}
 
+/* ── HOME OFFICE ─────────────────────────────────────────────── */
+.ho-view{flex:1;overflow:auto;padding:18px 20px;display:none;flex-direction:column;gap:18px}
+.ho-section{background:var(--sur);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;box-shadow:var(--sh)}
+.ho-section-hdr{background:#1b5e20;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ho-section-hdr h3{font-size:13px;font-weight:600;color:#fff;display:flex;align-items:center;gap:7px}
+.ho-section-body{padding:16px}
+.ho-form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:14px}
+.ho-field{display:flex;flex-direction:column;gap:4px}
+.ho-field label{font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em}
+.ho-field input,.ho-field select,.ho-field textarea{border:1px solid var(--bdr);border-radius:7px;padding:7px 10px;font-size:13px;font-family:inherit;background:var(--sur2);color:var(--tx);outline:none}
+.ho-field input:focus,.ho-field select:focus,.ho-field textarea:focus{border-color:#1b5e20;box-shadow:0 0 0 2px rgba(27,94,32,.12)}
+.ho-field textarea{resize:vertical;min-height:70px}
+.ho-card{background:var(--sur2);border:1px solid var(--bdr);border-radius:10px;padding:14px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
+.ho-card:last-child{margin-bottom:0}
+.ho-card:hover{border-color:var(--bdr2)}
+.ho-card-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.ho-card-body{flex:1;min-width:0}
+.ho-card-title{font-size:13px;font-weight:600;color:var(--tx);margin-bottom:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ho-card-meta{font-size:11px;color:var(--tx3);display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.ho-card-obs{font-size:12px;color:var(--tx2);margin-top:5px;font-style:italic;border-top:1px solid var(--bdr);padding-top:5px}
+.ho-card-actions{display:flex;flex-direction:column;gap:5px;flex-shrink:0;align-items:flex-end}
+.ho-status-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.ho-status-pending{background:#fef9c3;color:#854d0e}
+.ho-status-approved{background:#dcfce7;color:#166534}
+.ho-status-rejected{background:#fee2e2;color:#991b1b}
+[data-theme=dark] .ho-status-pending{background:#2a2000;color:#f59e0b}
+[data-theme=dark] .ho-status-approved{background:#0a1f0a;color:#4caf50}
+[data-theme=dark] .ho-status-rejected{background:#2d1515;color:#ef5350}
+.ho-empty{text-align:center;padding:32px 20px;font-size:13px;color:var(--tx3);display:flex;flex-direction:column;align-items:center;gap:8px}
+.ho-empty-icon{font-size:36px;opacity:.5}
+.ho-tabs{display:flex;border-bottom:1px solid var(--bdr);background:var(--sur2);overflow-x:auto}
+.ho-tab{padding:10px 16px;font-size:12px;font-weight:500;color:var(--tx2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:.15s;user-select:none}
+.ho-tab:hover{color:var(--tx)}
+.ho-tab.active{color:#1b5e20;border-bottom-color:#1b5e20;font-weight:600}
+[data-theme=dark] .ho-tab.active{color:#4caf50;border-bottom-color:#4caf50}
+.ho-tab-content{display:none}
+.ho-tab-content.active{display:block}
+.ho-kpi-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.ho-kpi-card{flex:1;min-width:100px;background:var(--sur2);border:1px solid var(--bdr);border-radius:9px;padding:12px 14px;display:flex;flex-direction:column;gap:3px}
+.ho-kpi-num{font-size:22px;font-weight:700;color:var(--tx)}
+.ho-kpi-lbl{font-size:11px;color:var(--tx2)}
+.ho-calendar-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:12px}
+.ho-cal-day{min-width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;background:var(--sur2);border:1px solid var(--bdr);color:var(--tx2);cursor:default}
+.ho-cal-day.ho{background:#dcfce7;border-color:#86efac;color:#166534;font-weight:700}
+[data-theme=dark] .ho-cal-day.ho{background:#0a1f0a;border-color:#2e7d32;color:#4caf50}
+.ho-user-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--bdr);font-size:12px}
+.ho-user-row:last-child{border-bottom:none}
+.ho-user-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0}
+.tab-ho{padding:9px 14px;font-size:12px;font-weight:600;color:#0277bd;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;white-space:nowrap;display:flex;align-items:center;gap:5px;user-select:none;position:relative;top:1px;transition:all .15s}
+.tab-ho:hover{background:#e3f2fd}
+.tab-ho.active{background:var(--sur);border-color:var(--bdr);color:#01579b}
+[data-theme=dark] .tab-ho{color:#4d9ef7}
+[data-theme=dark] .tab-ho.active{background:var(--sur);color:#6ab0ff}
+.ho-bell-badge{background:#c62828;color:#fff;border-radius:9px;padding:0 5px;font-size:10px;font-weight:700;margin-left:2px}
+
 /* ── IOF Dashboard ───────────────────────────────────────────── */
 .iof-wrap { font-family: 'Sora', sans-serif; background: #0f1117; color: #e8ecf4; min-height: calc(100vh - 50px); }
 .iof-wrap .mono { font-family: 'DM Mono', monospace; }
@@ -1023,6 +1078,50 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
     <button onclick="closeBellModal()">✕</button>
   </div>
   <div class="bell-modal-body" id="bellModalBody"></div>
+</div>
+
+
+<!-- HOME OFFICE VIEW -->
+<div id="hoView" class="ho-view">
+  <div id="hoKpisRow" class="ho-kpi-row"></div>
+  <div class="ho-section" id="hoRequestSection">
+    <div class="ho-section-hdr"><h3>🏠 Solicitar Home Office</h3></div>
+    <div class="ho-section-body">
+      <div class="ho-form-grid">
+        <div class="ho-field"><label>Data</label><input type="date" id="hoReqDate"></div>
+        <div class="ho-field"><label>Tipo</label><select id="hoReqType"><option value="dia_completo">Dia completo</option><option value="meio_periodo_manha">Meio período – Manhã</option><option value="meio_periodo_tarde">Meio período – Tarde</option></select></div>
+        <div class="ho-field" style="grid-column:1/-1"><label>Justificativa / Observação</label><textarea id="hoReqObs" placeholder="Ex: reuniões online, atividades que não exigem presença..."></textarea></div>
+      </div>
+      <button class="btn btn-p" onclick="submitHoRequest()">📤 Enviar solicitação</button>
+    </div>
+  </div>
+  <div class="ho-section" id="hoMySection">
+    <div class="ho-section-hdr"><h3>📋 Minhas Solicitações</h3></div>
+    <div id="hoMyList" class="ho-section-body"></div>
+  </div>
+  <div id="hoAdminSection" style="display:none">
+    <div class="ho-section" style="margin-bottom:14px">
+      <div class="ho-section-hdr"><h3>⏳ Solicitações Pendentes</h3><span id="hoPendingCount" style="font-size:11px;color:rgba(255,255,255,.75)"></span></div>
+      <div id="hoPendingList" class="ho-section-body"></div>
+    </div>
+    <div class="ho-section">
+      <div class="ho-section-hdr" style="gap:0">
+        <h3 style="flex:1">📁 Histórico</h3>
+        <div style="display:flex;flex-shrink:0">
+          <div class="ho-tab active" onclick="hoSwitchTab('all')" id="hoTabAll" style="padding:9px 12px;font-size:11px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap">Todos</div>
+          <div class="ho-tab" onclick="hoSwitchTab('approved')" id="hoTabApproved" style="padding:9px 12px;font-size:11px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap">✅ Aprovados</div>
+          <div class="ho-tab" onclick="hoSwitchTab('rejected')" id="hoTabRejected" style="padding:9px 12px;font-size:11px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap">❌ Reprovados</div>
+          <div class="ho-tab" onclick="hoSwitchTab('calendar')" id="hoTabCalendar" style="padding:9px 12px;font-size:11px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap">📅 Calendário</div>
+        </div>
+      </div>
+      <div class="ho-section-body">
+        <div class="ho-tab-content active" id="hoHistAll"></div>
+        <div class="ho-tab-content" id="hoHistApproved"></div>
+        <div class="ho-tab-content" id="hoHistRejected"></div>
+        <div class="ho-tab-content" id="hoHistCalendar"><div><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><button class="btn btn-sm" onclick="hoCalNav(-1)">&#8249;</button><strong id="hoCalTitle" style="font-size:13px;color:var(--tx)"></strong><button class="btn btn-sm" onclick="hoCalNav(1)">&#8250;</button></div><div id="hoCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px"></div><div id="hoCalLegend" style="display:flex;gap:10px;flex-wrap:wrap"></div></div></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- AGENDA VIEW -->
@@ -1481,6 +1580,7 @@ function start(){
   loadStatuses();
   loadAgenda();
   loadPending();
+  loadHoRequests();
   migratePasswords(); // hash any plain-text passwords
   // Load localStorage immediately
   const local=lsLoad();
@@ -1521,6 +1621,7 @@ function renderView(){
   const dv=document.getElementById('dashView');
   const agv=document.getElementById('agendaView');
   av.style.display='none'; agv.style.display='none';
+  if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
   const agBtn=document.getElementById('agendaHdrBtn');
   if(agBtn) agBtn.classList.remove('active-agenda');
   document.getElementById('iofView').style.display='none';
@@ -1572,7 +1673,7 @@ function renderTabs(){
       const [moved]=S.tabs.splice(fi,1);S.tabs.splice(ti,0,moved);
       save();renderTabs();
     });
-    el.onclick=e=>{if(e.target===del)return;S.activeTab=tab.id;cv={pan:{x:0,y:0},zoom:1,drag:null,crz:null,connFrom:null,panning:false,ps:{x:0,y:0},po:{x:0,y:0}};document.getElementById('adminView').style.display='none';if(document.getElementById('iofView'))document.getElementById('iofView').style.display='none';save();renderTabs();renderView()};
+    el.onclick=e=>{if(e.target===del)return;S.activeTab=tab.id;cv={pan:{x:0,y:0},zoom:1,drag:null,crz:null,connFrom:null,panning:false,ps:{x:0,y:0},po:{x:0,y:0}};document.getElementById('adminView').style.display='none';if(document.getElementById('iofView'))document.getElementById('iofView').style.display='none';if(document.getElementById('hoView'))document.getElementById('hoView').style.display='none';save();renderTabs();renderView()};
     leftArea.appendChild(el);
   });
   // Add Tab button (hidden for consulta)
@@ -1591,6 +1692,7 @@ function renderTabs(){
       document.getElementById('canvasView').style.display='none';
       document.getElementById('dashView').style.display='none';
       document.getElementById('adminView').style.display='none';
+      if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
       if(document.getElementById('agendaView')) document.getElementById('agendaView').style.display='none';
       document.getElementById('iofView').style.display='block';
       if(typeof iof_lazyInit==='function') iof_lazyInit();
@@ -1598,6 +1700,16 @@ function renderTabs(){
       renderTabs();
     };
     rightArea.appendChild(iofEl);
+  }
+  // Home Office tab - visible for all users
+  if(currentUser&&currentUser.role!=='consulta'){
+    const hoEl=document.createElement('div');
+    const hoActive=document.getElementById('hoView')&&document.getElementById('hoView').style.display!=='none';
+    hoEl.className='tab-ho'+(hoActive?' active':'');
+    const hoPendCnt=HO_REQUESTS.filter(r=>r.status==='pending').length;
+    hoEl.innerHTML='<span style="font-size:13px">🏠</span><span>Home Office</span>'+(currentUser.role==='admin'&&hoPendCnt>0?'<span class="ho-bell-badge">'+hoPendCnt+'</span>':'');
+    hoEl.onclick=()=>switchToHO();
+    rightArea.appendChild(hoEl);
   }
   // Admin tab - always last, only for admin role
   if(currentUser&&currentUser.role==='admin'){
@@ -2254,6 +2366,347 @@ function switchFromAdmin(){
 }
 window.switchToAdmin=switchToAdmin;
 window.switchFromAdmin=switchFromAdmin;
+
+// ─── HOME OFFICE SYSTEM ──────────────────────────────────────
+let HO_REQUESTS = [];
+let hoCalYear = new Date().getFullYear();
+let hoCalMonth = new Date().getMonth();
+
+function loadHoRequests(){
+  try{const d=localStorage.getItem('ctrl_ho_requests');if(d)HO_REQUESTS=JSON.parse(d);}catch(e){HO_REQUESTS=[]}
+}
+function saveHoRequests(){
+  try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){}
+  // Also save to Firebase if available
+  if(fbReady&&fbSet){
+    try{
+      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(({getFirestore,doc,setDoc})=>{
+        if(!fbRef||!fbRef.firestore&&!fbRef._firestore)return;
+        const fs=fbRef.firestore||fbRef._firestore;
+        setDoc(doc(fs,'controle','ho_requests'),{requests:HO_REQUESTS}).catch(()=>{});
+      }).catch(()=>{});
+    }catch(e){}
+  }
+}
+
+function switchToHO(){
+  document.getElementById('tableView').style.display='none';
+  document.getElementById('canvasView').style.display='none';
+  document.getElementById('dashView').style.display='none';
+  document.getElementById('agendaView').style.display='none';
+  document.getElementById('adminView').style.display='none';
+  if(document.getElementById('iofView')) document.getElementById('iofView').style.display='none';
+  document.getElementById('hoView').style.display='flex';
+  S.activeTab='';
+  renderTabs();
+  renderHoView();
+}
+window.switchToHO=switchToHO;
+
+function renderHoView(){
+  loadHoRequests();
+  const isAdmin = currentUser&&currentUser.role==='admin';
+  const isUser  = currentUser&&currentUser.role==='user';
+
+  // Set default date to today
+  const di = document.getElementById('hoReqDate');
+  if(di&&!di.value) di.valueAsDate=new Date();
+
+  // Show/hide request form
+  const reqSec = document.getElementById('hoRequestSection');
+  if(reqSec) reqSec.style.display=(isAdmin||isUser)?'block':'none';
+
+  // Admin sections
+  const adminSec = document.getElementById('hoAdminSection');
+  if(adminSec) adminSec.style.display=isAdmin?'block':'none';
+
+  renderHoKpis();
+  renderHoMyList();
+  if(isAdmin){
+    renderHoPending();
+    renderHoHistAll();
+    renderHoHistFiltered('approved');
+    renderHoHistFiltered('rejected');
+    renderHoCalendar();
+  }
+}
+
+function renderHoKpis(){
+  const row=document.getElementById('hoKpisRow');if(!row)return;
+  loadHoRequests();
+  const isAdmin=currentUser&&currentUser.role==='admin';
+  const myReqs=isAdmin?HO_REQUESTS:HO_REQUESTS.filter(r=>r.username===currentUser.username);
+  const pending=myReqs.filter(r=>r.status==='pending').length;
+  const approved=myReqs.filter(r=>r.status==='approved').length;
+  const rejected=myReqs.filter(r=>r.status==='rejected').length;
+  row.innerHTML=`
+    <div class="ho-kpi-card"><div class="ho-kpi-num">${myReqs.length}</div><div class="ho-kpi-lbl">${isAdmin?'Total geral':'Minhas solicitações'}</div></div>
+    <div class="ho-kpi-card"><div class="ho-kpi-num" style="color:#854d0e">${pending}</div><div class="ho-kpi-lbl">Pendentes</div></div>
+    <div class="ho-kpi-card"><div class="ho-kpi-num" style="color:#166534">${approved}</div><div class="ho-kpi-lbl">Aprovados</div></div>
+    <div class="ho-kpi-card"><div class="ho-kpi-num" style="color:#991b1b">${rejected}</div><div class="ho-kpi-lbl">Reprovados</div></div>
+  `;
+}
+
+function hoTypeLabel(t){
+  if(t==='dia_completo')return'Dia completo';
+  if(t==='meio_periodo_manha')return'Meio período – Manhã';
+  if(t==='meio_periodo_tarde')return'Meio período – Tarde';
+  return t;
+}
+function hoStatusBadge(s){
+  if(s==='pending')  return'<span class="ho-status-badge ho-status-pending">⏳ Pendente</span>';
+  if(s==='approved') return'<span class="ho-status-badge ho-status-approved">✅ Aprovado</span>';
+  if(s==='rejected') return'<span class="ho-status-badge ho-status-rejected">❌ Reprovado</span>';
+  return'';
+}
+function hoFormatDate(d){
+  if(!d)return'';
+  const [y,m,day]=d.split('-');
+  return`${day}/${m}/${y}`;
+}
+
+function renderHoMyList(){
+  const el=document.getElementById('hoMyList');if(!el)return;
+  loadHoRequests();
+  const mine=HO_REQUESTS.filter(r=>r.username===currentUser.username).sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt));
+  if(!mine.length){
+    el.innerHTML='<div class="ho-empty"><div class="ho-empty-icon">🏠</div><div>Nenhuma solicitação ainda.</div><div style="font-size:11px;color:var(--tx3)">Use o formulário acima para solicitar um dia de home office.</div></div>';
+    return;
+  }
+  el.innerHTML='';
+  mine.forEach(r=>{
+    const d=new Date(r.requestedAt);
+    const card=document.createElement('div');card.className='ho-card';
+    card.innerHTML=`
+      <div class="ho-card-icon" style="background:${r.status==='approved'?'#dcfce7':r.status==='rejected'?'#fee2e2':'#fef9c3'}">🏠</div>
+      <div class="ho-card-body">
+        <div class="ho-card-title">${hoFormatDate(r.date)} ${hoStatusBadge(r.status)}</div>
+        <div class="ho-card-meta">
+          <span>📋 ${hoTypeLabel(r.type)}</span>
+          <span>🕐 ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
+        </div>
+        ${r.obs?`<div class="ho-card-obs">💬 ${r.obs}</div>`:''}
+        ${r.adminNote?`<div class="ho-card-obs" style="color:${r.status==='rejected'?'var(--red)':'var(--green)'}">👤 Admin: ${r.adminNote}</div>`:''}
+      </div>
+      ${r.status==='pending'?`<div class="ho-card-actions"><button class="btn btn-d btn-sm" onclick="cancelHoRequest('${r.id}')">🗑 Cancelar</button></div>`:''}
+    `;
+    el.appendChild(card);
+  });
+}
+
+function renderHoPending(){
+  const el=document.getElementById('hoPendingList');if(!el)return;
+  loadHoRequests();
+  const pending=HO_REQUESTS.filter(r=>r.status==='pending').sort((a,b)=>a.requestedAt.localeCompare(b.requestedAt));
+  const countEl=document.getElementById('hoPendingCount');
+  if(countEl) countEl.textContent=pending.length?`${pending.length} aguardando`:'';
+  if(!pending.length){
+    el.innerHTML='<div class="ho-empty"><div class="ho-empty-icon">🎉</div><div>Nenhuma solicitação pendente!</div></div>';
+    return;
+  }
+  el.innerHTML='';
+  pending.forEach(r=>{
+    const d=new Date(r.requestedAt);
+    const card=document.createElement('div');card.className='ho-card';
+    const user=USERS[r.username]||{name:r.username};
+    const col=strToColor(r.username);
+    card.innerHTML=`
+      <div class="ho-user-avatar" style="background:${col};width:38px;height:38px;border-radius:9px;font-size:15px">${(user.name||r.username)[0].toUpperCase()}</div>
+      <div class="ho-card-body">
+        <div class="ho-card-title">
+          ${user.name||r.username}
+          <span style="font-size:11px;color:var(--tx3)">@${r.username}</span>
+        </div>
+        <div class="ho-card-meta">
+          <span>📅 ${hoFormatDate(r.date)}</span>
+          <span>📋 ${hoTypeLabel(r.type)}</span>
+          <span>🕐 Solicitado em ${d.toLocaleDateString('pt-BR')}</span>
+        </div>
+        ${r.obs?`<div class="ho-card-obs">💬 ${r.obs}</div>`:''}
+        <div style="margin-top:8px">
+          <input type="text" placeholder="Nota (opcional)..." id="hoNote_${r.id}" style="border:1px solid var(--bdr);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit;background:var(--sur2);color:var(--tx);outline:none;width:100%">
+        </div>
+      </div>
+      <div class="ho-card-actions">
+        <button class="btn btn-g btn-sm" onclick="approveHoRequest('${r.id}')">✅ Aprovar</button>
+        <button class="btn btn-d btn-sm" onclick="rejectHoRequest('${r.id}')">❌ Reprovar</button>
+      </div>
+    `;
+    el.appendChild(card);
+  });
+}
+
+function renderHoHistAll(){
+  const el=document.getElementById('hoHistAll');if(!el)return;
+  renderHoHistTo(el, HO_REQUESTS.slice().sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt)));
+}
+function renderHoHistFiltered(status){
+  const el=document.getElementById(status==='approved'?'hoHistApproved':'hoHistRejected');if(!el)return;
+  renderHoHistTo(el, HO_REQUESTS.filter(r=>r.status===status).sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt)));
+}
+function renderHoHistTo(el, list){
+  if(!list.length){el.innerHTML='<div class="ho-empty"><div class="ho-empty-icon">📋</div><div>Nenhum registro.</div></div>';return;}
+  el.innerHTML='';
+  list.forEach(r=>{
+    const user=USERS[r.username]||{name:r.username};
+    const col=strToColor(r.username);
+    const d=new Date(r.requestedAt);
+    const card=document.createElement('div');card.className='ho-card';
+    card.innerHTML=`
+      <div class="ho-user-avatar" style="background:${col};width:38px;height:38px;border-radius:9px;font-size:15px">${(user.name||r.username)[0].toUpperCase()}</div>
+      <div class="ho-card-body">
+        <div class="ho-card-title">${user.name||r.username} <span style="font-size:11px;color:var(--tx3)">@${r.username}</span> ${hoStatusBadge(r.status)}</div>
+        <div class="ho-card-meta">
+          <span>📅 ${hoFormatDate(r.date)}</span>
+          <span>📋 ${hoTypeLabel(r.type)}</span>
+          <span>🕐 ${d.toLocaleDateString('pt-BR')}</span>
+        </div>
+        ${r.obs?`<div class="ho-card-obs">💬 ${r.obs}</div>`:''}
+        ${r.adminNote?`<div class="ho-card-obs" style="color:${r.status==='rejected'?'var(--red)':'var(--green)'}">👤 Admin: ${r.adminNote}</div>`:''}
+      </div>
+    `;
+    el.appendChild(card);
+  });
+}
+
+function renderHoCalendar(){
+  const title=document.getElementById('hoCalTitle');
+  const grid=document.getElementById('hoCalGrid');
+  const legend=document.getElementById('hoCalLegend');
+  if(!title||!grid)return;
+  const months=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  title.textContent=`${months[hoCalMonth]} ${hoCalYear}`;
+  const approved=HO_REQUESTS.filter(r=>r.status==='approved');
+  const hoByDate={};
+  approved.forEach(r=>{
+    if(!hoByDate[r.date])hoByDate[r.date]=[];
+    hoByDate[r.date].push(r);
+  });
+  const dows=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  grid.innerHTML='';
+  dows.forEach(d=>{
+    const h=document.createElement('div');
+    h.style.cssText='text-align:center;font-size:10px;font-weight:600;color:var(--tx3);padding:4px 0;text-transform:uppercase';
+    h.textContent=d;grid.appendChild(h);
+  });
+  const firstDay=new Date(hoCalYear,hoCalMonth,1).getDay();
+  const daysInMonth=new Date(hoCalYear,hoCalMonth+1,0).getDate();
+  for(let i=0;i<firstDay;i++){const e=document.createElement('div');grid.appendChild(e);}
+  const today=new Date().toISOString().slice(0,10);
+  for(let d=1;d<=daysInMonth;d++){
+    const dateStr=`${hoCalYear}-${String(hoCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayRequests=hoByDate[dateStr]||[];
+    const el=document.createElement('div');
+    el.className='ho-cal-day'+(dayRequests.length?' ho':'');
+    el.style.cssText='min-width:0;height:42px;flex-direction:column;gap:1px;position:relative;cursor:'+(dayRequests.length?'pointer':'default');
+    el.style.display='flex';el.style.alignItems='center';el.style.justifyContent='center';el.style.borderRadius='7px';
+    if(dateStr===today){el.style.outline='2px solid #1b5e20';el.style.outlineOffset='1px';}
+    el.innerHTML=`<span style="font-size:12px;font-weight:600">${d}</span>${dayRequests.length?`<span style="font-size:9px;font-weight:700">${dayRequests.length}👤</span>`:''}`;
+    if(dayRequests.length){
+      el.title=dayRequests.map(r=>(USERS[r.username]||{name:r.username}).name||r.username).join(', ');
+    }
+    grid.appendChild(el);
+  }
+  // Legend: unique users with HO this month
+  const usersThisMonth=[...new Set(approved.filter(r=>r.date&&r.date.startsWith(`${hoCalYear}-${String(hoCalMonth+1).padStart(2,'0')}`)).map(r=>r.username))];
+  legend.innerHTML='<span style="font-size:11px;font-weight:600;color:var(--tx2)">Este mês: </span>';
+  if(!usersThisMonth.length){legend.innerHTML+='<span style="font-size:11px;color:var(--tx3)">nenhum HO aprovado</span>';return;}
+  usersThisMonth.forEach(u=>{
+    const user=USERS[u]||{name:u};
+    const col=strToColor(u);
+    const cnt=approved.filter(r=>r.username===u&&r.date&&r.date.startsWith(`${hoCalYear}-${String(hoCalMonth+1).padStart(2,'0')}`)).length;
+    const chip=document.createElement('div');
+    chip.style.cssText=`display:inline-flex;align-items:center;gap:5px;background:var(--sur2);border:1px solid var(--bdr);border-radius:20px;padding:3px 9px;font-size:11px;`;
+    chip.innerHTML=`<div style="width:10px;height:10px;border-radius:50%;background:${col}"></div>${user.name||u} <strong>(${cnt})</strong>`;
+    legend.appendChild(chip);
+  });
+}
+
+window.hoCalNav=function(dir){
+  hoCalMonth+=dir;
+  if(hoCalMonth>11){hoCalMonth=0;hoCalYear++;}
+  if(hoCalMonth<0){hoCalMonth=11;hoCalYear--;}
+  renderHoCalendar();
+};
+
+window.hoSwitchTab=function(tab){
+  ['all','approved','rejected','calendar'].forEach(t=>{
+    const btn=document.getElementById('hoTab'+t[0].toUpperCase()+t.slice(1));
+    const cnt=document.getElementById('hoHist'+t[0].toUpperCase()+t.slice(1));
+    if(btn) btn.classList.toggle('active',t===tab);
+    if(cnt) cnt.classList.toggle('active',t===tab);
+  });
+  if(tab==='calendar') renderHoCalendar();
+};
+
+window.submitHoRequest=function(){
+  const date=document.getElementById('hoReqDate').value;
+  const type=document.getElementById('hoReqType').value;
+  const obs=document.getElementById('hoReqObs').value.trim();
+  if(!date){toast('⚠ Selecione uma data');return;}
+  loadHoRequests();
+  // Check duplicate
+  const dup=HO_REQUESTS.find(r=>r.username===currentUser.username&&r.date===date&&r.status!=='rejected');
+  if(dup){toast('⚠ Você já tem uma solicitação para esta data');return;}
+  const req={
+    id:'ho_'+Date.now(),
+    username:currentUser.username,
+    name:currentUser.name||currentUser.username,
+    date,type,obs,
+    status:'pending',
+    requestedAt:new Date().toISOString(),
+    adminNote:''
+  };
+  HO_REQUESTS.push(req);
+  saveHoRequests();
+  document.getElementById('hoReqDate').value='';
+  document.getElementById('hoReqObs').value='';
+  toast('✅ Solicitação enviada! Aguardando aprovação.');
+  renderHoView();
+  renderTabs();
+};
+
+window.cancelHoRequest=function(id){
+  if(!confirm('Cancelar esta solicitação?'))return;
+  loadHoRequests();
+  HO_REQUESTS=HO_REQUESTS.filter(r=>r.id!==id);
+  saveHoRequests();
+  toast('Solicitação cancelada.');
+  renderHoView();
+  renderTabs();
+};
+
+window.approveHoRequest=function(id){
+  loadHoRequests();
+  const r=HO_REQUESTS.find(x=>x.id===id);if(!r)return;
+  const noteEl=document.getElementById('hoNote_'+id);
+  r.status='approved';
+  r.adminNote=(noteEl?noteEl.value.trim():'');
+  r.approvedAt=new Date().toISOString();
+  r.approvedBy=currentUser.username;
+  saveHoRequests();
+  toast('✅ Home office aprovado!');
+  renderHoView();
+  renderTabs();
+};
+
+window.rejectHoRequest=function(id){
+  loadHoRequests();
+  const r=HO_REQUESTS.find(x=>x.id===id);if(!r)return;
+  const noteEl=document.getElementById('hoNote_'+id);
+  r.status='rejected';
+  r.adminNote=(noteEl?noteEl.value.trim():'');
+  r.rejectedAt=new Date().toISOString();
+  r.rejectedBy=currentUser.username;
+  saveHoRequests();
+  toast('❌ Solicitação reprovada.');
+  renderHoView();
+  renderTabs();
+};
+
+// Load HO requests on startup
+loadHoRequests();
+// ─────────────────────────────────────────────────────────────
 async function checkAdminPass(){
   const val = document.getElementById('adminPassInp').value;
   const valHash = await hashPass(val);
@@ -2827,6 +3280,7 @@ function showPendingScreen(){
   document.getElementById('agendaView').style.display='none';
   document.getElementById('dashView').style.display='none';
   document.getElementById('adminView').style.display='none';
+  if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
   document.getElementById('pendingScreen').style.display='flex';
   const u=currentUser;
   document.getElementById('pendingUserInfo').innerHTML=
