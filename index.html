@@ -2641,20 +2641,34 @@ function loadHoRequests(){
 }
 function saveHoRequests(){
   try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){}
-  hoSyncFirebase();
+  hoSyncRequests(); // salva APENAS requests, não toca nos collaborators
 }
 function loadHoCollabs(){
   try{const d=localStorage.getItem('ctrl_ho_collabs');if(d)HO_COLLABORATORS=JSON.parse(d);}catch(e){HO_COLLABORATORS=[]}
 }
 function saveHoCollabs(){
   try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){}
-  hoSyncFirebase();
+  hoSyncCollabs(); // salva APENAS collaborators, não toca nas requests
 }
-function hoSyncFirebase(){
+
+// Salva somente requests no Firebase (merge: true para não apagar collaborators)
+function hoSyncRequests(){
   try{
     if(!fbReady||!fbDb||!fbDocFn||!fbSet)return;
-    fbSet(fbDocFn(fbDb,'controle','ho_data'),{requests:HO_REQUESTS,collaborators:HO_COLLABORATORS}).catch(e=>console.warn('hoSync err',e));
-  }catch(e){console.warn('hoSyncFirebase err',e);}
+    fbSet(fbDocFn(fbDb,'controle','ho_data'),{requests:HO_REQUESTS},{merge:true}).catch(e=>console.warn('hoSyncReq err',e));
+  }catch(e){console.warn('hoSyncRequests err',e);}
+}
+// Salva somente collaborators no Firebase (merge: true para não apagar requests)
+function hoSyncCollabs(){
+  try{
+    if(!fbReady||!fbDb||!fbDocFn||!fbSet)return;
+    fbSet(fbDocFn(fbDb,'controle','ho_data'),{collaborators:HO_COLLABORATORS},{merge:true}).catch(e=>console.warn('hoSyncCol err',e));
+  }catch(e){console.warn('hoSyncCollabs err',e);}
+}
+// Mantido para compatibilidade (chama os dois)
+function hoSyncFirebase(){
+  hoSyncRequests();
+  hoSyncCollabs();
 }
 
 // Carrega dados de HO do Firebase e atualiza a tela para todos os usuários
@@ -2917,6 +2931,7 @@ window.hoWeekNav=function(dir){
 // Admin: click a cell to toggle Home ↔ Escritório directly on the schedule
 function hoAdminToggleCell(collab, iso, uname){
   loadHoRequests();
+  loadHoCollabs(); // garante que HO_COLLABORATORS está atualizado antes de sincronizar
   if(uname){
     // Find existing approved request for this user+date
     const idx=HO_REQUESTS.findIndex(r=>r.username===uname&&r.date===iso&&r.status==='approved');
