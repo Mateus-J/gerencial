@@ -599,6 +599,70 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 
 /* Admin notification bell */
 .admin-bell{position:relative;display:inline-flex;align-items:center}
+
+/* ── HEADER USER INFO ────────────────────────────────────────── */
+.login-user-info{display:flex;align-items:center;gap:8px;margin-left:10px;padding:3px 10px 3px 6px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:20px}
+.login-avatar{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
+.login-user-details{display:flex;flex-direction:column;gap:0}
+.login-user-name{font-size:12px;font-weight:600;color:#fff;line-height:1.2}
+.login-user-role{font-size:10px;color:rgba(255,255,255,.65);line-height:1.2}
+.login-logout{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:2px 9px;font-size:11px;font-weight:600;color:#fff;cursor:pointer;font-family:inherit;transition:background .12s}
+.login-logout:hover{background:rgba(255,255,255,.28)}
+
+/* ── ADMIN PANEL ─────────────────────────────────────────────── */
+.admin-lock{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:40px 20px;gap:10px;min-height:300px}
+.admin-lock .lock-icon{font-size:40px;margin-bottom:4px}
+.admin-lock h3{font-size:16px;font-weight:700;color:var(--tx);margin:0}
+.admin-lock p{font-size:12px;color:var(--tx2);text-align:center;max-width:320px;margin:0}
+.admin-lock input{border:1.5px solid var(--bdr);border-radius:9px;padding:9px 14px;font-size:14px;font-family:inherit;outline:none;text-align:center;letter-spacing:.15em;background:var(--sur2);color:var(--tx);width:220px;margin-top:4px}
+.admin-lock input:focus{border-color:#1b5e20;box-shadow:0 0 0 3px rgba(27,94,32,.15)}
+.admin-lock-err{font-size:12px;color:var(--red);min-height:16px}
+.admin-view{padding:20px;display:flex;flex-direction:column;gap:16px;max-width:900px;margin:0 auto;width:100%}
+.admin-section{background:var(--sur);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;box-shadow:var(--sh)}
+.admin-section-hdr{background:var(--sur2);border-bottom:1px solid var(--bdr);padding:10px 16px;display:flex;align-items:center;gap:8px}
+.admin-section-hdr h3{font-size:13px;font-weight:700;color:var(--tx);margin:0}
+.profile-card{padding:14px 16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--bdr)}
+.profile-avatar-lg{width:44px;height:44px;border-radius:50%;background:#1b5e20;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0}
+.profile-avatar{width:44px;height:44px;border-radius:50%;background:#1b5e20;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0}
+.profile-info{flex:1}
+.profile-name{font-size:14px;font-weight:700;color:var(--tx)}
+.profile-sub{font-size:11px;color:var(--tx2);margin-top:2px}
+.profile-meta{font-size:11px;color:var(--tx3);margin-top:3px}
+.role-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em}
+.role-admin{background:#dcfce7;color:#166534}
+.role-user{background:#dbeafe;color:#1e40af}
+.role-consulta{background:#f3f4f6;color:#4b5563}
+[data-theme=dark] .role-admin{background:#0a1f0a;color:#4caf50}
+[data-theme=dark] .role-user{background:#0a1a2d;color:#4d9ef7}
+[data-theme=dark] .role-consulta{background:var(--sur3);color:var(--tx2)}
+.profile-info{flex:1}
+.profile-name{font-size:14px;font-weight:700;color:var(--tx)}
+.profile-sub{font-size:11px;color:var(--tx2);margin-top:2px}
+.pass-change-row{padding:12px 16px;display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.pass-change-row .field{display:flex;flex-direction:column;gap:4px}
+.pass-change-row .field label{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
+.admin-inp{border:1px solid var(--bdr);border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;background:var(--sur2);color:var(--tx);outline:none;min-width:130px}
+.admin-inp:focus{border-color:#1b5e20;box-shadow:0 0 0 2px rgba(27,94,32,.1)}
+.admin-table{width:100%;border-collapse:collapse;font-size:12px}
+.admin-table th{padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;background:var(--sur2);border-bottom:1px solid var(--bdr);border-right:1px solid var(--bdr)}
+.admin-table th:last-child{border-right:none}
+.admin-table td{padding:7px 10px;border-bottom:1px solid var(--bdr);border-right:1px solid var(--bdr);color:var(--tx);vertical-align:middle}
+.admin-table td:last-child{border-right:none}
+.admin-table tr:last-child td{border-bottom:none}
+.admin-table tr:hover td{background:var(--sur2)}
+.admin-add-row{padding:12px 16px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;background:var(--sur2);border-top:1px solid var(--bdr)}
+.admin-add-row .field{display:flex;flex-direction:column;gap:4px}
+.admin-add-row .field label{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
+.perm-row{display:flex;align-items:center;padding:9px 14px;border-bottom:1px solid var(--bdr);gap:8px}
+.perm-row:last-child{border-bottom:none}
+.perm-label{font-size:12px;font-weight:600;color:var(--tx);width:160px;flex-shrink:0}
+.perm-desc{flex:1;font-size:11px;color:var(--tx2)}
+.perm-role{display:flex;gap:0;flex-shrink:0}
+.perm-role span{width:70px;text-align:center;font-size:12px}
+.perm-check{width:16px;height:16px;accent-color:#1b5e20;cursor:pointer}
+[data-theme=dark] .admin-section-hdr{background:var(--sur2)}
+
+
 .admin-bell-badge{position:absolute;top:-4px;right:-4px;background:#c62828;color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #1b5e20}
 .notif-bell-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:7px;padding:5px 10px;cursor:pointer;font-size:14px;color:#fff;display:flex;align-items:center;gap:5px;font-family:inherit;font-size:12px;font-weight:600}
 .notif-bell-btn:hover{background:rgba(255,255,255,.25)}
@@ -731,6 +795,66 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 [data-theme=dark] .tab-ho{color:#4d9ef7}
 [data-theme=dark] .tab-ho.active{background:var(--sur);color:#6ab0ff}
 .ho-bell-badge{background:#c62828;color:#fff;border-radius:9px;padding:0 5px;font-size:10px;font-weight:700;margin-left:2px}
+
+/* ── HO WEEKLY SCHEDULE ──────────────────────────────────────── */
+.ho-sched-wrap{background:var(--sur);border:1px solid var(--bdr);border-radius:14px;overflow:hidden;box-shadow:var(--sh)}
+.ho-sched-hdr{background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 100%);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ho-sched-hdr-left h2{font-size:15px;font-weight:700;color:#fff;margin:0}
+.ho-sched-hdr-left p{font-size:11px;color:rgba(255,255,255,.7);margin:3px 0 0}
+.ho-sched-hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ho-week-nav{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:3px 6px}
+.ho-week-nav button{background:none;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:3px 6px;border-radius:6px;font-family:inherit;transition:background .12s}
+.ho-week-nav button:hover{background:rgba(255,255,255,.22)}
+.ho-week-label{font-size:12px;font-weight:600;color:#fff;white-space:nowrap;min-width:150px;text-align:center}
+.ho-sched-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;transition:background .15s}
+.ho-sched-btn:hover{background:rgba(255,255,255,.28)}
+.ho-sched-btn.primary{background:#fff;color:#1b5e20;border-color:#fff}
+.ho-sched-btn.primary:hover{background:#f0fdf4}
+.ho-sched-table-wrap{overflow-x:auto}
+.ho-sched-table{width:100%;border-collapse:collapse;min-width:580px}
+.ho-sched-table thead tr{background:var(--sur2);border-bottom:2px solid var(--bdr)}
+.ho-sched-table thead th{padding:10px 8px;font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;text-align:center;border-right:1px solid var(--bdr)}
+.ho-sched-table thead th:first-child{text-align:left;min-width:160px;padding-left:16px}
+.ho-sched-table thead th:last-child{border-right:none}
+.ho-sched-table thead th.ho-today-col{background:rgba(27,94,32,.06)}
+[data-theme=dark] .ho-sched-table thead th.ho-today-col{background:rgba(76,175,80,.07)}
+.ho-sched-table thead th .ho-col-day{font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:.06em;text-transform:uppercase}
+.ho-sched-table thead th .ho-col-num{font-size:18px;font-weight:800;color:var(--tx);display:block;margin-top:2px;line-height:1}
+.ho-sched-table thead th.ho-today-col .ho-col-day{color:#1b5e20}
+.ho-sched-table thead th.ho-today-col .ho-col-num{color:#1b5e20}
+[data-theme=dark] .ho-sched-table thead th.ho-today-col .ho-col-day,[data-theme=dark] .ho-sched-table thead th.ho-today-col .ho-col-num{color:#4caf50}
+.ho-sched-table tbody tr{border-bottom:1px solid var(--bdr);transition:background .1s}
+.ho-sched-table tbody tr:last-child{border-bottom:none}
+.ho-sched-table tbody tr:hover{background:var(--sur2)}
+.ho-sched-table tbody td{padding:8px 8px;text-align:center;border-right:1px solid var(--bdr);vertical-align:middle}
+.ho-sched-table tbody td:first-child{text-align:left;padding:10px 16px;border-right:1px solid var(--bdr)}
+.ho-sched-table tbody td:last-child{border-right:none}
+.ho-sched-table tbody td.ho-today-col{background:rgba(27,94,32,.04)}
+[data-theme=dark] .ho-sched-table tbody td.ho-today-col{background:rgba(76,175,80,.05)}
+/* Admin clickable cells */
+.ho-sched-table tbody td[style*="pointer"]:hover .ho-pill{filter:brightness(.92);transform:scale(.97)}
+.ho-collab-info{display:flex;align-items:center;gap:10px}
+.ho-collab-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;letter-spacing:0}
+.ho-collab-name{font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap}
+.ho-collab-del{background:none;border:none;cursor:pointer;color:var(--tx3);font-size:12px;padding:2px 4px;border-radius:4px;font-family:inherit;opacity:0;transition:opacity .15s;margin-left:auto;flex-shrink:0}
+tr:hover .ho-collab-del{opacity:1}
+.ho-collab-del:hover{color:var(--red);background:var(--redl)}
+.ho-pill{display:inline-flex;align-items:center;justify-content:center;gap:4px;border-radius:20px;padding:5px 12px;font-size:11px;font-weight:600;cursor:default;white-space:nowrap;min-width:96px;transition:all .18s;border:none;font-family:inherit}
+.ho-pill.home{background:#dcfce7;color:#166534;border:1.5px solid #86efac}
+.ho-pill.office{background:var(--sur2);color:var(--tx2);border:1.5px solid var(--bdr)}
+.ho-pill.pending{background:#fef9c3;color:#854d0e;border:1.5px solid #fde047}
+.ho-pill.none{background:transparent;color:var(--tx3);border:1.5px dashed var(--bdr);font-size:10px}
+[data-theme=dark] .ho-pill.home{background:#0a2e12;color:#4caf50;border-color:#2e7d32}
+[data-theme=dark] .ho-pill.office{background:var(--sur2);color:var(--tx2);border-color:var(--bdr)}
+[data-theme=dark] .ho-pill.pending{background:#2a2000;color:#f59e0b;border-color:#a16207}
+/* Add collaborator modal */
+.ho-add-modal{background:var(--sur);border-radius:14px;padding:24px;min-width:340px;max-width:420px;box-shadow:0 16px 48px rgba(0,0,0,.22)}
+.ho-add-modal h3{font-size:14px;font-weight:700;color:var(--tx);margin-bottom:6px}
+.ho-add-modal .sub{font-size:12px;color:var(--tx2);margin-bottom:16px}
+.ho-add-field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.ho-add-field label{font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em}
+.ho-add-field input,.ho-add-field select{border:1px solid var(--bdr);border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit;background:var(--sur2);color:var(--tx);outline:none}
+.ho-add-field input:focus,.ho-add-field select:focus{border-color:#1b5e20;box-shadow:0 0 0 2px rgba(27,94,32,.12)}
 
 /* ── IOF Dashboard ───────────────────────────────────────────── */
 .iof-wrap { font-family: 'Sora', sans-serif; background: #0f1117; color: #e8ecf4; min-height: calc(100vh - 50px); }
@@ -1083,9 +1207,38 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 
 <!-- HOME OFFICE VIEW -->
 <div id="hoView" class="ho-view">
+
+  <!-- KPIs -->
   <div id="hoKpisRow" class="ho-kpi-row"></div>
+
+  <!-- ESCALA SEMANAL (todos veem) -->
+  <div class="ho-sched-wrap">
+    <div class="ho-sched-hdr">
+      <div class="ho-sched-hdr-left">
+        <h2>🏠 Escala de Home Office</h2>
+        <p id="hoSchedSubtitle">Veja quem está em home office esta semana</p>
+      </div>
+      <div class="ho-sched-hdr-right">
+        <div class="ho-week-nav">
+          <button onclick="hoWeekNav(-1)" title="Semana anterior">&#8249;</button>
+          <span class="ho-week-label" id="hoWeekLabel"></span>
+          <button onclick="hoWeekNav(1)" title="Próxima semana">&#8250;</button>
+        </div>
+        <button class="ho-sched-btn" onclick="hoWeekNav(0)" title="Voltar para hoje">Hoje</button>
+        <button class="ho-sched-btn primary" id="hoAddCollabBtn" onclick="showAddCollabModal()" style="display:none">+ Adicionar</button>
+      </div>
+    </div>
+    <div class="ho-sched-table-wrap">
+      <table class="ho-sched-table" id="hoSchedTable">
+        <thead id="hoSchedThead"></thead>
+        <tbody id="hoSchedTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Solicitar HO -->
   <div class="ho-section" id="hoRequestSection">
-    <div class="ho-section-hdr"><h3>🏠 Solicitar Home Office</h3></div>
+    <div class="ho-section-hdr"><h3>📤 Solicitar Home Office</h3></div>
     <div class="ho-section-body">
       <div class="ho-form-grid">
         <div class="ho-field"><label>Data</label><input type="date" id="hoReqDate"></div>
@@ -1095,10 +1248,14 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
       <button class="btn btn-p" onclick="submitHoRequest()">📤 Enviar solicitação</button>
     </div>
   </div>
+
+  <!-- Minhas solicitações -->
   <div class="ho-section" id="hoMySection">
     <div class="ho-section-hdr"><h3>📋 Minhas Solicitações</h3></div>
     <div id="hoMyList" class="ho-section-body"></div>
   </div>
+
+  <!-- ADMIN: pendentes + histórico -->
   <div id="hoAdminSection" style="display:none">
     <div class="ho-section" style="margin-bottom:14px">
       <div class="ho-section-hdr"><h3>⏳ Solicitações Pendentes</h3><span id="hoPendingCount" style="font-size:11px;color:rgba(255,255,255,.75)"></span></div>
@@ -1111,15 +1268,33 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
           <div class="ho-tab active" onclick="hoSwitchTab('all')" id="hoTabAll" style="padding:9px 12px;font-size:11px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap">Todos</div>
           <div class="ho-tab" onclick="hoSwitchTab('approved')" id="hoTabApproved" style="padding:9px 12px;font-size:11px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap">✅ Aprovados</div>
           <div class="ho-tab" onclick="hoSwitchTab('rejected')" id="hoTabRejected" style="padding:9px 12px;font-size:11px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap">❌ Reprovados</div>
-          <div class="ho-tab" onclick="hoSwitchTab('calendar')" id="hoTabCalendar" style="padding:9px 12px;font-size:11px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap">📅 Calendário</div>
         </div>
       </div>
       <div class="ho-section-body">
         <div class="ho-tab-content active" id="hoHistAll"></div>
         <div class="ho-tab-content" id="hoHistApproved"></div>
         <div class="ho-tab-content" id="hoHistRejected"></div>
-        <div class="ho-tab-content" id="hoHistCalendar"><div><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><button class="btn btn-sm" onclick="hoCalNav(-1)">&#8249;</button><strong id="hoCalTitle" style="font-size:13px;color:var(--tx)"></strong><button class="btn btn-sm" onclick="hoCalNav(1)">&#8250;</button></div><div id="hoCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px"></div><div id="hoCalLegend" style="display:flex;gap:10px;flex-wrap:wrap"></div></div></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD COLLABORATOR MODAL -->
+<div id="hoAddCollabMov" class="movl" style="display:none">
+  <div class="ho-add-modal">
+    <h3>👤 Adicionar Colaborador</h3>
+    <p class="sub">O colaborador aparecerá na escala semanal de HO.</p>
+    <div class="ho-add-field">
+      <label>Nome completo</label>
+      <input type="text" id="hoCollabName" placeholder="Ex: Ana Silva" onkeydown="if(event.key==='Enter')document.getElementById('hoCollabRole').focus()">
+    </div>
+    <div class="ho-add-field">
+      <label>Cargo / Equipe (opcional)</label>
+      <input type="text" id="hoCollabRole" placeholder="Ex: Desenvolvimento" onkeydown="if(event.key==='Enter')confirmAddCollab()">
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="document.getElementById('hoAddCollabMov').style.display='none'">Cancelar</button>
+      <button class="btn btn-p" onclick="confirmAddCollab()">✅ Adicionar</button>
     </div>
   </div>
 </div>
@@ -1581,7 +1756,7 @@ function start(){
   loadAgenda();
   loadPending();
   loadHoRequests();
-  migratePasswords(); // hash any plain-text passwords
+  loadHoCollabs();
   // Load localStorage immediately
   const local=lsLoad();
   if(!migrate(local)){
@@ -2369,33 +2544,62 @@ window.switchFromAdmin=switchFromAdmin;
 
 // ─── HOME OFFICE SYSTEM ──────────────────────────────────────
 let HO_REQUESTS = [];
-let hoCalYear = new Date().getFullYear();
-let hoCalMonth = new Date().getMonth();
+let HO_COLLABORATORS = []; // {id, name, role, color}
+let hoWeekOffset = 0; // 0 = current week
 
 function loadHoRequests(){
   try{const d=localStorage.getItem('ctrl_ho_requests');if(d)HO_REQUESTS=JSON.parse(d);}catch(e){HO_REQUESTS=[]}
 }
 function saveHoRequests(){
   try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){}
-  // Also save to Firebase if available
-  if(fbReady&&fbSet){
-    try{
-      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(({getFirestore,doc,setDoc})=>{
-        if(!fbRef||!fbRef.firestore&&!fbRef._firestore)return;
-        const fs=fbRef.firestore||fbRef._firestore;
-        setDoc(doc(fs,'controle','ho_requests'),{requests:HO_REQUESTS}).catch(()=>{});
-      }).catch(()=>{});
-    }catch(e){}
-  }
+  hoSyncFirebase();
+}
+function loadHoCollabs(){
+  try{const d=localStorage.getItem('ctrl_ho_collabs');if(d)HO_COLLABORATORS=JSON.parse(d);}catch(e){HO_COLLABORATORS=[]}
+}
+function saveHoCollabs(){
+  try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){}
+  hoSyncFirebase();
+}
+function hoSyncFirebase(){
+  if(!fbReady||!fbSet||!fbRef)return;
+  try{
+    const fs=fbRef.firestore||fbRef._firestore;
+    if(!fs)return;
+    import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(({doc,setDoc})=>{
+      setDoc(doc(fs,'controle','ho_data'),{requests:HO_REQUESTS,collaborators:HO_COLLABORATORS}).catch(()=>{});
+    }).catch(()=>{});
+  }catch(e){}
 }
 
+// ── WEEK HELPERS ──────────────────────────────────────────────
+function getWeekDates(offset){
+  const now=new Date();
+  const day=now.getDay(); // 0=Sun
+  const monday=new Date(now);
+  monday.setDate(now.getDate()-((day===0?7:day)-1)+(offset*7));
+  monday.setHours(0,0,0,0);
+  const days=[];
+  for(let i=0;i<5;i++){
+    const d=new Date(monday);d.setDate(monday.getDate()+i);
+    days.push(d);
+  }
+  return days;
+}
+function toISO(d){return d.toISOString().slice(0,10);}
+function ptShortDate(d){
+  return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+}
+const DOWS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+// ── RENDER HO VIEW ────────────────────────────────────────────
 function switchToHO(){
   document.getElementById('tableView').style.display='none';
   document.getElementById('canvasView').style.display='none';
   document.getElementById('dashView').style.display='none';
   document.getElementById('agendaView').style.display='none';
   document.getElementById('adminView').style.display='none';
-  if(document.getElementById('iofView')) document.getElementById('iofView').style.display='none';
+  if(document.getElementById('iofView'))document.getElementById('iofView').style.display='none';
   document.getElementById('hoView').style.display='flex';
   S.activeTab='';
   renderTabs();
@@ -2405,53 +2609,249 @@ window.switchToHO=switchToHO;
 
 function renderHoView(){
   loadHoRequests();
-  const isAdmin = currentUser&&currentUser.role==='admin';
-  const isUser  = currentUser&&currentUser.role==='user';
-
-  // Set default date to today
-  const di = document.getElementById('hoReqDate');
-  if(di&&!di.value) di.valueAsDate=new Date();
-
-  // Show/hide request form
-  const reqSec = document.getElementById('hoRequestSection');
-  if(reqSec) reqSec.style.display=(isAdmin||isUser)?'block':'none';
-
-  // Admin sections
-  const adminSec = document.getElementById('hoAdminSection');
-  if(adminSec) adminSec.style.display=isAdmin?'block':'none';
+  loadHoCollabs();
+  const isAdmin=currentUser&&currentUser.role==='admin';
+  const isUser=currentUser&&currentUser.role==='user';
+  // Show/hide request form & admin section
+  const reqSec=document.getElementById('hoRequestSection');
+  if(reqSec)reqSec.style.display=(isAdmin||isUser)?'block':'none';
+  const adminSec=document.getElementById('hoAdminSection');
+  if(adminSec)adminSec.style.display=isAdmin?'block':'none';
+  // Show add collab btn only for admin
+  const addBtn=document.getElementById('hoAddCollabBtn');
+  if(addBtn)addBtn.style.display=isAdmin?'inline-flex':'none';
+  // Default date
+  const di=document.getElementById('hoReqDate');
+  if(di&&!di.value)di.valueAsDate=new Date();
 
   renderHoKpis();
+  renderHoSchedule();
   renderHoMyList();
-  if(isAdmin){
-    renderHoPending();
-    renderHoHistAll();
-    renderHoHistFiltered('approved');
-    renderHoHistFiltered('rejected');
-    renderHoCalendar();
-  }
+  if(isAdmin){renderHoPending();renderHoHistAll();renderHoHistFiltered('approved');renderHoHistFiltered('rejected');}
 }
 
+// ── KPIs ──────────────────────────────────────────────────────
 function renderHoKpis(){
   const row=document.getElementById('hoKpisRow');if(!row)return;
-  loadHoRequests();
   const isAdmin=currentUser&&currentUser.role==='admin';
-  const myReqs=isAdmin?HO_REQUESTS:HO_REQUESTS.filter(r=>r.username===currentUser.username);
-  const pending=myReqs.filter(r=>r.status==='pending').length;
-  const approved=myReqs.filter(r=>r.status==='approved').length;
-  const rejected=myReqs.filter(r=>r.status==='rejected').length;
+  const mine=isAdmin?HO_REQUESTS:HO_REQUESTS.filter(r=>r.username===currentUser.username);
+  const pending=mine.filter(r=>r.status==='pending').length;
+  const approved=mine.filter(r=>r.status==='approved').length;
+  const rejected=mine.filter(r=>r.status==='rejected').length;
+  // this week approvals
+  const days=getWeekDates(0);
+  const weekDates=new Set(days.map(toISO));
+  const thisWeek=HO_REQUESTS.filter(r=>r.status==='approved'&&weekDates.has(r.date)).length;
   row.innerHTML=`
-    <div class="ho-kpi-card"><div class="ho-kpi-num">${myReqs.length}</div><div class="ho-kpi-lbl">${isAdmin?'Total geral':'Minhas solicitações'}</div></div>
+    <div class="ho-kpi-card"><div class="ho-kpi-num">${isAdmin?HO_REQUESTS.length:mine.length}</div><div class="ho-kpi-lbl">${isAdmin?'Total geral':'Minhas solicitações'}</div></div>
+    <div class="ho-kpi-card"><div class="ho-kpi-num" style="color:#166534">${thisWeek}</div><div class="ho-kpi-lbl">HO esta semana</div></div>
     <div class="ho-kpi-card"><div class="ho-kpi-num" style="color:#854d0e">${pending}</div><div class="ho-kpi-lbl">Pendentes</div></div>
     <div class="ho-kpi-card"><div class="ho-kpi-num" style="color:#166534">${approved}</div><div class="ho-kpi-lbl">Aprovados</div></div>
     <div class="ho-kpi-card"><div class="ho-kpi-num" style="color:#991b1b">${rejected}</div><div class="ho-kpi-lbl">Reprovados</div></div>
   `;
 }
 
+// ── WEEKLY SCHEDULE ───────────────────────────────────────────
+function renderHoSchedule(){
+  const days=getWeekDates(hoWeekOffset);
+  const todayISO=toISO(new Date());
+  // Header label
+  const lbl=document.getElementById('hoWeekLabel');
+  if(lbl){
+    if(days[0].getMonth()===days[4].getMonth())
+      lbl.textContent=`${days[0].getDate()} – ${ptShortDate(days[4])}`;
+    else
+      lbl.textContent=`${ptShortDate(days[0])} – ${ptShortDate(days[4])}`;
+  }
+  // Build thead
+  const thead=document.getElementById('hoSchedThead');
+  const tbody=document.getElementById('hoSchedTbody');
+  if(!thead||!tbody)return;
+  thead.innerHTML='';
+  tbody.innerHTML='';
+  const tr=document.createElement('tr');
+  const th0=document.createElement('th');th0.innerHTML='<span style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em">COLABORADOR</span>';tr.appendChild(th0);
+  days.forEach(d=>{
+    const iso=toISO(d);
+    const th=document.createElement('th');
+    if(iso===todayISO)th.className='ho-today-col';
+    th.innerHTML=`<span class="ho-col-day">${DOWS[d.getDay()]}</span><span class="ho-col-num">${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}</span>`;
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+
+  // Build list of people to show
+  // Always show COLLABORATORS list + users with any HO request this week
+  const isAdmin=currentUser&&currentUser.role==='admin';
+  const allCollabs=[...HO_COLLABORATORS];
+
+  // Also auto-add registered users who have HO approvals (if not already in collabs)
+  const usersWithHO=[...new Set(HO_REQUESTS.filter(r=>r.status==='approved').map(r=>r.username))];
+  usersWithHO.forEach(uname=>{
+    if(!allCollabs.find(c=>c.username===uname)){
+      const u=USERS[uname];
+      if(u)allCollabs.push({id:'auto_'+uname,name:u.name||uname,username:uname,role:'',color:strToColor(uname),auto:true});
+    }
+  });
+
+  if(!allCollabs.length){
+    const tr2=document.createElement('tr');
+    const td=document.createElement('td');td.colSpan=6;
+    td.innerHTML='<div class="ho-empty" style="padding:24px"><div class="ho-empty-icon">👥</div><div>Nenhum colaborador cadastrado ainda.</div><div style="font-size:11px;color:var(--tx3)">'+(isAdmin?'Clique em <strong>+ Adicionar</strong> para incluir colaboradores na escala.':'Aguarde o administrador configurar a escala.')+'</div></div>';
+    tr2.appendChild(td);tbody.appendChild(tr2);return;
+  }
+
+  allCollabs.forEach(collab=>{
+    const row=document.createElement('tr');
+    // Name cell
+    const td0=document.createElement('td');
+    const initials=(collab.name||'?').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+    const col=collab.color||strToColor(collab.name||'x');
+    const delBtn=isAdmin?`<button class="ho-collab-del" title="Remover colaborador" onclick="removeCollab('${collab.id}')">✕</button>`:'';
+    td0.innerHTML=`<div class="ho-collab-info"><div class="ho-collab-avatar" style="background:${col}">${initials}</div><div><div class="ho-collab-name">${collab.name}</div>${collab.role?`<div style="font-size:10px;color:var(--tx3)">${collab.role}</div>`:''}</div>${delBtn}</div>`;
+    row.appendChild(td0);
+
+    days.forEach(d=>{
+      const iso=toISO(d);
+      const td=document.createElement('td');
+      if(iso===todayISO)td.className='ho-today-col';
+
+      // Find HO request for this person on this day
+      const uname=collab.username||null;
+      let pill='';
+      let reqId=null;
+      if(uname){
+        const req=HO_REQUESTS.filter(r=>r.username===uname&&r.date===iso).sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt))[0];
+        if(req){
+          reqId=req.id;
+          if(req.status==='approved')     pill=`<span class="ho-pill home">🏠 Home</span>`;
+          else if(req.status==='pending') pill=`<span class="ho-pill pending">⏳ Pendente</span>`;
+          else                            pill=`<span class="ho-pill office">🏢 Escritório</span>`;
+        } else {
+          pill=`<span class="ho-pill office">🏢 Escritório</span>`;
+        }
+      } else {
+        const req=HO_REQUESTS.filter(r=>r.collabId===collab.id&&r.date===iso)[0];
+        reqId=req?req.id:null;
+        pill=req&&req.status==='approved'?`<span class="ho-pill home">🏠 Home</span>`:`<span class="ho-pill office">🏢 Escritório</span>`;
+      }
+      td.innerHTML=pill;
+
+      // Admin can click cell to toggle Home/Escritório directly
+      if(isAdmin){
+        td.style.cursor='pointer';
+        td.title='Clique para alternar Home / Escritório';
+        td.addEventListener('click',()=>hoAdminToggleCell(collab,iso,uname));
+      }
+
+      row.appendChild(td);
+    });
+    tbody.appendChild(row);
+  });
+}
+
+window.hoWeekNav=function(dir){
+  if(dir===0)hoWeekOffset=0;
+  else hoWeekOffset+=dir;
+  renderHoSchedule();
+};
+
+// Admin: click a cell to toggle Home ↔ Escritório directly on the schedule
+function hoAdminToggleCell(collab, iso, uname){
+  loadHoRequests();
+  if(uname){
+    // Find existing approved request for this user+date
+    const idx=HO_REQUESTS.findIndex(r=>r.username===uname&&r.date===iso&&r.status==='approved');
+    if(idx>=0){
+      // Toggle off → remove the approved entry
+      HO_REQUESTS.splice(idx,1);
+    } else {
+      // Remove any rejected/pending for this user+date first
+      HO_REQUESTS=HO_REQUESTS.filter(r=>!(r.username===uname&&r.date===iso));
+      // Add a new admin-set approved entry
+      const u=USERS[uname]||{name:uname};
+      HO_REQUESTS.push({
+        id:'ho_adm_'+Date.now(),
+        username:uname,
+        name:u.name||uname,
+        date:iso,
+        type:'dia_completo',
+        obs:'',
+        status:'approved',
+        requestedAt:new Date().toISOString(),
+        adminNote:'Definido pelo administrador',
+        approvedAt:new Date().toISOString(),
+        approvedBy:currentUser.username
+      });
+    }
+  } else {
+    // Manual collab without username
+    const idx=HO_REQUESTS.findIndex(r=>r.collabId===collab.id&&r.date===iso&&r.status==='approved');
+    if(idx>=0){
+      HO_REQUESTS.splice(idx,1);
+    } else {
+      HO_REQUESTS=HO_REQUESTS.filter(r=>!(r.collabId===collab.id&&r.date===iso));
+      HO_REQUESTS.push({
+        id:'ho_adm_'+Date.now(),
+        collabId:collab.id,
+        name:collab.name,
+        date:iso,
+        type:'dia_completo',
+        obs:'',
+        status:'approved',
+        requestedAt:new Date().toISOString(),
+        adminNote:'Definido pelo administrador',
+        approvedAt:new Date().toISOString(),
+        approvedBy:currentUser.username
+      });
+    }
+  }
+  saveHoRequests();
+  renderHoSchedule();
+  renderHoKpis();
+}
+
+// ── ADD / REMOVE COLLABORATORS ────────────────────────────────
+window.showAddCollabModal=function(){
+  document.getElementById('hoCollabName').value='';
+  document.getElementById('hoCollabRole').value='';
+  document.getElementById('hoAddCollabMov').style.display='flex';
+  setTimeout(()=>document.getElementById('hoCollabName').focus(),80);
+};
+window.confirmAddCollab=function(){
+  const name=document.getElementById('hoCollabName').value.trim();
+  const role=document.getElementById('hoCollabRole').value.trim();
+  if(!name){toast('⚠ Digite o nome do colaborador');return;}
+  loadHoCollabs();
+  // Check if there's a matching registered user
+  const matchUser=Object.entries(USERS).find(([uname,u])=>
+    (u.name||'').toLowerCase()===name.toLowerCase()
+  );
+  const collab={
+    id:'collab_'+Date.now(),
+    name,
+    role,
+    username: matchUser?matchUser[0]:null,
+    color: strToColor(name)
+  };
+  HO_COLLABORATORS.push(collab);
+  saveHoCollabs();
+  document.getElementById('hoAddCollabMov').style.display='none';
+  toast('✅ Colaborador adicionado!');
+  renderHoSchedule();
+};
+window.removeCollab=function(id){
+  if(!confirm('Remover este colaborador da escala?'))return;
+  loadHoCollabs();
+  HO_COLLABORATORS=HO_COLLABORATORS.filter(c=>c.id!==id);
+  saveHoCollabs();
+  toast('Colaborador removido.');
+  renderHoSchedule();
+};
+
+// ── MY REQUESTS LIST ──────────────────────────────────────────
 function hoTypeLabel(t){
-  if(t==='dia_completo')return'Dia completo';
-  if(t==='meio_periodo_manha')return'Meio período – Manhã';
-  if(t==='meio_periodo_tarde')return'Meio período – Tarde';
-  return t;
+  return t==='dia_completo'?'Dia completo':t==='meio_periodo_manha'?'Meio período – Manhã':t==='meio_periodo_tarde'?'Meio período – Tarde':t;
 }
 function hoStatusBadge(s){
   if(s==='pending')  return'<span class="ho-status-badge ho-status-pending">⏳ Pendente</span>';
@@ -2459,20 +2859,12 @@ function hoStatusBadge(s){
   if(s==='rejected') return'<span class="ho-status-badge ho-status-rejected">❌ Reprovado</span>';
   return'';
 }
-function hoFormatDate(d){
-  if(!d)return'';
-  const [y,m,day]=d.split('-');
-  return`${day}/${m}/${y}`;
-}
+function hoFormatDate(d){if(!d)return'';const[y,m,day]=d.split('-');return`${day}/${m}/${y}`;}
 
 function renderHoMyList(){
   const el=document.getElementById('hoMyList');if(!el)return;
-  loadHoRequests();
   const mine=HO_REQUESTS.filter(r=>r.username===currentUser.username).sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt));
-  if(!mine.length){
-    el.innerHTML='<div class="ho-empty"><div class="ho-empty-icon">🏠</div><div>Nenhuma solicitação ainda.</div><div style="font-size:11px;color:var(--tx3)">Use o formulário acima para solicitar um dia de home office.</div></div>';
-    return;
-  }
+  if(!mine.length){el.innerHTML='<div class="ho-empty"><div class="ho-empty-icon">🏠</div><div>Nenhuma solicitação ainda.</div><div style="font-size:11px;color:var(--tx3)">Use o formulário acima para solicitar um dia de home office.</div></div>';return;}
   el.innerHTML='';
   mine.forEach(r=>{
     const d=new Date(r.requestedAt);
@@ -2481,10 +2873,7 @@ function renderHoMyList(){
       <div class="ho-card-icon" style="background:${r.status==='approved'?'#dcfce7':r.status==='rejected'?'#fee2e2':'#fef9c3'}">🏠</div>
       <div class="ho-card-body">
         <div class="ho-card-title">${hoFormatDate(r.date)} ${hoStatusBadge(r.status)}</div>
-        <div class="ho-card-meta">
-          <span>📋 ${hoTypeLabel(r.type)}</span>
-          <span>🕐 ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
-        </div>
+        <div class="ho-card-meta"><span>📋 ${hoTypeLabel(r.type)}</span><span>🕐 ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span></div>
         ${r.obs?`<div class="ho-card-obs">💬 ${r.obs}</div>`:''}
         ${r.adminNote?`<div class="ho-card-obs" style="color:${r.status==='rejected'?'var(--red)':'var(--green)'}">👤 Admin: ${r.adminNote}</div>`:''}
       </div>
@@ -2494,38 +2883,26 @@ function renderHoMyList(){
   });
 }
 
+// ── ADMIN: PENDING ────────────────────────────────────────────
 function renderHoPending(){
   const el=document.getElementById('hoPendingList');if(!el)return;
-  loadHoRequests();
   const pending=HO_REQUESTS.filter(r=>r.status==='pending').sort((a,b)=>a.requestedAt.localeCompare(b.requestedAt));
   const countEl=document.getElementById('hoPendingCount');
-  if(countEl) countEl.textContent=pending.length?`${pending.length} aguardando`:'';
-  if(!pending.length){
-    el.innerHTML='<div class="ho-empty"><div class="ho-empty-icon">🎉</div><div>Nenhuma solicitação pendente!</div></div>';
-    return;
-  }
+  if(countEl)countEl.textContent=pending.length?`${pending.length} aguardando`:'';
+  if(!pending.length){el.innerHTML='<div class="ho-empty"><div class="ho-empty-icon">🎉</div><div>Nenhuma solicitação pendente!</div></div>';return;}
   el.innerHTML='';
   pending.forEach(r=>{
     const d=new Date(r.requestedAt);
-    const card=document.createElement('div');card.className='ho-card';
     const user=USERS[r.username]||{name:r.username};
     const col=strToColor(r.username);
+    const card=document.createElement('div');card.className='ho-card';
     card.innerHTML=`
-      <div class="ho-user-avatar" style="background:${col};width:38px;height:38px;border-radius:9px;font-size:15px">${(user.name||r.username)[0].toUpperCase()}</div>
+      <div class="ho-collab-avatar" style="background:${col};width:38px;height:38px;border-radius:9px;font-size:15px">${(user.name||r.username)[0].toUpperCase()}</div>
       <div class="ho-card-body">
-        <div class="ho-card-title">
-          ${user.name||r.username}
-          <span style="font-size:11px;color:var(--tx3)">@${r.username}</span>
-        </div>
-        <div class="ho-card-meta">
-          <span>📅 ${hoFormatDate(r.date)}</span>
-          <span>📋 ${hoTypeLabel(r.type)}</span>
-          <span>🕐 Solicitado em ${d.toLocaleDateString('pt-BR')}</span>
-        </div>
+        <div class="ho-card-title">${user.name||r.username} <span style="font-size:11px;color:var(--tx3)">@${r.username}</span></div>
+        <div class="ho-card-meta"><span>📅 ${hoFormatDate(r.date)}</span><span>📋 ${hoTypeLabel(r.type)}</span><span>🕐 ${d.toLocaleDateString('pt-BR')}</span></div>
         ${r.obs?`<div class="ho-card-obs">💬 ${r.obs}</div>`:''}
-        <div style="margin-top:8px">
-          <input type="text" placeholder="Nota (opcional)..." id="hoNote_${r.id}" style="border:1px solid var(--bdr);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit;background:var(--sur2);color:var(--tx);outline:none;width:100%">
-        </div>
+        <div style="margin-top:8px"><input type="text" placeholder="Nota para o colaborador (opcional)..." id="hoNote_${r.id}" style="border:1px solid var(--bdr);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit;background:var(--sur2);color:var(--tx);outline:none;width:100%"></div>
       </div>
       <div class="ho-card-actions">
         <button class="btn btn-g btn-sm" onclick="approveHoRequest('${r.id}')">✅ Aprovar</button>
@@ -2536,15 +2913,17 @@ function renderHoPending(){
   });
 }
 
+// ── ADMIN: HISTORY ────────────────────────────────────────────
 function renderHoHistAll(){
   const el=document.getElementById('hoHistAll');if(!el)return;
-  renderHoHistTo(el, HO_REQUESTS.slice().sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt)));
+  renderHoHistTo(el,HO_REQUESTS.slice().sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt)));
 }
 function renderHoHistFiltered(status){
-  const el=document.getElementById(status==='approved'?'hoHistApproved':'hoHistRejected');if(!el)return;
-  renderHoHistTo(el, HO_REQUESTS.filter(r=>r.status===status).sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt)));
+  const id=status==='approved'?'hoHistApproved':'hoHistRejected';
+  const el=document.getElementById(id);if(!el)return;
+  renderHoHistTo(el,HO_REQUESTS.filter(r=>r.status===status).sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt)));
 }
-function renderHoHistTo(el, list){
+function renderHoHistTo(el,list){
   if(!list.length){el.innerHTML='<div class="ho-empty"><div class="ho-empty-icon">📋</div><div>Nenhum registro.</div></div>';return;}
   el.innerHTML='';
   list.forEach(r=>{
@@ -2553,14 +2932,10 @@ function renderHoHistTo(el, list){
     const d=new Date(r.requestedAt);
     const card=document.createElement('div');card.className='ho-card';
     card.innerHTML=`
-      <div class="ho-user-avatar" style="background:${col};width:38px;height:38px;border-radius:9px;font-size:15px">${(user.name||r.username)[0].toUpperCase()}</div>
+      <div class="ho-collab-avatar" style="background:${col};width:38px;height:38px;border-radius:9px;font-size:15px">${(user.name||r.username)[0].toUpperCase()}</div>
       <div class="ho-card-body">
         <div class="ho-card-title">${user.name||r.username} <span style="font-size:11px;color:var(--tx3)">@${r.username}</span> ${hoStatusBadge(r.status)}</div>
-        <div class="ho-card-meta">
-          <span>📅 ${hoFormatDate(r.date)}</span>
-          <span>📋 ${hoTypeLabel(r.type)}</span>
-          <span>🕐 ${d.toLocaleDateString('pt-BR')}</span>
-        </div>
+        <div class="ho-card-meta"><span>📅 ${hoFormatDate(r.date)}</span><span>📋 ${hoTypeLabel(r.type)}</span><span>🕐 ${d.toLocaleDateString('pt-BR')}</span></div>
         ${r.obs?`<div class="ho-card-obs">💬 ${r.obs}</div>`:''}
         ${r.adminNote?`<div class="ho-card-obs" style="color:${r.status==='rejected'?'var(--red)':'var(--green)'}">👤 Admin: ${r.adminNote}</div>`:''}
       </div>
@@ -2569,143 +2944,53 @@ function renderHoHistTo(el, list){
   });
 }
 
-function renderHoCalendar(){
-  const title=document.getElementById('hoCalTitle');
-  const grid=document.getElementById('hoCalGrid');
-  const legend=document.getElementById('hoCalLegend');
-  if(!title||!grid)return;
-  const months=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  title.textContent=`${months[hoCalMonth]} ${hoCalYear}`;
-  const approved=HO_REQUESTS.filter(r=>r.status==='approved');
-  const hoByDate={};
-  approved.forEach(r=>{
-    if(!hoByDate[r.date])hoByDate[r.date]=[];
-    hoByDate[r.date].push(r);
-  });
-  const dows=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-  grid.innerHTML='';
-  dows.forEach(d=>{
-    const h=document.createElement('div');
-    h.style.cssText='text-align:center;font-size:10px;font-weight:600;color:var(--tx3);padding:4px 0;text-transform:uppercase';
-    h.textContent=d;grid.appendChild(h);
-  });
-  const firstDay=new Date(hoCalYear,hoCalMonth,1).getDay();
-  const daysInMonth=new Date(hoCalYear,hoCalMonth+1,0).getDate();
-  for(let i=0;i<firstDay;i++){const e=document.createElement('div');grid.appendChild(e);}
-  const today=new Date().toISOString().slice(0,10);
-  for(let d=1;d<=daysInMonth;d++){
-    const dateStr=`${hoCalYear}-${String(hoCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const dayRequests=hoByDate[dateStr]||[];
-    const el=document.createElement('div');
-    el.className='ho-cal-day'+(dayRequests.length?' ho':'');
-    el.style.cssText='min-width:0;height:42px;flex-direction:column;gap:1px;position:relative;cursor:'+(dayRequests.length?'pointer':'default');
-    el.style.display='flex';el.style.alignItems='center';el.style.justifyContent='center';el.style.borderRadius='7px';
-    if(dateStr===today){el.style.outline='2px solid #1b5e20';el.style.outlineOffset='1px';}
-    el.innerHTML=`<span style="font-size:12px;font-weight:600">${d}</span>${dayRequests.length?`<span style="font-size:9px;font-weight:700">${dayRequests.length}👤</span>`:''}`;
-    if(dayRequests.length){
-      el.title=dayRequests.map(r=>(USERS[r.username]||{name:r.username}).name||r.username).join(', ');
-    }
-    grid.appendChild(el);
-  }
-  // Legend: unique users with HO this month
-  const usersThisMonth=[...new Set(approved.filter(r=>r.date&&r.date.startsWith(`${hoCalYear}-${String(hoCalMonth+1).padStart(2,'0')}`)).map(r=>r.username))];
-  legend.innerHTML='<span style="font-size:11px;font-weight:600;color:var(--tx2)">Este mês: </span>';
-  if(!usersThisMonth.length){legend.innerHTML+='<span style="font-size:11px;color:var(--tx3)">nenhum HO aprovado</span>';return;}
-  usersThisMonth.forEach(u=>{
-    const user=USERS[u]||{name:u};
-    const col=strToColor(u);
-    const cnt=approved.filter(r=>r.username===u&&r.date&&r.date.startsWith(`${hoCalYear}-${String(hoCalMonth+1).padStart(2,'0')}`)).length;
-    const chip=document.createElement('div');
-    chip.style.cssText=`display:inline-flex;align-items:center;gap:5px;background:var(--sur2);border:1px solid var(--bdr);border-radius:20px;padding:3px 9px;font-size:11px;`;
-    chip.innerHTML=`<div style="width:10px;height:10px;border-radius:50%;background:${col}"></div>${user.name||u} <strong>(${cnt})</strong>`;
-    legend.appendChild(chip);
-  });
-}
-
-window.hoCalNav=function(dir){
-  hoCalMonth+=dir;
-  if(hoCalMonth>11){hoCalMonth=0;hoCalYear++;}
-  if(hoCalMonth<0){hoCalMonth=11;hoCalYear--;}
-  renderHoCalendar();
-};
-
 window.hoSwitchTab=function(tab){
-  ['all','approved','rejected','calendar'].forEach(t=>{
+  ['all','approved','rejected'].forEach(t=>{
     const btn=document.getElementById('hoTab'+t[0].toUpperCase()+t.slice(1));
     const cnt=document.getElementById('hoHist'+t[0].toUpperCase()+t.slice(1));
-    if(btn) btn.classList.toggle('active',t===tab);
-    if(cnt) cnt.classList.toggle('active',t===tab);
+    if(btn)btn.classList.toggle('active',t===tab);
+    if(cnt)cnt.classList.toggle('active',t===tab);
   });
-  if(tab==='calendar') renderHoCalendar();
 };
 
+// ── SUBMIT / CANCEL / APPROVE / REJECT ───────────────────────
 window.submitHoRequest=function(){
   const date=document.getElementById('hoReqDate').value;
   const type=document.getElementById('hoReqType').value;
   const obs=document.getElementById('hoReqObs').value.trim();
   if(!date){toast('⚠ Selecione uma data');return;}
   loadHoRequests();
-  // Check duplicate
   const dup=HO_REQUESTS.find(r=>r.username===currentUser.username&&r.date===date&&r.status!=='rejected');
   if(dup){toast('⚠ Você já tem uma solicitação para esta data');return;}
-  const req={
-    id:'ho_'+Date.now(),
-    username:currentUser.username,
-    name:currentUser.name||currentUser.username,
-    date,type,obs,
-    status:'pending',
-    requestedAt:new Date().toISOString(),
-    adminNote:''
-  };
+  const req={id:'ho_'+Date.now(),username:currentUser.username,name:currentUser.name||currentUser.username,date,type,obs,status:'pending',requestedAt:new Date().toISOString(),adminNote:''};
   HO_REQUESTS.push(req);
   saveHoRequests();
   document.getElementById('hoReqDate').value='';
   document.getElementById('hoReqObs').value='';
   toast('✅ Solicitação enviada! Aguardando aprovação.');
-  renderHoView();
-  renderTabs();
+  renderHoView();renderTabs();
 };
-
 window.cancelHoRequest=function(id){
   if(!confirm('Cancelar esta solicitação?'))return;
-  loadHoRequests();
-  HO_REQUESTS=HO_REQUESTS.filter(r=>r.id!==id);
-  saveHoRequests();
-  toast('Solicitação cancelada.');
-  renderHoView();
-  renderTabs();
+  loadHoRequests();HO_REQUESTS=HO_REQUESTS.filter(r=>r.id!==id);saveHoRequests();
+  toast('Solicitação cancelada.');renderHoView();renderTabs();
 };
-
 window.approveHoRequest=function(id){
-  loadHoRequests();
-  const r=HO_REQUESTS.find(x=>x.id===id);if(!r)return;
+  loadHoRequests();const r=HO_REQUESTS.find(x=>x.id===id);if(!r)return;
   const noteEl=document.getElementById('hoNote_'+id);
-  r.status='approved';
-  r.adminNote=(noteEl?noteEl.value.trim():'');
-  r.approvedAt=new Date().toISOString();
-  r.approvedBy=currentUser.username;
-  saveHoRequests();
-  toast('✅ Home office aprovado!');
-  renderHoView();
-  renderTabs();
+  r.status='approved';r.adminNote=noteEl?noteEl.value.trim():'';r.approvedAt=new Date().toISOString();r.approvedBy=currentUser.username;
+  saveHoRequests();toast('✅ Home office aprovado!');renderHoView();renderTabs();
 };
-
 window.rejectHoRequest=function(id){
-  loadHoRequests();
-  const r=HO_REQUESTS.find(x=>x.id===id);if(!r)return;
+  loadHoRequests();const r=HO_REQUESTS.find(x=>x.id===id);if(!r)return;
   const noteEl=document.getElementById('hoNote_'+id);
-  r.status='rejected';
-  r.adminNote=(noteEl?noteEl.value.trim():'');
-  r.rejectedAt=new Date().toISOString();
-  r.rejectedBy=currentUser.username;
-  saveHoRequests();
-  toast('❌ Solicitação reprovada.');
-  renderHoView();
-  renderTabs();
+  r.status='rejected';r.adminNote=noteEl?noteEl.value.trim():'';r.rejectedAt=new Date().toISOString();r.rejectedBy=currentUser.username;
+  saveHoRequests();toast('❌ Solicitação reprovada.');renderHoView();renderTabs();
 };
 
-// Load HO requests on startup
+// Load on startup
 loadHoRequests();
+loadHoCollabs();
 // ─────────────────────────────────────────────────────────────
 async function checkAdminPass(){
   const val = document.getElementById('adminPassInp').value;
