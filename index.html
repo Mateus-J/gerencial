@@ -1710,7 +1710,8 @@ async function fbInit(){
     setTimeout(()=>{ pendingSyncFirebase(); hoSyncFirebase(); }, 300);
     // Init presence tracking
     initPresence(db, doc, collection, getDocs, setDoc, deleteDoc);
-    // Start listening for pending requests in real-time (for bell badge)
+    // Start real-time listeners
+    loadUsersFromFirebase();
     if(currentUser&&currentUser.role==='admin') loadPendingFromFirebase();
     // load from firebase and update UI
     const snap=await fbGet(fbRef);
@@ -3174,8 +3175,14 @@ function removeUser(key){
 window.removeUser = removeUser;
 
 function saveUsers(){
-  // Save users list to localStorage so changes persist
   try{localStorage.setItem('ctrl_users', JSON.stringify(USERS))}catch(e){}
+  // Sync to Firebase so all devices see the same users/passwords/roles
+  try{
+    if(fbReady&&fbDb&&fbDocFn&&fbSet){
+      fbSet(fbDocFn(fbDb,'controle','users'),{users:USERS,updatedAt:Date.now()})
+        .catch(e=>console.warn('saveUsers Firebase err',e));
+    }
+  }catch(e){console.warn('saveUsers err',e);}
 }
 
 function loadUsers(){
@@ -3186,6 +3193,24 @@ function loadUsers(){
       Object.assign(USERS, parsed);
     }
   }catch(e){}
+}
+
+// Load users from Firebase (called after Firebase is ready)
+function loadUsersFromFirebase(){
+  try{
+    if(!fbReady||!fbDb||!fbDocFn||!fbSnap) return;
+    fbSnap(fbDocFn(fbDb,'controle','users'), snap=>{
+      if(!snap.exists()) return;
+      const d = snap.data();
+      if(!d||!d.users) return;
+      // Merge: Firebase is source of truth, but keep local defaults
+      Object.assign(USERS, d.users);
+      try{localStorage.setItem('ctrl_users', JSON.stringify(USERS))}catch(e){}
+      // If admin panel is open, refresh users table
+      const ac = document.getElementById('adminContent');
+      if(ac && ac.style.display !== 'none') renderUsersTable();
+    }, e=>console.warn('users listener err',e));
+  }catch(e){console.warn('loadUsersFromFirebase err',e);}
 }
 
 async function changeMyPass(){
@@ -3801,12 +3826,29 @@ window.approveFromAdmin=approveFromAdmin;
 
 // USERS and currentUser declared at top of script
 
-function doLogin(){
+async function doLogin(){
   const input = document.getElementById('loginUser').value.trim().toLowerCase();
   const pass  = document.getElementById('loginPass').value;
   const err   = document.getElementById('loginErr');
   if(!input||!pass){err.textContent='Preencha usuário e senha.';return}
 
+  // If Firebase is ready, fetch latest users before validating
+  // This ensures approved users with new passwords are found
+  if(fbReady&&fbDb&&fbDocFn){
+    try{
+      const {getDoc}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+      const snap=await getDoc(fbDocFn(fbDb,'controle','users'));
+      if(snap.exists()&&snap.data()&&snap.data().users){
+        Object.assign(USERS, snap.data().users);
+        try{localStorage.setItem('ctrl_users',JSON.stringify(USERS));}catch(e){}
+      }
+    }catch(e){/* fallback to local */}
+  }
+
+  _doLoginValidate(input, pass, err);
+}
+
+function _doLoginValidate(input, pass, err){
   // Find by username or email
   let foundKey=null, foundUser=null;
   if(USERS[input]){
@@ -3819,12 +3861,9 @@ function doLogin(){
   if(!foundUser){err.textContent='Usuário/e-mail ou senha incorretos.';addAuditEntry('login_fail',{username:input,reason:'Usuário não encontrado'});return}
 
   const storedPass = foundUser.pass||'';
-  // Accept plain text OR hashed match (hash async migration happens in background)
   const plainMatch = storedPass === pass;
-  const match = plainMatch || isHashed(storedPass); // if hashed, will verify async below
 
   if(isHashed(storedPass)){
-    // Verify hash async without blocking UI
     hashPass(pass).then(passHash=>{
       if(passHash!==storedPass){
         document.getElementById('loginErr').textContent='Usuário/e-mail ou senha incorretos.';
@@ -3832,7 +3871,6 @@ function doLogin(){
       }
       _completeLogin(foundKey, foundUser);
     }).catch(()=>{
-      // crypto not available - try plain
       if(storedPass!==pass){
         document.getElementById('loginErr').textContent='Usuário/e-mail ou senha incorretos.';
         return;
@@ -3842,9 +3880,7 @@ function doLogin(){
     return;
   }
 
-  // Plain text match
   if(!plainMatch){err.textContent='Usuário/e-mail ou senha incorretos.';return}
-  // Migrate to hash in background
   hashPass(pass).then(h=>{foundUser.pass=h;saveUsers();}).catch(()=>{});
   _completeLogin(foundKey, foundUser);
 }
@@ -5572,6 +5608,8 @@ async function fbInitEarly(){
     fbRef=doc(db,'controle','board');
     // Flush any pending data saved before Firebase was ready
     setTimeout(()=>{ pendingSyncFirebase(); hoSyncFirebase(); },300);
+    // Load latest users so login validation uses up-to-date passwords/roles
+    loadUsersFromFirebase();
     console.log('Firebase early init OK');
   }catch(e){ console.warn('fbInitEarly err',e); }
 }
