@@ -1721,6 +1721,8 @@ async function fbInit(){
     fbGet=getDoc;fbSet=setDoc;fbSnap=onSnapshot;fbReady=true;
     // Sync any pending/HO data saved before Firebase was ready
     setTimeout(()=>{ pendingSyncFirebase(); hoSyncFirebase(); }, 300);
+    // Carregar dados de HO do Firebase para todos os usuários e iniciar listener em tempo real
+    setTimeout(()=>{ hoLoadFromFirebase(); hoSubscribeFirebase(); }, 500);
     // Init presence tracking
     initPresence(db, doc, collection, getDocs, setDoc, deleteDoc);
     // Start real-time listeners
@@ -2642,6 +2644,39 @@ function hoSyncFirebase(){
     if(!fbReady||!fbDb||!fbDocFn||!fbSet)return;
     fbSet(fbDocFn(fbDb,'controle','ho_data'),{requests:HO_REQUESTS,collaborators:HO_COLLABORATORS}).catch(e=>console.warn('hoSync err',e));
   }catch(e){console.warn('hoSyncFirebase err',e);}
+}
+
+// Carrega dados de HO do Firebase e atualiza a tela para todos os usuários
+function hoLoadFromFirebase(){
+  try{
+    if(!fbReady||!fbDb||!fbDocFn||!fbGet)return;
+    fbGet(fbDocFn(fbDb,'controle','ho_data')).then(snap=>{
+      if(!snap.exists())return;
+      const d=snap.data();
+      if(d.requests)  { HO_REQUESTS=d.requests;      try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){} }
+      if(d.collaborators){ HO_COLLABORATORS=d.collaborators; try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){} }
+      // Re-renderizar a view de HO se estiver visível
+      const hoView=document.getElementById('hoView');
+      if(hoView&&hoView.style.display!=='none') renderHoView();
+      renderTabs(); // atualiza badge de pendentes
+    }).catch(e=>console.warn('hoLoadFromFirebase err',e));
+  }catch(e){console.warn('hoLoadFromFirebase err',e);}
+}
+
+// Escuta mudanças em tempo real no HO (para todos os usuários verem atualizações do admin)
+function hoSubscribeFirebase(){
+  try{
+    if(!fbReady||!fbDb||!fbDocFn||!fbSnap)return;
+    fbSnap(fbDocFn(fbDb,'controle','ho_data'),snap=>{
+      if(!snap.exists())return;
+      const d=snap.data();
+      if(d.requests)  { HO_REQUESTS=d.requests;      try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){} }
+      if(d.collaborators){ HO_COLLABORATORS=d.collaborators; try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){} }
+      const hoView=document.getElementById('hoView');
+      if(hoView&&hoView.style.display!=='none') renderHoView();
+      renderTabs();
+    },e=>console.warn('hoSnap err',e));
+  }catch(e){console.warn('hoSubscribeFirebase err',e);}
 }
 
 // ── WEEK HELPERS ──────────────────────────────────────────────
