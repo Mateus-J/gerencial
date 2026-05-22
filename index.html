@@ -578,7 +578,7 @@ tr.fill-source td.cs{outline:2px solid var(--blue);outline-offset:-2px;backgroun
 [data-theme=dark] .presence-avatar{border-color:rgba(0,0,0,.4)}
 
 /* ─── PENDING APPROVAL ───────────────────────────────────────── */
-.pending-screen{position:fixed;inset:0;background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 50%,#1b5e20 100%);display:none;align-items:center;justify-content:center;z-index:1000}
+.pending-screen{position:fixed;inset:0;background:#071a08;display:none;align-items:center;justify-content:center;z-index:1000;overflow:hidden}
 .pending-box{
   background:rgba(255,255,255,.06);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   border:1px solid rgba(105,240,174,.18);border-radius:20px;padding:36px 32px;width:380px;
@@ -988,20 +988,24 @@ tr:hover .ho-collab-del{opacity:1}
     <div id="registerForm" style="display:none">
       <div class="login-sub">Solicitar acesso ao sistema</div>
       <div class="login-field">
-        <label>Nome completo</label>
-        <input type="text" id="regName" placeholder="Seu nome" onkeydown="if(event.key==='Enter')document.getElementById('regEmail').focus()">
+        <input type="text" id="regName" placeholder=" " autocomplete="name"
+          onkeydown="if(event.key==='Enter')document.getElementById('regEmail').focus()">
+        <label for="regName">Nome completo</label>
       </div>
       <div class="login-field">
-        <label>E-mail</label>
-        <input type="email" id="regEmail" placeholder="seu@email.com" onkeydown="if(event.key==='Enter')document.getElementById('regPass').focus()">
+        <input type="email" id="regEmail" placeholder=" " autocomplete="email"
+          onkeydown="if(event.key==='Enter')document.getElementById('regPass').focus()">
+        <label for="regEmail">E-mail</label>
+      </div>
+      <div class="login-field has-toggle">
+        <input type="password" id="regPass" placeholder=" "
+          onkeydown="if(event.key==='Enter')document.getElementById('regPass2').focus()">
+        <label for="regPass">Senha (mínimo 6 caracteres)</label>
       </div>
       <div class="login-field">
-        <label>Senha</label>
-        <input type="password" id="regPass" placeholder="Mínimo 6 caracteres" onkeydown="if(event.key==='Enter')document.getElementById('regPass2').focus()">
-      </div>
-      <div class="login-field">
-        <label>Confirmar senha</label>
-        <input type="password" id="regPass2" placeholder="Repita a senha" onkeydown="if(event.key==='Enter')doRegister()">
+        <input type="password" id="regPass2" placeholder=" "
+          onkeydown="if(event.key==='Enter')doRegister()">
+        <label for="regPass2">Confirmar senha</label>
       </div>
       <div class="login-err" id="regErr"></div>
       <button class="login-btn" onclick="doRegister()">Criar conta</button>
@@ -1191,6 +1195,7 @@ tr:hover .ho-collab-del{opacity:1}
 
 <!-- PENDING APPROVAL SCREEN -->
 <div id="pendingScreen" class="pending-screen">
+  <canvas id="pendingCircuitCanvas" class="circuit-canvas"></canvas>
   <div class="pending-box">
     <div class="pending-icon">⏳</div>
     <div class="pending-title">Aguardando aprovação</div>
@@ -1585,10 +1590,8 @@ function migrate(d){
   if(!d)return false;
   try{
     if(!d.tabs || d.tabs.length===0){
-      // Old format or empty - try to recover groups
       const cols=d.columns||defCols();
       const groups=(d.groups||[]).map(g=>({...g,columns:g.columns||JSON.parse(JSON.stringify(cols))}));
-      // If no groups either, return false so we keep existing state
       if(!groups.length && !d.columns) return false;
       S={tabs:[{id:'t0',label:'Principal',color:'#1a6fd4',type:'table',groups}],activeTab:'t0',_cid:d._cid||6,_rid:d._rid||10,_gid:d._gid||1,_tid:1,_caid:0};
     } else {
@@ -1599,6 +1602,16 @@ function migrate(d){
       });
       S=d;
     }
+    // Restore this user's local navigation — never take activeTab from Firebase
+    try{
+      const navKey='ctrl_nav_'+(currentUser&&currentUser.username||'anon');
+      const savedNav=sessionStorage.getItem(navKey);
+      if(savedNav && S.tabs.find(t=>t.id===savedNav)){
+        S.activeTab=savedNav;
+      } else if(!S.activeTab || !S.tabs.find(t=>t.id===S.activeTab)){
+        S.activeTab=S.tabs[0]&&S.tabs[0].id||'';
+      }
+    }catch(e){}
     cid=S._cid||cid;rid=S._rid||rid;gid=S._gid||gid;tid=S._tid||tid;caid=S._caid||caid;
     return true;
   }catch(e){console.error('migrate',e);return false}
@@ -1728,7 +1741,8 @@ async function fbInit(){
       }
     } else {
       console.log('No Firebase data - saving current state');
-      await fbSet(fbRef,JSON.parse(JSON.stringify(S)));
+      const toSave=JSON.parse(JSON.stringify(S));delete toSave.activeTab;
+      await fbSet(fbRef,toSave);
       setSynced();
     }
     // listen for remote changes — only re-render if no input is focused
@@ -1754,10 +1768,17 @@ async function fbInit(){
 function save(){
   if(currentUser&&currentUser.role==='consulta'){return} // read-only
   S._cid=cid;S._rid=rid;S._gid=gid;S._tid=tid;S._caid=caid;
+  // Save activeTab locally per user — never sync to Firebase so navigation is independent
+  try{sessionStorage.setItem('ctrl_nav_'+( currentUser&&currentUser.username||'anon'), S.activeTab);}catch(e){}
   lsSave();setSaving();
   clearTimeout(saveTO);
   saveTO=setTimeout(async()=>{
-    if(fbReady&&fbSet){try{await fbSet(fbRef,JSON.parse(JSON.stringify(S)))}catch(e){console.warn('save err',e)}}
+    if(fbReady&&fbSet){
+      // Strip activeTab before saving to Firebase — navigation is per-user local state
+      const toSave=JSON.parse(JSON.stringify(S));
+      delete toSave.activeTab;
+      try{await fbSet(fbRef,toSave)}catch(e){console.warn('save err',e)}
+    }
     setSynced();
   },700);
 }
@@ -1927,15 +1948,43 @@ function cfmTab(){
 }
 
 // ─── TABLE RENDER ─────────────────────────────────────────────
+// ─── ROLE PERMISSIONS ─────────────────────────────────────────
+function applyRolePermissions(){
+  if(!currentUser) return;
+  const role = currentUser.role;
+  const isAdmin   = role === 'admin';
+  const isUser    = role === 'user';
+  const isConsulta= role === 'consulta';
+  const canEdit   = isAdmin || isUser;   // equipe can edit cells/groups/rows
+  const canExport = isAdmin || isUser;   // equipe can export
+
+  // Toolbar buttons
+  const show=(id,visible)=>{const el=document.getElementById(id)||document.querySelector(id);if(el)el.style.display=visible?'':'none'};
+
+  // + Novo grupo, importar, subtítulo, + Adicionar grupo
+  document.querySelectorAll('.tb .btn-p, .tb .btn:not(.btn-g)').forEach(btn=>{
+    if(btn.id==='fltSt') return; // keep filter always visible
+    btn.style.display = canEdit ? '' : 'none';
+  });
+  // Exportar CSV
+  document.querySelectorAll('.tb .btn-g').forEach(btn=>{ btn.style.display = canExport ? '' : 'none'; });
+  // + Adicionar grupo button at bottom
+  const addg = document.querySelector('.addgbtn');
+  if(addg) addg.style.display = canEdit ? '' : 'none';
+}
+
 function renderAll(){
   const filter=document.getElementById('fltSt').value;
   const search=(document.getElementById('srch').value||'').toLowerCase();
   const b=document.getElementById('boards');b.innerHTML='';
   const tab=curTab();if(!tab||tab.type!=='table')return;
-  (tab.groups||[]).forEach(g=>b.appendChild(buildGroup(g,filter,search)));
+  const readonly = currentUser&&currentUser.role==='consulta';
+  (tab.groups||[]).forEach(g=>b.appendChild(buildGroup(g,filter,search,readonly)));
+  applyRolePermissions();
 }
 
-function buildGroup(g,filter,search){
+function buildGroup(g,filter,search,readonly){
+  readonly = readonly || (currentUser&&currentUser.role==='consulta');
   const wrap=document.createElement('div');wrap.className='board';
   // header
   const hdr=document.createElement('div');hdr.className='ghdr';
@@ -1949,8 +1998,11 @@ function buildGroup(g,filter,search){
   dot.title='Clique para mudar a cor';
   dot.onclick=e=>{e.stopPropagation();openGdotPicker(e,g,hdr,dot)};
   const ni=document.createElement('input');ni.className='gname';ni.value=g.label;ni.type='text';
-  ni.addEventListener('blur',e=>{if(g.label!==e.target.value){g.label=e.target.value;save()}});
-  ni.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
+  if(readonly){ ni.readOnly=true; ni.style.cursor='default'; }
+  else {
+    ni.addEventListener('blur',e=>{if(g.label!==e.target.value){g.label=e.target.value;save()}});
+    ni.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
+  }
   const cntBadge=document.createElement('span');cntBadge.className='gbadge';
   const cnt=g.rows.filter(r=>!r.sub).length;
   cntBadge.textContent=cnt+' linha'+(cnt!==1?'s':'');
@@ -1958,14 +2010,16 @@ function buildGroup(g,filter,search){
   const cb=document.createElement('button');cb.className='gcol-btn';cb.textContent='+ Coluna';cb.onclick=e=>{e.stopPropagation();openCtPkr(e,g)};
   const tog=document.createElement('button');tog.className='gcoll';tog.textContent=g.collapsed?'▶ Expandir':'▼ Recolher';tog.onclick=()=>{g.collapsed=!g.collapsed;save();renderAll()};
   const del=document.createElement('button');del.className='btn btn-sm btn-d';del.textContent='Remover';del.onclick=()=>{if(confirm('Remover grupo?')){curTab().groups=curTab().groups.filter(x=>x.id!==g.id);save();renderAll()}};
-  ga.appendChild(cb);ga.appendChild(tog);ga.appendChild(del);
+  if(!readonly){ga.appendChild(cb);ga.appendChild(del);}
+  ga.appendChild(tog);
   hdr.appendChild(dragHandle);hdr.appendChild(dot);hdr.appendChild(ni);hdr.appendChild(cntBadge);hdr.appendChild(ga);
   wrap.appendChild(hdr);
 
-  // group drag-to-reorder
-  wrap.draggable=false; // only drag via handle
-  dragHandle.addEventListener('mousedown', ()=>{ wrap.draggable=true });
-  dragHandle.addEventListener('mouseup', ()=>{ wrap.draggable=false });
+  // group drag-to-reorder (admin/user only)
+  if(!readonly){
+    wrap.draggable=false;
+    dragHandle.addEventListener('mousedown', ()=>{ wrap.draggable=true });
+    dragHandle.addEventListener('mouseup', ()=>{ wrap.draggable=false });
   wrap.addEventListener('dragstart', e=>{
     e.dataTransfer.effectAllowed='move';
     e.dataTransfer.setData('groupId', g.id);
@@ -1998,7 +2052,9 @@ function buildGroup(g,filter,search){
     const [moved]=groups.splice(fromIdx,1);
     groups.splice(toIdx,0,moved);
     save();renderAll();
-  });if(g.collapsed)return wrap;
+  });
+  } // end if(!readonly) drag block
+  if(g.collapsed)return wrap;
 
   const sc=document.createElement('div');sc.className='tscroll';
   const tbl=document.createElement('table');
@@ -2009,7 +2065,7 @@ function buildGroup(g,filter,search){
   const tha=document.createElement('th');tha.style.cssText='width:30px;min-width:30px;cursor:default';thr.appendChild(tha);
   (g.columns||[]).forEach((col,idx)=>{
     const th=document.createElement('th');th.style.width=(col.w||120)+'px';th.style.minWidth=(col.w||120)+'px';
-    if(!col.fixed){
+    if(!col.fixed && !readonly){
       th.className='draggable';th.draggable=true;th.dataset.idx=idx;
       th.ondragstart=e=>{dragCI=idx;dragGI=g.id;th.classList.add('dragging');e.dataTransfer.effectAllowed='move'};
       th.ondragend=()=>{th.classList.remove('dragging');thr.querySelectorAll('th').forEach(t=>t.classList.remove('drag-over'))};
@@ -2018,9 +2074,9 @@ function buildGroup(g,filter,search){
       th.ondrop=e=>{e.preventDefault();th.classList.remove('drag-over');const ti=parseInt(th.dataset.idx);if(dragCI===null||dragCI===ti||dragGI!==g.id)return;const m=g.columns.splice(dragCI,1)[0];g.columns.splice(ti,0,m);dragCI=null;save();renderAll()};
     }
     const tw=document.createElement('div');tw.className='thw';
-    const ti=document.createElement('input');ti.className='thinp';ti.type='text';ti.value=col.label;ti.readOnly=!!col.fixed;
+    const ti=document.createElement('input');ti.className='thinp';ti.type='text';ti.value=col.label;ti.readOnly=!!col.fixed||readonly;
     ti.ondragstart=e=>e.stopPropagation();
-    if(!col.fixed){
+    if(!col.fixed && !readonly){
       ti.addEventListener('blur',e=>{if(col.label!==e.target.value){col.label=e.target.value;checkAutoPassCol(col);renderAll();save()}});
       ti.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
     }
@@ -2040,7 +2096,7 @@ function buildGroup(g,filter,search){
       fb.onclick=e=>{e.stopPropagation();openNfmtPkr(e,col,g)};
       tw.appendChild(fb);
     }
-    if(!col.fixed){const d=document.createElement('button');d.className='thdel';d.textContent='✕';d.onclick=e=>{e.stopPropagation();if(confirm('Remover coluna?')){g.columns=g.columns.filter(c=>c.id!==col.id);g.rows.forEach(r=>{delete r.cells[col.id]});save();renderAll()}};tw.appendChild(d)}
+    if(!col.fixed&&!readonly){const d=document.createElement('button');d.className='thdel';d.textContent='✕';d.onclick=e=>{e.stopPropagation();if(confirm('Remover coluna?')){g.columns=g.columns.filter(c=>c.id!==col.id);g.rows.forEach(r=>{delete r.cells[col.id]});save();renderAll()}};tw.appendChild(d)}
     th.appendChild(tw);
     const rh=document.createElement('div');rh.className='rzsz';
     rh.onmousedown=e=>{e.preventDefault();e.stopPropagation();rh.classList.add('active');rzState={col,th,handle:rh,sx:e.clientX,sw:col.w||120}};
@@ -2057,35 +2113,44 @@ function buildGroup(g,filter,search){
     if(row.sub){
       const tr=document.createElement('tr');tr.className='subr';
       const ta=document.createElement('td');ta.className='tact';
-      const db=document.createElement('button');db.className='rdel';db.textContent='✕';db.style.opacity='0';db.onclick=()=>{g.rows=g.rows.filter(x=>x.id!==row.id);save();renderAll()};
-      ta.appendChild(db);tr.appendChild(ta);tr.onmouseenter=()=>db.style.opacity='1';tr.onmouseleave=()=>db.style.opacity='0';
+      if(!readonly){
+        const db=document.createElement('button');db.className='rdel';db.textContent='✕';db.style.opacity='0';db.onclick=()=>{g.rows=g.rows.filter(x=>x.id!==row.id);save();renderAll()};
+        ta.appendChild(db);tr.onmouseenter=()=>db.style.opacity='1';tr.onmouseleave=()=>db.style.opacity='0';
+      }
+      tr.appendChild(ta);
       const td=document.createElement('td');td.colSpan=g.columns.length;td.style.cssText='padding:5px 9px';
       const si=document.createElement('input');si.type='text';si.className='subinp';si.value=row.subtitle||'';si.placeholder='Subtítulo...';
-      si.addEventListener('blur',e=>{if((row.subtitle||'')!==e.target.value){row.subtitle=e.target.value;save()}});
-      si.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
+      if(readonly){ si.readOnly=true; }
+      else {
+        si.addEventListener('blur',e=>{if((row.subtitle||'')!==e.target.value){row.subtitle=e.target.value;save()}});
+        si.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
+      }
       td.appendChild(si);tr.appendChild(td);tbody.appendChild(tr);return;
     }
     const tr=document.createElement('tr');tr.className='dr';
     const ta=document.createElement('td');ta.className='tact';
-    const db=document.createElement('button');db.className='rdel';db.textContent='✕';db.onclick=()=>{g.rows=g.rows.filter(x=>x.id!==row.id);save();renderAll()};
-    ta.appendChild(db);tr.appendChild(ta);
+    if(!readonly){
+      const db=document.createElement('button');db.className='rdel';db.textContent='✕';db.onclick=()=>{g.rows=g.rows.filter(x=>x.id!==row.id);save();renderAll()};
+      ta.appendChild(db);
+    }
+    tr.appendChild(ta);
 
     (g.columns||[]).forEach(col=>{
       const td=document.createElement('td');const val=row.cells[col.id]??'';
       if(col.type==='text'){
         td.className='ct';
         if(isPassCol(col)){
-          // Password protected cell
           td.style.padding='0';
           td.appendChild(buildPassCell(col,row,val));
         } else {
           const i=document.createElement('input');
-          i.type='text';i.value=val;i.placeholder='...';
-          i.addEventListener('focus',e=>{e.target.select&&e.target.select()});
-          i.addEventListener('blur',e=>{
-            if(row.cells[col.id]!==e.target.value){row.cells[col.id]=e.target.value;save()}
-          });
-          i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.target.blur()}});
+          i.type='text';i.value=val;i.placeholder=readonly?'':('...');
+          if(readonly){ i.readOnly=true; i.style.cursor='default'; }
+          else {
+            i.addEventListener('focus',e=>{e.target.select&&e.target.select()});
+            i.addEventListener('blur',e=>{if(row.cells[col.id]!==e.target.value){row.cells[col.id]=e.target.value;save()}});
+            i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.target.blur()}});
+          }
           td.appendChild(i);
         }
       }
@@ -2100,25 +2165,26 @@ function buildGroup(g,filter,search){
         b.className='sbadge';
         b.textContent=val||'—';
         b.style.cssText=`background:${sty.bg};color:${sty.c}`;
-        b.onclick=e=>{e.stopPropagation();openSpkr(e,row,col.id)};
-        // fill handle
-        const fh=document.createElement('div');
-        fh.className='fill-handle';
-        fh.title='Arrastar para preencher abaixo';
-        fh.addEventListener('mousedown',e=>{
-          e.preventDefault();e.stopPropagation();
-          startFillDrag(e, row, col.id, g, tr);
-        });
+        if(!readonly) b.onclick=e=>{e.stopPropagation();openSpkr(e,row,col.id)};
+        else b.style.cursor='default';
+        // fill handle (admin/user only)
+        if(!readonly){
+          const fh=document.createElement('div');
+          fh.className='fill-handle';
+          fh.title='Arrastar para preencher abaixo';
+          fh.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();startFillDrag(e,row,col.id,g,tr);});
+          td.appendChild(fh);
+        }
         td.appendChild(b);
-        td.appendChild(fh);
       }
       else if(col.type==='date'){
         td.className='cd';
         const i=document.createElement('input');i.type='date';i.value=val;
-        i.onchange=e=>{row.cells[col.id]=e.target.value;save()};
+        if(readonly){ i.disabled=true; i.style.opacity='1'; i.style.cursor='default'; }
+        else i.onchange=e=>{row.cells[col.id]=e.target.value;save()};
         td.appendChild(i)
       }
-      else if(col.type==='flag'){td.className='cf';td.appendChild(buildFlag(col,row,g))}
+      else if(col.type==='flag'){td.className='cf';td.appendChild(buildFlag(col,row,g,readonly))}
       else if(col.type==='number'){
         td.className='ct ct-num';
         const fmt = getColFormat(col);
@@ -2146,63 +2212,54 @@ function buildGroup(g,filter,search){
         i.value = displayed;
         i.style.cssText = 'text-align:right;padding:6px 26px 6px 9px;width:100%;background:transparent;border:none;outline:none;font-size:13px;color:var(--tx);font-family:inherit';
 
-        // On focus: show raw digits for easy editing
-        i.addEventListener('focus', e=>{
-          if(isMasked){
-            e.target.value = String(row.cells[col.id]||'').replace(/[^0-9]/g,'');
-          } else {
-            e.target.value = row.cells[col.id]||'';
-          }
-          e.target.select && e.target.select();
-        });
-
-        // On blur: normalize, format and save
-        i.addEventListener('blur', e=>{
-          let typed = e.target.value.trim();
-          let toStore;
-          if(fmt==='cnpj'){
-            toStore = normalizeCnpj(typed); // handles scientific, pads zeros
-          } else if(fmt==='cpf'){
-            toStore = normalizeCpf(typed);
-          } else if(fmt==='cep'){
-            toStore = normToDigits(typed, 8);
-          } else if(fmt==='phone'){
-            toStore = typed.replace(/[^0-9]/g,'').slice(0,11);
-          } else {
-            toStore = typed;
-          }
-          row.cells[col.id] = toStore;
-          e.target.value = formatValue(toStore, fmt);
-          save();
-        });
-
-        // Live mask while typing for masked formats
-        if(isMasked){
-          i.addEventListener('input', e=>{
-            // Allow only digits while typing
-            const pos = e.target.selectionStart;
-            const clean = e.target.value.replace(/[^0-9]/g,'');
-            e.target.value = clean;
+        if(readonly){
+          i.readOnly=true; i.style.cursor='default';
+        } else {
+          // On focus: show raw digits for easy editing
+          i.addEventListener('focus', e=>{
+            if(isMasked){ e.target.value = String(row.cells[col.id]||'').replace(/[^0-9]/g,''); }
+            else { e.target.value = row.cells[col.id]||''; }
+            e.target.select && e.target.select();
           });
+          // On blur: normalize, format and save
+          i.addEventListener('blur', e=>{
+            let typed = e.target.value.trim();
+            let toStore;
+            if(fmt==='cnpj'){ toStore = normalizeCnpj(typed); }
+            else if(fmt==='cpf'){ toStore = normalizeCpf(typed); }
+            else if(fmt==='cep'){ toStore = normToDigits(typed, 8); }
+            else if(fmt==='phone'){ toStore = typed.replace(/[^0-9]/g,'').slice(0,11); }
+            else { toStore = typed; }
+            row.cells[col.id] = toStore;
+            e.target.value = formatValue(toStore, fmt);
+            save();
+          });
+          if(isMasked){
+            i.addEventListener('input', e=>{
+              const clean = e.target.value.replace(/[^0-9]/g,'');
+              e.target.value = clean;
+            });
+          }
+          i.addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur() });
         }
-
-        i.addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur() });
 
         const gear = document.createElement('button');
         gear.className = 'fmt-gear';
         gear.textContent = '⚙';
         const fmtInfo = NUM_FORMATS.find(f=>f.id===fmt)||NUM_FORMATS[0];
         gear.title = 'Formato: '+fmtInfo.label;
-        gear.onclick = e => openNfmtPkr(e, col, g);
+        if(!readonly) gear.onclick = e => openNfmtPkr(e, col, g);
+        else gear.style.display='none';
 
         wrap.appendChild(i); wrap.appendChild(gear);
         td.appendChild(wrap);
       }
       else if(col.type==='obs'){
         td.className='co';
-        const ta=document.createElement('textarea');ta.rows=1;ta.value=val;ta.placeholder='Observação...';
+        const ta=document.createElement('textarea');ta.rows=1;ta.value=val;ta.placeholder=readonly?'':'Observação...';
         ta.oninput=()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px'};
-        ta.addEventListener('blur',e=>{if(row.cells[col.id]!==e.target.value){row.cells[col.id]=e.target.value;save()}});
+        if(readonly){ ta.readOnly=true; ta.style.cursor='default'; }
+        else { ta.addEventListener('blur',e=>{if(row.cells[col.id]!==e.target.value){row.cells[col.id]=e.target.value;save()}}); }
         td.appendChild(ta)
       }
       tr.appendChild(td);
@@ -2217,26 +2274,33 @@ function buildGroup(g,filter,search){
     else{const nr={id:'r'+(rid++),cells:{},sub:false};(g.columns||[]).forEach(c=>{nr.cells[c.id]=c.type==='flag'?false:''});g.rows.push(nr)}
     save();renderAll();
   };
-  artd.appendChild(arb);artr.appendChild(artd);tbody.appendChild(artr);
+  if(!readonly){ artd.appendChild(arb); }
+  artr.appendChild(artd);tbody.appendChild(artr);
   tbl.appendChild(tbody);sc.appendChild(tbl);wrap.appendChild(sc);return wrap;
 }
 
 // ─── FLAG ─────────────────────────────────────────────────────
-function buildFlag(col,row,g){
+function buildFlag(col,row,g,readonly){
   const w=document.createElement('div');w.className='fw';
   const cond=col.condition||{};
   const cb=document.createElement('input');cb.type='checkbox';cb.className='fcb';cb.checked=!!row.cells[col.id];
-  cb.onchange=e=>{
-    const chk=e.target.checked;
-    if(chk&&cond.validateCol){const v=row.cells[cond.validateCol];if(v===undefined||v===''||v===false){const vc=g.columns.find(c=>c.id===cond.validateCol);toast('⚠️ Campo "'+(vc?vc.label:'obrigatório')+'" deve ser preenchido!');e.target.checked=false;return}}
-    row.cells[col.id]=chk;
-    const ts=chk?cond.onCheck:cond.onUncheck;
-    if(ts){const sc2=g.columns.find(c=>c.type==='status');if(sc2){row.cells[sc2.id]=ts;toast('Status → "'+ts+'"')}}
-    save();renderAll();
-  };
+  if(readonly){ cb.disabled=true; }
+  else {
+    cb.onchange=e=>{
+      const chk=e.target.checked;
+      if(chk&&cond.validateCol){const v=row.cells[cond.validateCol];if(v===undefined||v===''||v===false){const vc=g.columns.find(c=>c.id===cond.validateCol);toast('⚠️ Campo "'+(vc?vc.label:'obrigatório')+'" deve ser preenchido!');e.target.checked=false;return}}
+      row.cells[col.id]=chk;
+      const ts=chk?cond.onCheck:cond.onUncheck;
+      if(ts){const sc2=g.columns.find(c=>c.type==='status');if(sc2){row.cells[sc2.id]=ts;toast('Status → "'+ts+'"')}}
+      save();renderAll();
+    };
+  }
   w.appendChild(cb);
-  const gear=document.createElement('button');gear.className='fgear'+(Object.values(cond||{}).some(v=>v)?' on':'');gear.textContent='⚙';gear.title='Configurar';gear.onclick=e=>{e.stopPropagation();openFlagMod(col,g)};
-  w.appendChild(gear);return w;
+  if(!readonly){
+    const gear=document.createElement('button');gear.className='fgear'+(Object.values(cond||{}).some(v=>v)?' on':'');gear.textContent='⚙';gear.title='Configurar';gear.onclick=e=>{e.stopPropagation();openFlagMod(col,g)};
+    w.appendChild(gear);
+  }
+  return w;
 }
 
 function openFlagMod(col,g){
@@ -3344,18 +3408,19 @@ function canSeeAdminTab(){
     buildGraph();
   }
 
-  window.initCircuitCanvas=function(){
-    canvas=document.getElementById('circuitCanvas');
+  window.initCircuitCanvas=function(canvasId){
+    canvasId = canvasId || 'circuitCanvas';
+    canvas=document.getElementById(canvasId);
     if(!canvas)return;
     ctx=canvas.getContext('2d');
     // Mouse tracking
     canvas.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
     canvas.addEventListener('mouseleave',()=>{mouse.x=-999;mouse.y=-999});
-    // Also track on loginWrap for full coverage
-    const lw=document.getElementById('loginWrap');
-    if(lw){
-      lw.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
-      lw.addEventListener('mouseleave',()=>{mouse.x=-999;mouse.y=-999});
+    // Also track on parent wrapper for full coverage
+    const parent=canvas.parentElement;
+    if(parent){
+      parent.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+      parent.addEventListener('mouseleave',()=>{mouse.x=-999;mouse.y=-999});
     }
     cancelAnimationFrame(raf);
     resize();
@@ -3666,6 +3731,12 @@ function showPendingScreen(){
     if(el) el.style.display='none';
   });
   document.getElementById('pendingScreen').style.display='flex';
+  // Start circuit animation on pending screen
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      if(window.initCircuitCanvas) window.initCircuitCanvas('pendingCircuitCanvas');
+    });
+  });
   const u=currentUser;
   document.getElementById('pendingUserInfo').innerHTML=
     `<strong>${u.name}</strong>@${u.username} · ${u.email}`;
