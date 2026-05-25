@@ -2659,11 +2659,15 @@ function hoSyncRequests(){
   }catch(e){console.warn('hoSyncRequests err',e);}
 }
 // Salva somente collaborators no Firebase (merge: true para não apagar requests)
+let _hoCollabSaving=false;
 function hoSyncCollabs(){
   try{
     if(!fbReady||!fbDb||!fbDocFn||!fbSet)return;
-    fbSet(fbDocFn(fbDb,'controle','ho_data'),{collaborators:HO_COLLABORATORS},{merge:true}).catch(e=>console.warn('hoSyncCol err',e));
-  }catch(e){console.warn('hoSyncCollabs err',e);}
+    _hoCollabSaving=true;
+    fbSet(fbDocFn(fbDb,'controle','ho_data'),{collaborators:HO_COLLABORATORS},{merge:true})
+      .then(()=>{ setTimeout(()=>{_hoCollabSaving=false;},2000); })
+      .catch(e=>{console.warn('hoSyncCol err',e);_hoCollabSaving=false;});
+  }catch(e){console.warn('hoSyncCollabs err',e);_hoCollabSaving=false;}
 }
 // Mantido para compatibilidade (chama os dois)
 function hoSyncFirebase(){
@@ -2679,7 +2683,7 @@ function hoLoadFromFirebase(){
       if(!snap.exists())return;
       const d=snap.data();
       if(d.requests)  { HO_REQUESTS=d.requests;      try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){} }
-      if(d.collaborators){ HO_COLLABORATORS=d.collaborators; try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){} }
+      if(d.collaborators&&!_hoCollabSaving){ HO_COLLABORATORS=d.collaborators; try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){} }
       // Re-renderizar a view de HO se estiver visível
       const hoView=document.getElementById('hoView');
       if(hoView&&hoView.style.display!=='none') renderHoView();
@@ -2696,7 +2700,7 @@ function hoSubscribeFirebase(){
       if(!snap.exists())return;
       const d=snap.data();
       if(d.requests)  { HO_REQUESTS=d.requests;      try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){} }
-      if(d.collaborators){ HO_COLLABORATORS=d.collaborators; try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){} }
+      if(d.collaborators&&!_hoCollabSaving){ HO_COLLABORATORS=d.collaborators; try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){} }
       const hoView=document.getElementById('hoView');
       if(hoView&&hoView.style.display!=='none') renderHoView();
       renderTabs();
@@ -3009,6 +3013,8 @@ window.confirmAddCollab=function(){
   };
   HO_COLLABORATORS.push(collab);
   saveHoCollabs();
+  // Retry sync in case Firebase wasn't ready yet
+  if(!fbReady) setTimeout(()=>{ if(fbReady) hoSyncCollabs(); }, 3000);
   document.getElementById('hoAddCollabMov').style.display='none';
   toast('✅ Colaborador adicionado!');
   renderHoSchedule();
