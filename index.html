@@ -1690,10 +1690,19 @@ function migrate(d){
     try{
       const navKey='ctrl_nav_'+(currentUser&&currentUser.username||'anon');
       const savedNav=sessionStorage.getItem(navKey);
-      if(savedNav && S.tabs.find(t=>t.id===savedNav)){
+      const isAdmin=currentUser&&currentUser.role==='admin';
+      const isSafeTab=(tabId)=>{
+        const t=S.tabs.find(t=>t.id===tabId);
+        if(!t)return false;
+        if(t.private&&!isAdmin)return false; // private tab: non-admin must unlock each session
+        return true;
+      };
+      if(savedNav && isSafeTab(savedNav)){
         S.activeTab=savedNav;
-      } else if(!S.activeTab || !S.tabs.find(t=>t.id===S.activeTab)){
-        S.activeTab=S.tabs[0]&&S.tabs[0].id||'';
+      } else {
+        // Fall back to first non-private tab (or first tab for admin)
+        const safeTab=isAdmin?S.tabs[0]:S.tabs.find(t=>!t.private)||S.tabs[0];
+        S.activeTab=safeTab&&safeTab.id||'';
       }
     }catch(e){}
     cid=S._cid||cid;rid=S._rid||rid;gid=S._gid||gid;tid=S._tid||tid;caid=S._caid||caid;
@@ -1857,7 +1866,13 @@ function save(){
   if(currentUser&&currentUser.role==='consulta'){return} // read-only
   S._cid=cid;S._rid=rid;S._gid=gid;S._tid=tid;S._caid=caid;
   // Save activeTab locally per user — never sync to Firebase so navigation is independent
-  try{sessionStorage.setItem('ctrl_nav_'+( currentUser&&currentUser.username||'anon'), S.activeTab);}catch(e){}
+  // Don't save private tab for non-admin — on reload they'd need to re-authenticate
+  try{
+    const isAdmin=currentUser&&currentUser.role==='admin';
+    const activeT=S.tabs.find(t=>t.id===S.activeTab);
+    const navToSave=(activeT&&activeT.private&&!isAdmin)?'':(S.activeTab);
+    if(navToSave) sessionStorage.setItem('ctrl_nav_'+(currentUser&&currentUser.username||'anon'), navToSave);
+  }catch(e){}
   lsSave();setSaving();
   clearTimeout(saveTO);
   saveTO=setTimeout(async()=>{
@@ -4326,6 +4341,8 @@ function checkSession(){
     }
 
     currentUser = s;
+    // Atualiza lastActive imediatamente ao recarregar — evita falso idle timeout no refresh
+    try{ refreshSession(); }catch(e){}
     if(currentUser.role==='pending'){
       try{ loadUsers(); }catch(e){}
       const approved = USERS[currentUser.username];
