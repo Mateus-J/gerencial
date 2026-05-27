@@ -1142,6 +1142,9 @@ tr:hover .ho-collab-del{opacity:1}
 
     <!-- Top toolbar -->
     <div class="cvtb">
+      <button class="cvtb-btn" id="cvUndoBtn" onclick="cvUndo()" title="Desfazer (Ctrl+Z)" disabled>↩ Desfazer</button>
+      <button class="cvtb-btn" id="cvRedoBtn" onclick="cvRedo()" title="Refazer (Ctrl+Y)" disabled>↪ Refazer</button>
+      <div class="cvtb-sep"></div>
       <button class="cvtb-btn" onclick="cvAddCard()" title="Cartão"><span>🃏</span> Cartão</button>
       <button class="cvtb-btn" onclick="cvAddSticky()" title="Sticky note"><span>📝</span> Sticky</button>
       <button class="cvtb-btn" onclick="cvAddTitle()" title="Título"><span>T</span> Título</button>
@@ -1921,7 +1924,10 @@ async function fbInit(){
         } else {
           // update data silently, re-render after user finishes editing
           clearTimeout(window._pendingRender);
-          window._pendingRender = setTimeout(()=>renderView(), 3000);
+          window._pendingRender = setTimeout(()=>{
+            const stillEditing=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+            if(!stillEditing) renderView();
+          }, 8000); // long delay — canvas text is saved on blur anyway
         }
         setSynced();
       }
@@ -2612,6 +2618,45 @@ function openCtPkr(e,g){
 
 // ─── CANVAS ───────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
+// UNDO / REDO — Canvas only
+// ═══════════════════════════════════════════════════════════════
+const CV_UNDO_STACK=[];
+const CV_REDO_STACK=[];
+const CV_UNDO_MAX=50;
+
+function cvPushUndo(){
+  const tab=curTab();if(!tab||tab.type!=='canvas')return;
+  CV_UNDO_STACK.push(JSON.stringify({elements:tab.elements||[],cards:tab.cards||[],connections:tab.connections||[]}));
+  if(CV_UNDO_STACK.length>CV_UNDO_MAX) CV_UNDO_STACK.shift();
+  CV_REDO_STACK.length=0;
+  cvUpdateUndoButtons();
+}
+
+function cvUndo(){
+  const tab=curTab();if(!tab||tab.type!=='canvas'||!CV_UNDO_STACK.length)return;
+  // push current to redo
+  CV_REDO_STACK.push(JSON.stringify({elements:tab.elements||[],cards:tab.cards||[],connections:tab.connections||[]}));
+  const prev=JSON.parse(CV_UNDO_STACK.pop());
+  tab.elements=prev.elements;tab.cards=prev.cards;tab.connections=prev.connections;
+  save();renderCanvas(tab);cvUpdateUndoButtons();toast('↩ Desfeito');
+}
+
+function cvRedo(){
+  const tab=curTab();if(!tab||tab.type!=='canvas'||!CV_REDO_STACK.length)return;
+  CV_UNDO_STACK.push(JSON.stringify({elements:tab.elements||[],cards:tab.cards||[],connections:tab.connections||[]}));
+  const next=JSON.parse(CV_REDO_STACK.pop());
+  tab.elements=next.elements;tab.cards=next.cards;tab.connections=next.connections;
+  save();renderCanvas(tab);cvUpdateUndoButtons();toast('↪ Refeito');
+}
+
+function cvUpdateUndoButtons(){
+  const u=document.getElementById('cvUndoBtn');
+  const r=document.getElementById('cvRedoBtn');
+  if(u) u.disabled=CV_UNDO_STACK.length===0;
+  if(r) r.disabled=CV_REDO_STACK.length===0;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // CANVAS — Rich implementation
 // Elements: card, sticky, title, shape (rect/circle/diamond/triangle/arrow)
 // Connections: curved lines with arrows, labels, styles
@@ -2739,8 +2784,9 @@ function buildCvCard(tab,el){
   }
   const body=document.createElement('div');body.className='ccbody';
   const ta=document.createElement('textarea');ta.value=el.body||'';ta.placeholder='Escreva aqui...';
-  ta.oninput=()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';el.h=div.offsetHeight;save()};
-  ta.onchange=e=>{el.body=e.target.value;save()};ta.onmousedown=e=>e.stopPropagation();
+  ta.oninput=()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';}; // só resize, sem save
+  ta.onblur=e=>{if(el.body!==e.target.value){el.body=e.target.value;el.h=div.offsetHeight;cvPushUndo();save();}};
+  ta.onmousedown=e=>e.stopPropagation();
   body.appendChild(ta);
   const rh=document.createElement('div');rh.className='ccrz';
   rh.onmousedown=e=>{e.preventDefault();e.stopPropagation();cvRz={el,div,sx:e.clientX,sy:e.clientY,sw:el.w||220,sh:el.h||100}};
@@ -2762,7 +2808,7 @@ function buildCvSticky(tab,el){
   const ta=document.createElement('textarea');
   ta.value=el.body||'';ta.placeholder='Anota\u00e7\u00e3o...';
   ta.style.cssText='width:100%;height:100%;background:transparent;border:none;outline:none;font-size:12px;color:#333;resize:none;padding:10px;box-sizing:border-box;font-family:inherit';
-  ta.onchange=e=>{el.body=e.target.value;save()};ta.onmousedown=e=>e.stopPropagation();
+  ta.onblur=e=>{if(el.body!==e.target.value){el.body=e.target.value;cvPushUndo();save();}};ta.onmousedown=e=>e.stopPropagation();
   const del=document.createElement('button');del.className='ccdel';
   del.style.cssText='position:absolute;top:4px;right:6px;opacity:0;background:none;border:none;cursor:pointer;color:#666;font-size:12px;font-family:inherit';
   del.textContent='\u2715';del.onclick=e=>{e.stopPropagation();cvDeleteEl(tab,el.id)};
@@ -2997,6 +3043,7 @@ function cvOpenColorPick(e,el,tab){
 
 // ── Delete element ────────────────────────────────────────────
 function cvDeleteEl(tab,id){
+  cvPushUndo();
   tab.elements=(tab.elements||[]).filter(e=>e.id!==id);
   tab.cards=(tab.cards||[]).filter(c=>c.id!==id);
   tab.connections=(tab.connections||[]).filter(c=>c.from!==id&&c.to!==id);
@@ -3013,26 +3060,26 @@ function cvEnsureEls(tab){tab.elements=tab.elements||[];}
 
 function cvAddCard(){
   const tab=curTab();if(!tab||tab.type!=='canvas')return;
-  cvEnsureEls(tab);const c=cvCenter();
+  cvEnsureEls(tab);const c=cvCenter();cvPushUndo();
   tab.elements.push({id:'ca'+(caid++),type:'card',x:c.x-110,y:c.y-60,w:220,h:110,title:'Cartão',body:'',color:GC[tab.elements.length%GC.length]});
   save();renderCanvas(tab);
 }
 function cvAddSticky(){
   const tab=curTab();if(!tab||tab.type!=='canvas')return;
-  cvEnsureEls(tab);const c=cvCenter();
+  cvEnsureEls(tab);const c=cvCenter();cvPushUndo();
   const sc=STICKY_COLORS[tab.elements.length%STICKY_COLORS.length];
   tab.elements.push({id:'ca'+(caid++),type:'sticky',x:c.x-80,y:c.y-65,w:160,h:130,body:'',color:sc});
   save();renderCanvas(tab);
 }
 function cvAddTitle(){
   const tab=curTab();if(!tab||tab.type!=='canvas')return;
-  cvEnsureEls(tab);const c=cvCenter();
+  cvEnsureEls(tab);const c=cvCenter();cvPushUndo();
   tab.elements.push({id:'ca'+(caid++),type:'title',x:c.x-100,y:c.y-20,w:200,title:'Título',fontSize:28,color:'var(--tx)'});
   save();renderCanvas(tab);
 }
 function cvAddShape(shape){
   const tab=curTab();if(!tab||tab.type!=='canvas')return;
-  cvEnsureEls(tab);const c=cvCenter();
+  cvEnsureEls(tab);const c=cvCenter();cvPushUndo();
   const w=shape==='arrow'?160:120,h=shape==='arrow'?60:80;
   tab.elements.push({id:'ca'+(caid++),type:'shape',shape,x:c.x-w/2,y:c.y-h/2,w,h,color:'#1565c0',fill:'rgba(77,158,247,0.18)',strokeW:2});
   save();renderCanvas(tab);
@@ -3113,8 +3160,8 @@ document.addEventListener('mousemove',e=>{
   }
 });
 document.addEventListener('mouseup',e=>{
-  if(cvDrag){save();cvDrag=null;}
-  if(cvRz){const tab=curTab();if(tab)renderCanvas(tab);cvRz=null;}
+  if(cvDrag){cvPushUndo();save();cvDrag=null;}
+  if(cvRz){cvPushUndo();const tab=curTab();if(tab)renderCanvas(tab);cvRz=null;}
   cv.panning=false;
 });
 cva.addEventListener('wheel',e=>{
@@ -3129,8 +3176,13 @@ cva.addEventListener('wheel',e=>{
   applyCvT();
 },{passive:false});
 document.addEventListener('keydown',e=>{
+  const tag=document.activeElement.tagName;
+  const editing=tag==='INPUT'||tag==='TEXTAREA';
+  // Undo/Redo — only when not editing text
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!editing){e.preventDefault();cvUndo();return;}
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))&&!editing){e.preventDefault();cvRedo();return;}
   if(e.key==='Escape'&&cvConnMode){cvConnMode=false;cvConnFrom=null;document.getElementById('cvConnBtn').classList.remove('active');document.getElementById('cvHint').textContent='Duplo clique = cartão · Scroll = zoom · Arraste = mover';}
-  if((e.key==='Delete'||e.key==='Backspace')&&cvSel&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){
+  if((e.key==='Delete'||e.key==='Backspace')&&cvSel&&!editing){
     const tab=curTab();if(tab&&tab.type==='canvas')cvDeleteEl(tab,cvSel);
   }
 });
