@@ -2689,8 +2689,11 @@ function loadHoRequests(){
   try{const d=localStorage.getItem('ctrl_ho_requests');if(d)HO_REQUESTS=JSON.parse(d);}catch(e){HO_REQUESTS=[]}
 }
 function saveHoRequests(){
-  try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){}
-  hoSyncRequests(); // salva APENAS requests, não toca nos collaborators
+  try{
+    localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));
+    localStorage.setItem('ctrl_ho_requests_ts',String(Date.now()));
+  }catch(e){}
+  hoSyncRequests();
 }
 function loadHoCollabs(){
   try{const d=localStorage.getItem('ctrl_ho_collabs');if(d)HO_COLLABORATORS=JSON.parse(d);}catch(e){HO_COLLABORATORS=[]}
@@ -2704,11 +2707,16 @@ function saveHoCollabs(){
 }
 
 // Salva somente requests no Firebase (merge: true para não apagar collaborators)
+let _hoReqSaving=false;
 function hoSyncRequests(){
   try{
     if(!fbReady||!fbDb||!fbDocFn||!fbSet)return;
-    fbSet(fbDocFn(fbDb,'controle','ho_data'),{requests:HO_REQUESTS},{merge:true}).catch(e=>console.warn('hoSyncReq err',e));
-  }catch(e){console.warn('hoSyncRequests err',e);}
+    _hoReqSaving=true;
+    const payload={requests:HO_REQUESTS,requests_ts:Date.now()};
+    fbSet(fbDocFn(fbDb,'controle','ho_data'),payload,{merge:true})
+      .then(()=>{ setTimeout(()=>{_hoReqSaving=false;},3000); })
+      .catch(e=>{console.warn('hoSyncReq err',e);_hoReqSaving=false;});
+  }catch(e){console.warn('hoSyncRequests err',e);_hoReqSaving=false;}
 }
 // Salva somente collaborators no Firebase (merge: true para não apagar requests)
 let _hoCollabSaving=false;
@@ -2735,7 +2743,14 @@ function hoLoadFromFirebase(){
     fbGet(fbDocFn(fbDb,'controle','ho_data')).then(snap=>{
       if(!snap.exists())return;
       const d=snap.data();
-      if(d.requests)  { HO_REQUESTS=d.requests;      try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){} }
+      if(d.requests&&!_hoReqSaving){
+        const localTs=parseInt(localStorage.getItem('ctrl_ho_requests_ts')||'0');
+        const fbTs=d.requests_ts||0;
+        if(fbTs>=localTs){
+          HO_REQUESTS=d.requests;
+          try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));localStorage.setItem('ctrl_ho_requests_ts',String(fbTs));}catch(e){}
+        }
+      }
       if(d.collaborators&&!_hoCollabSaving){
         // Só sobrescreve se o Firebase for mais recente que o localStorage
         const localTs=parseInt(localStorage.getItem('ctrl_ho_collabs_ts')||'0');
@@ -2760,7 +2775,14 @@ function hoSubscribeFirebase(){
     fbSnap(fbDocFn(fbDb,'controle','ho_data'),snap=>{
       if(!snap.exists())return;
       const d=snap.data();
-      if(d.requests)  { HO_REQUESTS=d.requests;      try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){} }
+      if(d.requests&&!_hoReqSaving){
+        const localTs=parseInt(localStorage.getItem('ctrl_ho_requests_ts')||'0');
+        const fbTs=d.requests_ts||0;
+        if(fbTs>=localTs){
+          HO_REQUESTS=d.requests;
+          try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));localStorage.setItem('ctrl_ho_requests_ts',String(fbTs));}catch(e){}
+        }
+      }
       if(d.collaborators&&!_hoCollabSaving){
         const localTs=parseInt(localStorage.getItem('ctrl_ho_collabs_ts')||'0');
         const fbTs=d.collaborators_ts||0;
@@ -2812,8 +2834,7 @@ function switchToHO(){
 window.switchToHO=switchToHO;
 
 function renderHoView(){
-  loadHoRequests();
-  // Não recarrega HO_COLLABORATORS do localStorage aqui — dados mantidos em memória pelos listeners
+  // Não recarrega do localStorage aqui — dados mantidos em memória pelos listeners
   const isAdmin=currentUser&&currentUser.role==='admin';
   const isUser=currentUser&&currentUser.role==='user';
   // Show/hide request form & admin section
@@ -3002,8 +3023,7 @@ window.hoWeekNav=function(dir){
 
 // Admin: click a cell to toggle Home ↔ Escritório directly on the schedule
 function hoAdminToggleCell(collab, iso, uname){
-  loadHoRequests();
-  loadHoCollabs(); // garante que HO_COLLABORATORS está atualizado antes de sincronizar
+  // NÃO recarrega do localStorage — mantém array em memória atualizado
   if(uname){
     // Find existing approved request for this user+date
     const idx=HO_REQUESTS.findIndex(r=>r.username===uname&&r.date===iso&&r.status==='approved');
