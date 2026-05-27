@@ -4437,7 +4437,7 @@ window.applyGdotCustomColor=applyGdotCustomColor;
 
 
 // ─── PASSWORD COLUMN ──────────────────────────────────────────
-const PASS_COL_NAMES = /^(senha|password|pass|senha de acesso|pw|chave|acesso)$/i;
+const PASS_COL_NAMES = /^(senha|password|pass|senha de acesso|senha de transação|senha de aprovação|transação|aprovação|pw|chave|acesso|pin|token|secret|segredo)$/i;
 const PASS_REVEAL_PIN = '0305';
 // Session-level unlocked cells: Set of colId
 const unlockedCols = new Set();
@@ -4517,7 +4517,6 @@ function closePassLock(){
 window.closePassLock=closePassLock;
 
 function buildPassCell(col, row, val){
-  const isUnlocked = unlockedCols.has(col.id);
   const wrap = document.createElement('div');
   wrap.className = 'pass-cell-wrap';
 
@@ -4525,20 +4524,24 @@ function buildPassCell(col, row, val){
   inp.type = 'text';
   inp.className = 'pass-cell-input';
   inp.value = val||'';
-  inp.placeholder = isUnlocked ? '...' : '••••••••';
   inp.autocomplete = 'off';
-  if(isUnlocked) inp.setAttribute('data-unlocked','1');
 
-  // Toggle button
   const toggle = document.createElement('button');
   toggle.className = 'pass-cell-toggle';
-  toggle.textContent = isUnlocked ? '🔓' : '🔒';
-  toggle.title = isUnlocked ? 'Ocultar' : 'Revelar (requer senha)';
+
+  function applyState(){
+    const unlocked = unlockedCols.has(col.id);
+    inp.readOnly = !unlocked;
+    inp.placeholder = unlocked ? '...' : '••••••••';
+    if(unlocked){ inp.setAttribute('data-unlocked','1'); } else { inp.removeAttribute('data-unlocked'); }
+    toggle.textContent = unlocked ? '🔓' : '🔒';
+    toggle.title = unlocked ? 'Ocultar' : 'Revelar (requer senha)';
+  }
+  applyState();
 
   toggle.onclick = e => {
     e.stopPropagation();
-    if(isUnlocked){
-      // Lock again
+    if(unlockedCols.has(col.id)){
       unlockedCols.delete(col.id);
       renderAll();
     } else {
@@ -4547,22 +4550,21 @@ function buildPassCell(col, row, val){
   };
 
   inp.addEventListener('click', e => {
-    if(!isUnlocked){
+    if(!unlockedCols.has(col.id)){
       e.preventDefault();
       openPassLock(col.id, ()=>renderAll());
     }
   });
   inp.addEventListener('focus', e => {
-    if(!isUnlocked){e.target.blur();openPassLock(col.id,()=>renderAll());return}
+    if(!unlockedCols.has(col.id)){e.target.blur();openPassLock(col.id,()=>renderAll());return;}
     e.target.select&&e.target.select();
   });
   inp.addEventListener('blur', e => {
-    if(isUnlocked && row.cells[col.id]!==e.target.value){
+    if(unlockedCols.has(col.id) && row.cells[col.id]!==e.target.value){
       row.cells[col.id]=e.target.value;save();
     }
   });
   inp.addEventListener('keydown', e=>{if(e.key==='Enter')e.target.blur()});
-  if(!isUnlocked) inp.readOnly = true;
 
   wrap.appendChild(inp);wrap.appendChild(toggle);
   return wrap;
