@@ -49,12 +49,28 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
 .tabs-left::-webkit-scrollbar{height:3px}
 .tab{padding:8px 14px;font-size:12px;font-weight:500;color:var(--tx2);cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;white-space:nowrap;display:flex;align-items:center;gap:5px;user-select:none;position:relative;top:1px;transition:background .12s}
 .tab:hover{background:var(--sur2)}.tab.active{background:var(--sur);border-color:var(--bdr);color:var(--blue);font-weight:600}
+.tab.tab-private .tlock{font-size:10px;opacity:.7}
+.tab.tab-private.locked-tab{color:var(--tx3)}
+.tab.tab-private.locked-tab:hover{background:var(--sur2)}
 .tdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .tbadge{font-size:9px;background:var(--sur3);color:var(--tx3);border-radius:4px;padding:1px 4px;font-weight:600;text-transform:uppercase}
 .tdel{background:none;border:none;cursor:pointer;color:var(--tx3);font-size:13px;padding:0 1px;opacity:0;font-family:inherit}
 .tab:hover .tdel{opacity:1}.tdel:hover{color:var(--red)}
 .tadd{padding:8px 11px;font-size:18px;color:var(--tx3);cursor:pointer;border:none;background:none;line-height:1;top:1px;position:relative}
 .tadd:hover{color:var(--blue)}
+/* Tab lock modal */
+.tab-lock-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.tab-lock-box{background:var(--sur);border:1px solid var(--bdr);border-radius:16px;padding:32px 28px;width:340px;box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:center}
+.tab-lock-icon{font-size:40px;margin-bottom:12px}
+.tab-lock-box h4{font-size:16px;font-weight:700;color:var(--tx);margin:0 0 6px}
+.tab-lock-box p{font-size:12px;color:var(--tx3);margin:0 0 18px}
+.tab-lock-inp{width:100%;padding:10px 14px;border-radius:8px;border:1.5px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:14px;font-family:inherit;outline:none;text-align:center;letter-spacing:3px;box-sizing:border-box}
+.tab-lock-inp:focus{border-color:var(--blue)}
+.tab-lock-err{font-size:11px;min-height:16px;margin:6px 0 14px;font-weight:600}
+.tab-lock-btns{display:flex;gap:8px;justify-content:center}
+.tab-lock-admin-row{margin-top:14px;padding-top:12px;border-top:1px solid var(--bdr);font-size:11px;color:var(--tx3)}
+.tab-lock-admin-row button{background:none;border:none;color:var(--blue);cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;padding:0}
+.tab-lock-admin-row button:hover{text-decoration:underline}
 
 /* MAIN */
 .main{padding:14px 18px;flex:1;overflow:auto}
@@ -1544,8 +1560,52 @@ tr:hover .ho-collab-del{opacity:1}
       <select id="tabType"><option value="table">📋 Tabela</option><option value="canvas">🎨 Canvas</option>
           <option value="dashboard">📊 Dashboard</option><option value="iof">💰 IOF/IR</option></select>
     </div>
+    <div class="msec">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="tabPrivate" onchange="toggleTabPrivateField()" style="width:16px;height:16px;cursor:pointer">
+        🔒 Aba privada (protegida por senha)
+      </label>
+    </div>
+    <div id="tabPrivateField" style="display:none" class="msec">
+      <label>Senha de acesso</label>
+      <input type="password" id="tabPrivatePass" placeholder="Defina a senha da aba" style="width:100%;padding:8px 10px;border-radius:7px;border:1.5px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+    </div>
     <div class="swatches" id="tabSw"></div>
     <div class="moda"><button class="btn" onclick="closeMod('tabMod')">Cancelar</button><button class="btn btn-p" onclick="cfmTab()">Criar</button></div>
+  </div>
+</div>
+
+<!-- TAB LOCK MODAL -->
+<div id="tabLockOverlay" class="tab-lock-overlay" style="display:none">
+  <div class="tab-lock-box">
+    <div class="tab-lock-icon">🔒</div>
+    <h4 id="tabLockTitle">Aba protegida</h4>
+    <p id="tabLockSub">Digite a senha para acessar esta aba</p>
+    <input type="password" class="tab-lock-inp" id="tabLockInp" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitTabLock()" autocomplete="off">
+    <div class="tab-lock-err" id="tabLockErr"></div>
+    <div class="tab-lock-btns">
+      <button class="btn" onclick="closeTabLock()">Cancelar</button>
+      <button class="btn btn-p" onclick="submitTabLock()">🔓 Acessar</button>
+    </div>
+    <div class="tab-lock-admin-row" id="tabLockAdminRow" style="display:none">
+      <button onclick="openChangeTabPass()">⚙ Alterar senha da aba</button>
+    </div>
+  </div>
+</div>
+
+<!-- TAB CHANGE PASSWORD MODAL -->
+<div id="tabChangePassOverlay" class="tab-lock-overlay" style="display:none">
+  <div class="tab-lock-box">
+    <div class="tab-lock-icon">🔑</div>
+    <h4>Alterar senha da aba</h4>
+    <p id="tabChangePassSub">Nova senha para a aba</p>
+    <input type="password" class="tab-lock-inp" id="tabChangePassInp" placeholder="Nova senha" style="letter-spacing:1px;margin-bottom:8px" autocomplete="new-password">
+    <input type="password" class="tab-lock-inp" id="tabChangePassConf" placeholder="Confirmar senha" style="letter-spacing:1px" onkeydown="if(event.key==='Enter')submitChangeTabPass()">
+    <div class="tab-lock-err" id="tabChangePassErr"></div>
+    <div class="tab-lock-btns">
+      <button class="btn" onclick="closeChangeTabPass()">Cancelar</button>
+      <button class="btn btn-p" onclick="submitChangeTabPass()">Salvar</button>
+    </div>
   </div>
 </div>
 
@@ -1592,6 +1652,7 @@ let S={tabs:[],activeTab:'',_cid:6,_rid:10,_gid:1,_tid:1,_caid:0};
 let cid=6,rid=10,gid=1,tid=1,caid=0;
 let pendingSub=false,pgc=GC[0],ptc=GC[0];
 let saveTO=null,rzState=null,flagCtx=null,dragCI=null,dragGI=null;
+const unlockedPrivateTabs=new Set(); // session-level unlocked private tabs
 let cv={pan:{x:0,y:0},zoom:1,drag:null,crz:null,connFrom:null,panning:false,ps:{x:0,y:0},po:{x:0,y:0}};
 
 // ─── DEFAULTS ─────────────────────────────────────────────────
@@ -1890,9 +1951,19 @@ function renderTabs(){
     lbl.onblur=e=>{lbl.contentEditable=false;lbl.style.cursor='pointer';tab.label=e.target.textContent.trim()||tab.label;e.target.textContent=tab.label;save()};
     lbl.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();lbl.blur()}};
     const tb=document.createElement('span');tb.className='tbadge';tb.textContent=tab.type==='canvas'?'Canvas':tab.type==='dashboard'?'Dashboard':'Tabela';
+    // Private lock icon
+    if(tab.private){
+      const tlock=document.createElement('span');tlock.className='tlock';tlock.textContent='🔒';tlock.title='Aba privada';
+      el.classList.add('tab-private');
+      const isAdmin=currentUser&&currentUser.role==='admin';
+      if(!isAdmin&&!unlockedPrivateTabs.has(tab.id)) el.classList.add('locked-tab');
+      el.appendChild(dot);el.appendChild(tlock);el.appendChild(lbl);el.appendChild(tb);
+    } else {
+      el.appendChild(dot);el.appendChild(lbl);el.appendChild(tb);
+    }
     const del=document.createElement('button');del.className='tdel';del.textContent='✕';
     del.onclick=e=>{e.stopPropagation();if(S.tabs.length===1){toast('Mínimo 1 aba!');return}if(confirm('Remover aba?')){S.tabs=S.tabs.filter(t=>t.id!==tab.id);if(S.activeTab===tab.id)S.activeTab=S.tabs[0].id;save();renderTabs();renderView()}};
-    el.appendChild(dot);el.appendChild(lbl);el.appendChild(tb);el.appendChild(del);
+    el.appendChild(del);
     el.draggable=true;
     el.addEventListener('dragstart',e=>{e.dataTransfer.setData('tabId',tab.id);e.dataTransfer.effectAllowed='move';setTimeout(()=>el.classList.add('tab-dragging'),0)});
     el.addEventListener('dragend',()=>{el.classList.remove('tab-dragging');leftArea.querySelectorAll('.tab').forEach(t=>t.classList.remove('tab-drag-over'))});
@@ -1908,7 +1979,19 @@ function renderTabs(){
       const [moved]=S.tabs.splice(fi,1);S.tabs.splice(ti,0,moved);
       save();renderTabs();
     });
-    el.onclick=e=>{if(e.target===del)return;S.activeTab=tab.id;cv={pan:{x:0,y:0},zoom:1,drag:null,crz:null,connFrom:null,panning:false,ps:{x:0,y:0},po:{x:0,y:0}};document.getElementById('adminView').style.display='none';if(document.getElementById('iofView'))document.getElementById('iofView').style.display='none';if(document.getElementById('hoView'))document.getElementById('hoView').style.display='none';save();renderTabs();renderView()};
+    el.onclick=e=>{
+      if(e.target===del)return;
+      const isAdmin=currentUser&&currentUser.role==='admin';
+      // Private tab: non-admin must unlock first
+      if(tab.private&&!isAdmin&&!unlockedPrivateTabs.has(tab.id)){
+        openTabLock(tab);return;
+      }
+      S.activeTab=tab.id;cv={pan:{x:0,y:0},zoom:1,drag:null,crz:null,connFrom:null,panning:false,ps:{x:0,y:0},po:{x:0,y:0}};
+      document.getElementById('adminView').style.display='none';
+      if(document.getElementById('iofView'))document.getElementById('iofView').style.display='none';
+      if(document.getElementById('hoView'))document.getElementById('hoView').style.display='none';
+      save();renderTabs();renderView();
+    };
     leftArea.appendChild(el);
   });
   // Add Tab button (hidden for consulta)
@@ -1963,14 +2046,27 @@ function showTabModal(){
   ptc=GC[tid%GC.length];
   document.getElementById('tabNm').value='Nova aba';
   document.getElementById('tabType').value='table';
+  document.getElementById('tabPrivate').checked=false;
+  document.getElementById('tabPrivateField').style.display='none';
+  document.getElementById('tabPrivatePass').value='';
   buildSwatches('tabSw',ptc,c=>{ptc=c});
   document.getElementById('tabMod').style.display='flex';
   setTimeout(()=>document.getElementById('tabNm').select(),50);
 }
+function toggleTabPrivateField(){
+  const checked=document.getElementById('tabPrivate').checked;
+  document.getElementById('tabPrivateField').style.display=checked?'block':'none';
+  if(checked) setTimeout(()=>document.getElementById('tabPrivatePass').focus(),50);
+}
+window.toggleTabPrivateField=toggleTabPrivateField;
 function cfmTab(){
   const name=document.getElementById('tabNm').value.trim()||'Nova aba';
   const type=document.getElementById('tabType').value;
+  const isPrivate=document.getElementById('tabPrivate').checked;
+  const pass=document.getElementById('tabPrivatePass').value;
+  if(isPrivate&&!pass){toast('⚠ Defina a senha da aba privada.');document.getElementById('tabPrivatePass').focus();return;}
   const t=type==='canvas'?defTabCanvas('t'+(tid++),name,ptc):type==='iof'?{id:'t'+(tid++),name,type:'iof',color:ptc}:defTabTable('t'+(tid++),name,ptc);
+  if(isPrivate){t.private=true;t.privatePass=pass;}
   S.tabs.push(t);S.activeTab=t.id;closeMod('tabMod');save();renderTabs();renderView();
 }
 
@@ -4573,6 +4669,90 @@ function closePassLock(){
   passLockCtx=null;
 }
 window.closePassLock=closePassLock;
+
+// ─── PRIVATE TAB LOCK ─────────────────────────────────────────
+let tabLockCtx = null; // {tab}
+
+function openTabLock(tab){
+  tabLockCtx={tab};
+  document.getElementById('tabLockTitle').textContent='🔒 '+tab.label;
+  document.getElementById('tabLockSub').textContent='Esta aba é privada. Digite a senha para acessar.';
+  document.getElementById('tabLockInp').value='';
+  document.getElementById('tabLockErr').textContent='';
+  document.getElementById('tabLockErr').style.color='var(--red)';
+  // Show "change password" option only for admin
+  const isAdmin=currentUser&&currentUser.role==='admin';
+  document.getElementById('tabLockAdminRow').style.display=isAdmin?'block':'none';
+  document.getElementById('tabLockOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('tabLockInp').focus(),80);
+}
+
+function closeTabLock(){
+  document.getElementById('tabLockOverlay').style.display='none';
+  tabLockCtx=null;
+}
+window.closeTabLock=closeTabLock;
+
+function submitTabLock(){
+  if(!tabLockCtx)return;
+  const val=document.getElementById('tabLockInp').value;
+  const err=document.getElementById('tabLockErr');
+  const inp=document.getElementById('tabLockInp');
+  if(!val){err.textContent='Digite a senha.';return;}
+  const tab=tabLockCtx.tab;
+  if(val===tab.privatePass){
+    err.style.color='#2e7d32';
+    err.textContent='Acesso concedido ✓';
+    setTimeout(()=>{
+      unlockedPrivateTabs.add(tab.id);
+      closeTabLock();
+      S.activeTab=tab.id;
+      cv={pan:{x:0,y:0},zoom:1,drag:null,crz:null,connFrom:null,panning:false,ps:{x:0,y:0},po:{x:0,y:0}};
+      document.getElementById('adminView').style.display='none';
+      if(document.getElementById('iofView'))document.getElementById('iofView').style.display='none';
+      if(document.getElementById('hoView'))document.getElementById('hoView').style.display='none';
+      save();renderTabs();renderView();
+    },400);
+  } else {
+    err.style.color='var(--red)';
+    err.textContent='Senha incorreta. Tente novamente.';
+    inp.value='';inp.focus();
+    inp.style.animation='shake .4s ease';
+    setTimeout(()=>{inp.style.animation=''},450);
+  }
+}
+window.submitTabLock=submitTabLock;
+
+function openChangeTabPass(){
+  if(!tabLockCtx)return;
+  document.getElementById('tabChangePassSub').textContent='Aba: '+tabLockCtx.tab.label;
+  document.getElementById('tabChangePassInp').value='';
+  document.getElementById('tabChangePassConf').value='';
+  document.getElementById('tabChangePassErr').textContent='';
+  document.getElementById('tabChangePassOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('tabChangePassInp').focus(),80);
+}
+window.openChangeTabPass=openChangeTabPass;
+
+function closeChangeTabPass(){
+  document.getElementById('tabChangePassOverlay').style.display='none';
+}
+window.closeChangeTabPass=closeChangeTabPass;
+
+function submitChangeTabPass(){
+  if(!tabLockCtx)return;
+  const newPass=document.getElementById('tabChangePassInp').value;
+  const conf=document.getElementById('tabChangePassConf').value;
+  const err=document.getElementById('tabChangePassErr');
+  if(!newPass){err.style.color='var(--red)';err.textContent='Digite a nova senha.';return;}
+  if(newPass!==conf){err.style.color='var(--red)';err.textContent='As senhas não coincidem.';return;}
+  tabLockCtx.tab.privatePass=newPass;
+  save();
+  err.style.color='#2e7d32';
+  err.textContent='Senha alterada com sucesso ✓';
+  setTimeout(()=>{closeChangeTabPass();},700);
+}
+window.submitChangeTabPass=submitChangeTabPass;
 
 function buildPassCell(col, row, val){
   const wrap = document.createElement('div');
