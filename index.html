@@ -77,6 +77,14 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
 .gcol-btn:hover{background:rgba(255,255,255,.35);color:#fff;border-color:rgba(255,255,255,.6)}
 .gcoll{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);cursor:pointer;color:#fff;font-size:11px;font-family:inherit;padding:2px 7px;border-radius:4px;font-weight:500}
 .gcoll:hover{background:rgba(255,255,255,.35);color:#fff}
+.gmov-wrap{position:relative;display:inline-block}
+.gmov-btn{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:5px;cursor:pointer;color:#fff;font-size:11px;padding:2px 7px;font-family:inherit;font-weight:500}
+.gmov-btn:hover{background:rgba(255,255,255,.35);border-color:rgba(255,255,255,.6)}
+.gmov-dropdown{position:absolute;top:calc(100% + 4px);right:0;background:var(--sur);border:1px solid var(--bdr);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.18);z-index:9999;min-width:160px;overflow:hidden;display:none}
+.gmov-dropdown.open{display:block}
+.gmov-dropdown-item{padding:8px 14px;font-size:12px;cursor:pointer;color:var(--tx);white-space:nowrap;transition:background .12s}
+.gmov-dropdown-item:hover{background:var(--sur2)}
+.gmov-dropdown-lbl{padding:6px 14px 4px;font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--bdr);cursor:default}
 
 /* TABLE */
 .tscroll{overflow-x:auto}
@@ -2024,6 +2032,47 @@ function buildGroup(g,filter,search,readonly){
   const tog=document.createElement('button');tog.className='gcoll';tog.textContent=g.collapsed?'▶ Expandir':'▼ Recolher';tog.onclick=()=>{g.collapsed=!g.collapsed;save();renderAll()};
   const del=document.createElement('button');del.className='btn btn-sm btn-d';del.textContent='Remover';del.onclick=()=>{if(confirm('Remover grupo?')){curTab().groups=curTab().groups.filter(x=>x.id!==g.id);save();renderAll()}};
   if(!readonly){ga.appendChild(cb);ga.appendChild(del);}
+  // botão mover para outra aba (só quando há mais de 1 aba table)
+  if(!readonly){
+    const otherTabs=S.tabs.filter(t=>t.id!==curTab().id&&t.type==='table');
+    if(otherTabs.length>0){
+      const movWrap=document.createElement('div');movWrap.className='gmov-wrap';
+      const movBtn=document.createElement('button');movBtn.className='gmov-btn';movBtn.textContent='↗ Mover';movBtn.title='Mover grupo para outra aba';
+      const movDd=document.createElement('div');movDd.className='gmov-dropdown';
+      const movLbl=document.createElement('div');movLbl.className='gmov-dropdown-lbl';movLbl.textContent='Mover para aba';
+      movDd.appendChild(movLbl);
+      otherTabs.forEach(t=>{
+        const item=document.createElement('div');item.className='gmov-dropdown-item';
+        item.textContent='📋 '+t.label;
+        item.onclick=e=>{
+          e.stopPropagation();
+          movDd.classList.remove('open');
+          const fromTab=curTab();
+          const toTab=S.tabs.find(x=>x.id===t.id);
+          if(!toTab||!fromTab)return;
+          fromTab.groups=fromTab.groups.filter(x=>x.id!==g.id);
+          toTab.groups.push(g);
+          save();renderAll();
+          toast('✅ Grupo "'+g.label+'" movido para "'+t.label+'"');
+        };
+        movDd.appendChild(item);
+      });
+      movBtn.onclick=e=>{
+        e.stopPropagation();
+        // Fecha outros dropdowns abertos
+        document.querySelectorAll('.gmov-dropdown.open').forEach(d=>{if(d!==movDd)d.classList.remove('open')});
+        movDd.classList.toggle('open');
+        if(movDd.classList.contains('open')){
+          setTimeout(()=>{
+            function _close(ev){if(!movWrap.contains(ev.target)){movDd.classList.remove('open');document.removeEventListener('click',_close)}}
+            document.addEventListener('click',_close);
+          },0);
+        }
+      };
+      movWrap.appendChild(movBtn);movWrap.appendChild(movDd);
+      ga.appendChild(movWrap);
+    }
+  }
   ga.appendChild(tog);
   hdr.appendChild(dragHandle);hdr.appendChild(dot);hdr.appendChild(ni);hdr.appendChild(cntBadge);hdr.appendChild(ga);
   wrap.appendChild(hdr);
