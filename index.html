@@ -2081,7 +2081,7 @@ function renderTabs(){
     const el=document.createElement('div');el.className='tab'+(tab.id===S.activeTab?' active':'');
     const dot=document.createElement('div');dot.className='tdot';dot.style.background=tab.color;
     const lbl=document.createElement('span');lbl.textContent=tab.label;lbl.contentEditable=false;lbl.style.outline='none';lbl.style.cursor='pointer';
-    lbl.ondblclick=e=>{e.stopPropagation();lbl.contentEditable=true;lbl.style.cursor='text';lbl.focus();document.execCommand('selectAll',false,null)};
+    lbl.ondblclick=e=>{e.stopPropagation();if(tab.private)return;lbl.contentEditable=true;lbl.style.cursor='text';lbl.focus();document.execCommand('selectAll',false,null)};
     lbl.onblur=e=>{lbl.contentEditable=false;lbl.style.cursor='pointer';tab.label=e.target.textContent.trim()||tab.label;e.target.textContent=tab.label;save()};
     lbl.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();lbl.blur()}};
     const tb=document.createElement('span');tb.className='tbadge';tb.textContent=tab.type==='canvas'?'Canvas':tab.type==='dashboard'?'Dashboard':'Tabela';
@@ -2794,61 +2794,99 @@ function buildCvCard(tab,el){
   div.className='ccard'+(cvSel===el.id?' cv-sel':'');
   div.style.cssText=`left:${el.x}px;top:${el.y}px;width:${el.w||220}px`;
   div.dataset.id=el.id;
-  // header
-  const hdr=document.createElement('div');hdr.className='cchdr';
-  hdr.style.cssText=`border-top:3px solid ${el.color||'#1a6fd4'};border-radius:9px 9px 0 0`;
-  const dot=document.createElement('div');dot.className='ccdot';dot.style.background=el.color||'#1a6fd4';
-  dot.title='Ctrl+clique: conectar | Clique: cor';
-  dot.onclick=e=>{if(e.ctrlKey||e.metaKey){cvStartConn(tab,el.id,dot);return;}cvOpenColorPick(e,el,tab);};
+
+  // barra fina colorida no topo
+  const accent=document.createElement('div');
+  accent.style.cssText=`height:4px;background:${el.color||'#1565c0'};border-radius:9px 9px 0 0;flex-shrink:0`;
+  div.appendChild(accent);
+
+  // drag handle (aparece no hover)
+  const dragBar=document.createElement('div');
+  dragBar.style.cssText='display:flex;align-items:center;justify-content:center;height:10px;cursor:move;opacity:0;transition:opacity .15s';
+  dragBar.innerHTML='<div style="width:22px;height:2.5px;border-radius:2px;background:var(--bdr2)"></div>';
+  div.appendChild(dragBar);
+
+  // header: título + ações
+  const hdr=document.createElement('div');
+  hdr.style.cssText='padding:4px 10px 3px;cursor:move';
+
+  const titleRow=document.createElement('div');
+  titleRow.style.cssText='display:flex;align-items:center;gap:5px';
+
   const ti=document.createElement('input');ti.type='text';ti.className='cctitle';ti.value=el.title||'Cartão';
+  ti.style.cssText='flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--tx);background:transparent;border:none;outline:none;font-family:inherit;cursor:text';
   ti.addEventListener('blur',e=>{el.title=e.target.value;save()});
   ti.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
   ti.onmousedown=e=>e.stopPropagation();
-  // action buttons
-  const acts=document.createElement('div');acts.style.cssText='display:flex;align-items:center;gap:3px;opacity:0;transition:opacity .12s';
+
+  // botões de ação (aparecem no hover)
+  const acts=document.createElement('div');
+  acts.style.cssText='display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .12s;flex-shrink:0';
+
+  const dot=document.createElement('button');
+  dot.style.cssText=`width:11px;height:11px;border-radius:50%;background:${el.color||'#1565c0'};border:2px solid var(--sur);cursor:pointer;padding:0;flex-shrink:0`;
+  dot.title='Cor (Ctrl+clique: conectar)';
+  dot.onclick=e=>{e.stopPropagation();if(e.ctrlKey||e.metaKey){cvStartConn(tab,el.id,dot);return;}cvOpenColorPick(e,el,tab);};
+
   const subBtn=document.createElement('button');
-  subBtn.style.cssText='background:none;border:none;cursor:pointer;color:var(--tx3);font-size:14px;font-family:inherit;padding:0 1px;line-height:1';
+  subBtn.style.cssText='background:none;border:none;cursor:pointer;color:var(--tx3);font-size:14px;font-family:inherit;padding:0;line-height:1';
   subBtn.textContent=el.subtitle!==undefined?'\u2296':'\u2295';
   subBtn.title=el.subtitle!==undefined?'Remover subtítulo':'Adicionar subtítulo';
   subBtn.onclick=e=>{e.stopPropagation();if(el.subtitle!==undefined){delete el.subtitle;}else{el.subtitle='';}save();renderCanvas(tab);};
+
   const del=document.createElement('button');del.className='ccdel';del.textContent='\u2715';
-  del.style.cssText='background:none;border:none;cursor:pointer;color:var(--tx3);font-size:12px;font-family:inherit;padding:0 1px;line-height:1;opacity:1';
+  del.style.cssText='background:none;border:none;cursor:pointer;color:var(--tx3);font-size:12px;font-family:inherit;padding:0;line-height:1';
   del.onclick=e=>{e.stopPropagation();cvDeleteEl(tab,el.id)};
-  acts.appendChild(subBtn);acts.appendChild(del);
-  hdr.appendChild(dot);hdr.appendChild(ti);hdr.appendChild(acts);
-  div.onmouseenter=()=>acts.style.opacity='1';
-  div.onmouseleave=()=>acts.style.opacity='0';
-  div.appendChild(hdr);
-  // subtitle (optional)
+
+  acts.appendChild(dot);acts.appendChild(subBtn);acts.appendChild(del);
+  titleRow.appendChild(ti);titleRow.appendChild(acts);
+  hdr.appendChild(titleRow);
+
+  // subtítulo (opcional)
   if(el.subtitle!==undefined){
-    const subWrap=document.createElement('div');
-    subWrap.style.cssText='padding:2px 10px 5px 26px;background:var(--sur2);border-bottom:0.5px solid var(--bdr)';
     const subInp=document.createElement('input');subInp.type='text';
     subInp.value=el.subtitle||'';subInp.placeholder='Subtítulo...';
-    subInp.style.cssText='width:100%;background:transparent;border:none;outline:none;font-size:11px;color:var(--tx3);font-family:inherit;font-style:italic;box-sizing:border-box;cursor:text';
+    subInp.style.cssText='width:100%;background:transparent;border:none;outline:none;font-size:11px;color:var(--tx3);font-family:inherit;font-style:italic;margin-top:1px;cursor:text;box-sizing:border-box;padding:0';
     subInp.addEventListener('blur',e=>{el.subtitle=e.target.value;save()});
     subInp.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
     subInp.onmousedown=e=>e.stopPropagation();
-    subWrap.appendChild(subInp);
-    div.appendChild(subWrap);
+    hdr.appendChild(subInp);
   }
-  // body
+  div.appendChild(hdr);
+
+  // separador
+  const sep=document.createElement('div');
+  sep.style.cssText='height:0.5px;background:var(--bdr);margin:0 10px 4px';
+  div.appendChild(sep);
+
+  // corpo
   const body=document.createElement('div');body.className='ccbody';
   const ta=document.createElement('textarea');ta.value=el.body||'';ta.placeholder='Escreva aqui...';
-  ta.style.cssText='width:100%;background:transparent;border:none;outline:none;font-size:12px;color:var(--tx2);font-family:inherit;resize:none;min-height:40px;line-height:1.5;box-sizing:border-box';
-  ta.oninput=()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';el.h=div.offsetHeight;};
+  ta.style.cssText='width:100%;background:transparent;border:none;outline:none;font-size:12px;color:var(--tx2);font-family:inherit;resize:none;line-height:1.5;box-sizing:border-box;display:block;overflow:hidden';
+  ta.oninput=()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';};
   ta.onblur=e=>{if(el.body!==e.target.value){el.body=e.target.value;el.h=div.offsetHeight;cvPushUndo();save();}};
   ta.onmousedown=e=>e.stopPropagation();
   ta.addEventListener('wheel',e=>e.stopPropagation(),{passive:false});
-  // Auto-expand on render
-  requestAnimationFrame(()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';});
+  // auto-expand ao renderizar
+  requestAnimationFrame(()=>{if(ta){ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';}});
   body.appendChild(ta);
+
   const rh=document.createElement('div');rh.className='ccrz';
   rh.onmousedown=e=>{e.preventDefault();e.stopPropagation();cvRz={el,div,sx:e.clientX,sy:e.clientY,sw:el.w||220,sh:el.h||100}};
   div.appendChild(body);div.appendChild(rh);
-  hdr.onmousedown=e=>{if(e.target===ti||e.target===dot||e.target===subBtn||e.target===del)return;e.preventDefault();cvDrag={el,div,sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y}};
+
+  // hover
+  div.onmouseenter=()=>{dragBar.style.opacity='1';acts.style.opacity='1';};
+  div.onmouseleave=()=>{dragBar.style.opacity='0';acts.style.opacity='0';};
+
+  // drag
+  const startDrag=e=>{if(e.target===ti||e.target===ta||e.target.tagName==='BUTTON'||e.target.tagName==='INPUT')return;e.preventDefault();cvDrag={el,div,sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y}};
+  dragBar.onmousedown=e=>{e.preventDefault();cvDrag={el,div,sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y}};
+  hdr.onmousedown=startDrag;
+  accent.onmousedown=startDrag;
+
   div.oncontextmenu=e=>{e.preventDefault();cvShowElCtx(e,tab,el)};
-  div.addEventListener('click',e=>{if(cvConnMode){cvStartConn(tab,el.id,dot)}});
+  div.addEventListener('click',e=>{if(cvConnMode){cvStartConn(tab,el.id,div)}});
   return div;
 }
 
