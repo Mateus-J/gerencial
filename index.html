@@ -2647,7 +2647,10 @@ function loadHoCollabs(){
   try{const d=localStorage.getItem('ctrl_ho_collabs');if(d)HO_COLLABORATORS=JSON.parse(d);}catch(e){HO_COLLABORATORS=[]}
 }
 function saveHoCollabs(){
-  try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){}
+  try{
+    localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));
+    localStorage.setItem('ctrl_ho_collabs_ts',String(Date.now()));
+  }catch(e){}
   hoSyncCollabs(); // salva APENAS collaborators, não toca nas requests
 }
 
@@ -2664,8 +2667,9 @@ function hoSyncCollabs(){
   try{
     if(!fbReady||!fbDb||!fbDocFn||!fbSet)return;
     _hoCollabSaving=true;
-    fbSet(fbDocFn(fbDb,'controle','ho_data'),{collaborators:HO_COLLABORATORS},{merge:true})
-      .then(()=>{ setTimeout(()=>{_hoCollabSaving=false;},2000); })
+    const payload={collaborators:HO_COLLABORATORS,collaborators_ts:Date.now()};
+    fbSet(fbDocFn(fbDb,'controle','ho_data'),payload,{merge:true})
+      .then(()=>{ setTimeout(()=>{_hoCollabSaving=false;},3000); })
       .catch(e=>{console.warn('hoSyncCol err',e);_hoCollabSaving=false;});
   }catch(e){console.warn('hoSyncCollabs err',e);_hoCollabSaving=false;}
 }
@@ -2683,7 +2687,15 @@ function hoLoadFromFirebase(){
       if(!snap.exists())return;
       const d=snap.data();
       if(d.requests)  { HO_REQUESTS=d.requests;      try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){} }
-      if(d.collaborators&&!_hoCollabSaving){ HO_COLLABORATORS=d.collaborators; try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){} }
+      if(d.collaborators&&!_hoCollabSaving){
+        // Só sobrescreve se o Firebase for mais recente que o localStorage
+        const localTs=parseInt(localStorage.getItem('ctrl_ho_collabs_ts')||'0');
+        const fbTs=d.collaborators_ts||0;
+        if(fbTs>=localTs){
+          HO_COLLABORATORS=d.collaborators;
+          try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));localStorage.setItem('ctrl_ho_collabs_ts',String(fbTs));}catch(e){}
+        }
+      }
       // Re-renderizar a view de HO se estiver visível
       const hoView=document.getElementById('hoView');
       if(hoView&&hoView.style.display!=='none') renderHoView();
@@ -2700,7 +2712,14 @@ function hoSubscribeFirebase(){
       if(!snap.exists())return;
       const d=snap.data();
       if(d.requests)  { HO_REQUESTS=d.requests;      try{localStorage.setItem('ctrl_ho_requests',JSON.stringify(HO_REQUESTS));}catch(e){} }
-      if(d.collaborators&&!_hoCollabSaving){ HO_COLLABORATORS=d.collaborators; try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));}catch(e){} }
+      if(d.collaborators&&!_hoCollabSaving){
+        const localTs=parseInt(localStorage.getItem('ctrl_ho_collabs_ts')||'0');
+        const fbTs=d.collaborators_ts||0;
+        if(fbTs>=localTs){
+          HO_COLLABORATORS=d.collaborators;
+          try{localStorage.setItem('ctrl_ho_collabs',JSON.stringify(HO_COLLABORATORS));localStorage.setItem('ctrl_ho_collabs_ts',String(fbTs));}catch(e){}
+        }
+      }
       const hoView=document.getElementById('hoView');
       if(hoView&&hoView.style.display!=='none') renderHoView();
       renderTabs();
@@ -2745,7 +2764,7 @@ window.switchToHO=switchToHO;
 
 function renderHoView(){
   loadHoRequests();
-  loadHoCollabs();
+  // Não recarrega HO_COLLABORATORS do localStorage aqui — dados mantidos em memória pelos listeners
   const isAdmin=currentUser&&currentUser.role==='admin';
   const isUser=currentUser&&currentUser.role==='user';
   // Show/hide request form & admin section
@@ -2999,7 +3018,7 @@ window.confirmAddCollab=function(){
   const name=document.getElementById('hoCollabName').value.trim();
   const role=document.getElementById('hoCollabRole').value.trim();
   if(!name){toast('⚠ Digite o nome do colaborador');return;}
-  loadHoCollabs();
+  // NÃO chama loadHoCollabs() aqui para não sobrescrever o array em memória
   // Check if there's a matching registered user
   const matchUser=Object.entries(USERS).find(([uname,u])=>
     (u.name||'').toLowerCase()===name.toLowerCase()
