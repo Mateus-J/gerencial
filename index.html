@@ -56,6 +56,21 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
 .saldos-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
 .saldos-bloq-inp{background:transparent;border:1px dashed var(--bdr);border-radius:5px;padding:3px 6px;text-align:right;font-size:12px;color:var(--tx);font-family:inherit;width:110px;outline:none}
 .saldos-bloq-inp:focus{border-color:var(--blue);background:var(--sur2)}
+.saldos-expand-row td{padding:0!important;border-bottom:1px solid var(--bdr)}
+.saldos-detail-panel{background:var(--sur2);padding:10px 16px 10px 60px;font-size:11px;color:var(--tx2)}
+.saldos-detail-table{border-collapse:collapse;width:auto}
+.saldos-detail-table td{padding:3px 12px 3px 0;vertical-align:top}
+.saldos-tr{cursor:pointer}
+.saldos-tr.expanded{background:var(--sur2)!important}
+.saldos-tr td:first-child::before{content:'▶';font-size:8px;color:var(--tx3);margin-right:4px;transition:transform .15s;display:inline-block}
+.saldos-tr.expanded td:first-child::before{transform:rotate(90deg)}
+.saldos-tr.no-detail{cursor:default}
+.saldos-tr.no-detail td:first-child::before{content:''}
+/* resizable col handle */
+.sd-th-wrap{display:flex;align-items:center;justify-content:inherit;position:relative}
+.sd-col-rz{position:absolute;right:-3px;top:0;bottom:0;width:6px;cursor:col-resize;z-index:2;background:transparent}
+.sd-col-rz:hover{background:var(--blue);opacity:.4;border-radius:2px}
+.saldos-bloq-inp:focus{border-color:var(--blue);background:var(--sur2)}
 .tabs-left::-webkit-scrollbar{height:3px}
 .tab{padding:8px 14px;font-size:12px;font-weight:500;color:var(--tx2);cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;white-space:nowrap;display:flex;align-items:center;gap:5px;user-select:none;position:relative;top:1px;transition:background .12s}
 .tab:hover{background:var(--sur2)}.tab.active{background:var(--sur);border-color:var(--bdr);color:var(--blue);font-weight:600}
@@ -6391,16 +6406,17 @@ function importSaldosExtrato(input){
       const valI=hdr.findIndex(h=>h==='valor');
       const descI=hdr.findIndex(h=>h==='ds_complemento');
       const saldoI=hdr.findIndex(h=>h==='vl_saldo_in');
+      const dtI=hdr.findIndex(h=>h==='dt_mov');
+      const histI=hdr.findIndex(h=>h==='ds_historico');
       if(dcI<0||valI<0||descI<0){toast('\u26a0 Colunas n\u00e3o encontradas no CSV');return;}
-      // CSV usa ponto como decimal (ex: 1136.00), não formato BR
       const parseV=s=>parseFloat(String(s).replace(',','.'))||0;
       const data=rows.slice(1).filter(r=>r.length>Math.max(dcI,valI,descI));
       const isSob=file.name.includes('454398');
       const fundoKey=isSob?'ID Soberano':'ID RF';
-      // Saldo do fundo para KPI
+      // KPI saldo do fundo
       const saldoFundoInicial=saldoI>=0?parseV(data[0][saldoI]):0;
       let saldoFundoAtual=saldoFundoInicial;
-      // Movimentos por cotista
+      // Movimentos detalhados por cotista
       const movimentos={};
       data.forEach(r=>{
         const dc=(r[dcI]||'').trim().toUpperCase();
@@ -6409,14 +6425,20 @@ function importSaldosExtrato(input){
         else if(dc==='C') saldoFundoAtual+=v;
         const nome=(r[descI]||'').trim().toUpperCase().replace(/\s+/g,' ');
         if(!nome||!['D','C'].includes(dc)) return;
-        if(!movimentos[nome]) movimentos[nome]={debitos:0,creditos:0};
-        if(dc==='D') movimentos[nome].debitos+=v;
-        else movimentos[nome].creditos+=v;
+        if(!movimentos[nome]) movimentos[nome]={debitos:0,creditos:0,qtdD:0,qtdC:0,detalhes:[]};
+        if(dc==='D'){movimentos[nome].debitos+=v;movimentos[nome].qtdD++;}
+        else{movimentos[nome].creditos+=v;movimentos[nome].qtdC++;}
+        movimentos[nome].detalhes.push({
+          dc,v,
+          dt:dtI>=0?r[dtI]:'',
+          hist:histI>=0?r[histI]:''
+        });
       });
-      // Match movimentos -> cotistas pelo nome (25 chars prefix)
+      // Match movimentos -> cotistas
       let matched=0;
       SD.cotistas.filter(c=>c.fundo===fundoKey).forEach(c=>{
-        c.saldoAtualizado=c.saldoInicial; // default: sem movimento hoje
+        c.saldoAtualizado=c.saldoInicial;
+        c.movDetalhes=null;
         const nomeC=c.nome.toUpperCase().replace(/\s+/g,' ');
         let mov=movimentos[nomeC];
         if(!mov){
@@ -6427,7 +6449,43 @@ function importSaldosExtrato(input){
         }
         if(mov){
           c.saldoAtualizado=c.saldoInicial - mov.debitos + mov.creditos;
+          c.movDetalhes={debitos:mov.debitos,creditos:mov.creditos,qtdD:mov.qtdD,qtdC:mov.qtdC,detalhes:mov.detalhes};
           matched++;
+        }
+      });
+      // Also check movements in THIS fund for cotistas that have NO position here
+      // These are wrong-fund resgates
+      Object.keys(movimentos).forEach(nomeExt=>{
+        const mov=movimentos[nomeExt];
+        if(mov.debitos<=0) return; // only care about resgates
+        // Check if this cotista has a record in this fund
+        const existing=SD.cotistas.find(c=>{
+          const nomeC=c.nome.toUpperCase().replace(/\s+/g,' ');
+          return c.fundo===fundoKey&&(nomeC===nomeExt||nomeC.startsWith(nomeExt.slice(0,25))||nomeExt.startsWith(nomeC.slice(0,25)));
+        });
+        if(!existing){
+          // Cotista não tem posição neste fundo — adiciona linha de alerta
+          const nomeOriginal=SD.cotistas.find(c=>{
+            const nomeC=c.nome.toUpperCase().replace(/\s+/g,' ');
+            return nomeC===nomeExt||nomeC.startsWith(nomeExt.slice(0,25))||nomeExt.startsWith(nomeC.slice(0,25));
+          });
+          const nomeExibir=nomeOriginal?nomeOriginal.nome:nomeExt;
+          // Check if they have position in the other fund
+          const outroFundoKey=isSob?'ID RF':'ID Soberano';
+          const posOutro=SD.cotistas.find(c=>{
+            const nomeC=c.nome.toUpperCase().replace(/\s+/g,' ');
+            return c.fundo===outroFundoKey&&(nomeC===nomeExt||nomeC.startsWith(nomeExt.slice(0,25))||nomeExt.startsWith(nomeC.slice(0,25)));
+          });
+          SD.cotistas.push({
+            nome:nomeExibir,
+            fundo:fundoKey,
+            saldoInicial:0,
+            saldoAtualizado:-mov.debitos+mov.creditos,
+            saldoBloqueado:0,
+            movDetalhes:{debitos:mov.debitos,creditos:mov.creditos,qtdD:mov.qtdD,qtdC:mov.qtdC,detalhes:mov.detalhes},
+            _wrongFund:true,
+            _posOutro:posOutro?sdFmt(posOutro.saldoAtualizado||posOutro.saldoInicial):null
+          });
         }
       });
       if(isSob){SD.sobSaldoInicial=saldoFundoInicial;SD.sobSaldoAtual=saldoFundoAtual;}
@@ -6442,21 +6500,42 @@ function importSaldosExtrato(input){
 }
 window.importSaldosExtrato=importSaldosExtrato;
 
+
 function sdFmt(v){
   if(v===null||v===undefined) return '—';
   return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
-function sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao){
-  if(!alerta) return '<span class="saldos-badge" style="background:#e8f5e9;color:#2e7d32">✅ OK</span>';
+function sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,movDet){
+  const multiD=movDet&&movDet.qtdD>1;
+  const multiSuffix=multiD?' <span style="font-size:9px;opacity:.8">('+movDet.qtdD+'x resgates)</span>':'';
+  if(!alerta&&!multiD) return '<span class="saldos-badge" style="background:#e8f5e9;color:#2e7d32">✅ OK</span>';
+  if(!alerta&&multiD) return '<span class="saldos-badge" style="background:#e3f2fd;color:#1565c0">ℹ '+movDet.qtdD+' aportes — clique para ver</span>';
   if(semPosicao&&alertaCruzado)
-    return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2;white-space:normal">⚠ Fundo incorreto — sem posição aqui, saldo está no '+outroFundo+'</span>';
+    return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2;white-space:normal">⚠ Fundo incorreto'+multiSuffix+' — sem posição aqui, saldo no '+outroFundo+'</span>';
   if(semPosicao)
-    return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2">⚠ Resgate em fundo incorreto — sem posição neste fundo</span>';
+    return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2;white-space:normal">⚠ Resgate fundo incorreto'+multiSuffix+' — sem posição neste fundo</span>';
   if(alertaCruzado)
-    return '<span class="saldos-badge" style="background:#fff3e0;color:#e65100">⚠ Resgate a maior — tem saldo no '+outroFundo+'</span>';
-  return '<span class="saldos-badge" style="background:#fce8e8;color:#c62828">⚠ Resgate a maior</span>';
+    return '<span class="saldos-badge" style="background:#fff3e0;color:#e65100">⚠ Resgate a maior'+multiSuffix+' — tem saldo no '+outroFundo+'</span>';
+  return '<span class="saldos-badge" style="background:#fce8e8;color:#c62828">⚠ Resgate a maior'+multiSuffix+'</span>';
 }
+
+// Column resize
+let _sdRz=null;
+function sdColRzStart(e,handle){
+  e.preventDefault();e.stopPropagation();
+  const th=handle.parentElement;
+  _sdRz={th,startX:e.clientX,startW:th.offsetWidth};
+  document.addEventListener('mousemove',sdColRzMove);
+  document.addEventListener('mouseup',sdColRzEnd);
+}
+function sdColRzMove(e){
+  if(!_sdRz)return;
+  const w=Math.max(60,_sdRz.startW+(e.clientX-_sdRz.startX));
+  _sdRz.th.style.minWidth=w+'px';_sdRz.th.style.width=w+'px';
+}
+function sdColRzEnd(){_sdRz=null;document.removeEventListener('mousemove',sdColRzMove);document.removeEventListener('mouseup',sdColRzEnd);}
+window.sdColRzStart=sdColRzStart;
 
 function sdRender(){  const el=document.getElementById('saldosView');
   if(!el||el.style.display==='none') return;
@@ -6518,7 +6597,34 @@ function sdRender(){  const el=document.getElementById('saldosView');
         onblur="sdSetBloqueado(${idx},this.value)"
         onkeydown="if(event.key==='Enter')this.blur()"></td>
       <td style="text-align:right;font-weight:700;color:${alerta?'#c62828':'var(--tx3)'};font-variant-numeric:tabular-nums">${alerta?sdFmt(sat):'—'}</td>
-      <td style="text-align:center;min-width:160px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao)}</td>`;
+      <td style="text-align:center;min-width:200px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,r.movDetalhes)}</td>`;
+    // Click to expand details
+    const hasDetail=r.movDetalhes&&r.movDetalhes.detalhes&&r.movDetalhes.detalhes.length>0;
+    if(hasDetail) tr.classList.add('expandable'); else tr.classList.add('no-detail');
+    tr.addEventListener('click',e=>{
+      if(e.target.tagName==='INPUT') return;
+      if(!hasDetail) return;
+      const existing=tr.nextSibling;
+      if(existing&&existing.classList&&existing.classList.contains('saldos-expand-row')){
+        existing.remove();tr.classList.remove('expanded');return;
+      }
+      tr.classList.toggle('expanded');
+      const expRow=document.createElement('tr');expRow.className='saldos-expand-row';
+      const td=document.createElement('td');td.colSpan=9;
+      const d=r.movDetalhes;
+      let html='<div class="saldos-detail-panel"><strong>Movimentações no extrato:</strong><table class="saldos-detail-table" style="margin-top:6px">';
+      html+='<tr style="font-weight:700;color:var(--tx3);font-size:10px;text-transform:uppercase"><td>Data</td><td>Histórico</td><td style="text-align:right">Tipo</td><td style="text-align:right">Valor</td></tr>';
+      d.detalhes.forEach(m=>{
+        const color=m.dc==='D'?'#c62828':'#2e7d32';
+        const tipo=m.dc==='D'?'Resgate':'Aplicação';
+        html+=`<tr><td style="color:var(--tx3)">${m.dt}</td><td>${m.hist}</td><td style="text-align:right;color:${color};font-weight:600">${tipo}</td><td style="text-align:right;color:${color};font-weight:600;font-variant-numeric:tabular-nums">${m.dc==='D'?'- ':'+ '}${sdFmt(m.v)}</td></tr>`;
+      });
+      if(d.qtdD>1) html+=`<tr><td colspan="4" style="padding-top:6px;color:#c62828;font-weight:700;font-size:10px">⚠ ${d.qtdD} resgates neste fundo (${sdFmt(d.debitos)} total)</td></tr>`;
+      html+='</table></div>';
+      td.innerHTML=html;
+      expRow.appendChild(td);
+      tr.insertAdjacentElement('afterend',expRow);
+    });
     tbody.appendChild(tr);
   });
   document.getElementById('saldosFooter').textContent=`${rows.length} de ${SD.cotistas.length} cotistas`;
@@ -7329,17 +7435,17 @@ if(document.readyState==='loading'){
     <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;overflow:hidden">
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px" id="saldosTable">
-          <thead>
-            <tr style="background:var(--sur2);border-bottom:1px solid var(--bdr)">
-              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);white-space:nowrap">#</th>
-              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2)">Cotista</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Fundo</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo Inicial</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Movimentação</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo Atualizado</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo Bloqueado</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo Utilizado</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:600;color:var(--tx2)">Status</th>
+          <thead id="saldosThead">
+            <tr style="background:var(--sur2);border-bottom:1px solid var(--bdr)" id="saldosTheadRow">
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);white-space:nowrap;width:40px">#</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);min-width:180px;position:relative">Cotista<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Fundo<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Inicial<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Movimentação<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Atualizado<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Bloqueado<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Utilizado<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th style="padding:10px 12px;text-align:center;font-weight:600;color:var(--tx2);min-width:200px">Status</th>
             </tr>
           </thead>
           <tbody id="saldosTbody"></tbody>
