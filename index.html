@@ -6360,16 +6360,28 @@ function importSaldosLiquidez(input){
           return;
         }
         if(cells.length<6) return;
-        const nome=cells[1]||'';
-        if(!nome||nome.includes('TOTAL')||nome==='nan'||nome==='Fundo (Cotista)') return;
+        const seq=String(cells[0]||'').trim();
+        const nome=String(cells[1]||'').trim();
+        // Ignora linhas de total, cabeçalho ou vazias
+        // Também ignora se o nome parecer um número (linha de totais)
+        const nomePareceTotais=!isNaN(parseFloat(nome.replace(/\./g,'').replace(',','.')))&&nome.replace(/[0-9.,]/g,'').trim()==='';
+        if(!nome||nome.toUpperCase().includes('TOTAL')||nome==='nan'||nome==='Fundo (Cotista)'||seq.toUpperCase().includes('TOTAL')||nomePareceTotais) return;
         const parseV=s=>{
           const v=parseFloat(String(s).replace(/\./g,'').replace(',','.'));
           return isNaN(v)||v<0?0:v;
         };
         const idRF=parseV(cells[4]);
         const idSob=parseV(cells[5]);
-        if(idRF>0) cotistas.push({nome:nome.substring(0,120),fundo:'ID RF',saldoInicial:idRF,saldoAtualizado:idRF,saldoBloqueado:0});
-        if(idSob>0) cotistas.push({nome:nome.substring(0,120),fundo:'ID Soberano',saldoInicial:idSob,saldoAtualizado:idSob,saldoBloqueado:0});
+        if(idRF>0){
+          cotistas.push({nome:nome.substring(0,120),fundo:'ID RF',saldoInicial:idRF,saldoAtualizado:idRF,saldoBloqueado:0});
+        }
+        if(idSob>0){
+          cotistas.push({nome:nome.substring(0,120),fundo:'ID Soberano',saldoInicial:idSob,saldoAtualizado:idSob,saldoBloqueado:0});
+        }
+        // Inclui fundos sem saldo nos dois fundos de zeragem (aparecem na liquidez mas sem posição)
+        if(idRF===0&&idSob===0){
+          cotistas.push({nome:nome.substring(0,120),fundo:'—',saldoInicial:0,saldoAtualizado:0,saldoBloqueado:0,_semFundo:true});
+        }
       });
       if(!cotistas.length){toast('⚠ Nenhum cotista encontrado. Verifique o arquivo.');return;}
       // Preserve bloqueado values if cotista already exists
@@ -6615,7 +6627,8 @@ function sdRender(){  const el=document.getElementById('saldosView');
   if(filtro==='semsaldo')rows=rows.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund);
 
   const alertas=SD.cotistas.filter(r=>{const sat=r.saldoAtualizado!=null?r.saldoAtualizado:r.saldoInicial;return sat<-1;}).length;
-  const semSaldo=SD.cotistas.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund).length;
+  const semSaldo=SD.cotistas.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund&&!r._semFundo).length;
+  const semFundo=SD.cotistas.filter(r=>r._semFundo).length;
 
   document.getElementById('saldosCards').innerHTML=`
     <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID RF — Saldo Inicial</div><div class="saldos-kpi-val" style="color:#1565c0">${sdFmt(SD.rfSaldoInicial)}</div><div class="saldos-kpi-sub">Soma cotistas — liquidez</div></div>
@@ -6627,7 +6640,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
       <div class="saldos-kpi-sub">Resgate a maior</div></div>
     <div class="saldos-kpi" style="border-color:${semSaldo>0?'#f9a825':'var(--bdr)'}"><div class="saldos-kpi-lbl">Sem Saldo</div>
       <div class="saldos-kpi-val" style="color:${semSaldo>0?'#f9a825':'var(--tx3)'}">${semSaldo>0?'⚠ '+semSaldo:'—'}</div>
-      <div class="saldos-kpi-sub">Fundo sem posição</div></div>`;
+      <div class="saldos-kpi-sub">Zerado nos dois fundos (${semFundo} sem fundo)</div></div>`;
 
   const tbody=document.getElementById('saldosTbody');
   tbody.innerHTML='';
@@ -6659,7 +6672,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
     tr.innerHTML=`
       <td style="color:var(--tx3);width:36px;text-align:center">${i+1}</td>
       <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500" title="${r.nome}">${r.nome}</td>
-      <td style="text-align:right"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.fundo==='ID RF'?'#e3f2fd':'#f3e5f5'};color:${r.fundo==='ID RF'?'#1565c0':'#6a1b9a'}">${r.fundo}</span></td>
+      <td style="text-align:right"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.fundo==='ID RF'?'#e3f2fd':r.fundo==='ID Soberano'?'#f3e5f5':'var(--sur2)'};color:${r.fundo==='ID RF'?'#1565c0':r.fundo==='ID Soberano'?'#6a1b9a':'var(--tx3)'}">${r.fundo||'—'}</span></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt(r.saldoInicial)}</td>
       <td style="text-align:right;color:${mov<-1?'#c62828':mov>1?'#2e7d32':'var(--tx3)'};font-variant-numeric:tabular-nums">${Math.abs(mov)>0.01?(mov>0?'+ ':'- ')+sdFmt(Math.abs(mov)):'—'}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt((r.saldoBloqueado||0)>0?sat-(r.saldoBloqueado||0):sat)}</td>
