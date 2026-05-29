@@ -2083,6 +2083,7 @@ function renderView(){
   av.style.display='none'; agv.style.display='none';
   if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
   if(document.getElementById('saldosView')) document.getElementById('saldosView').style.display='none';
+  const agBtn=document.getElementById('agendaHdrBtn');
   if(agBtn) agBtn.classList.remove('active-agenda');
   document.getElementById('iofView').style.display='none';
   if(tab&&tab.type==='canvas'){
@@ -6263,6 +6264,16 @@ function showNotifications(){
 function closeNotif(){document.getElementById('notifOverlay').style.display='none'}
 window.closeNotif=closeNotif;
 
+function snoozeNotif(minutes){
+  closeNotif();
+  setTimeout(()=>{
+    const count=getAgendaNotifCount();
+    if(count>0) showNotifications();
+  }, minutes*60*1000);
+  toast(`⏱ Lembrete em ${minutes} minutos`);
+}
+window.snoozeNotif=snoozeNotif;
+
 function checkAndShowNotifications(){
   loadAgenda();
   const count=getAgendaNotifCount();
@@ -6428,6 +6439,7 @@ function importSaldosExtrato(input){
   reader.readAsText(file,'latin1');
   input.value='';
 }
+window.importSaldosExtrato=importSaldosExtrato;
 
 function sdFmt(v){
   if(v===null||v===undefined) return '—';
