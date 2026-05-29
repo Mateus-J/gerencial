@@ -6413,12 +6413,34 @@ function importSaldosExtrato(input){
       const data=rows.slice(1).filter(r=>r.length>Math.max(dcI,valI,descI));
       const isSob=file.name.includes('454398');
       const fundoKey=isSob?'ID Soberano':'ID RF';
+      const outroFundoKey=isSob?'ID RF':'ID Soberano';
 
-      // KPI: saldo do fundo
+      // KPI
       const saldoFundoInicial=saldoI>=0?parseV(data[0][saldoI]):0;
-      let saldoFundoAtual=saldoFundoInicial;
+      // Saldo Atual = entrada do ID RF no extrato - todos os resgates do dia
+      const entradaFundo=data.find(r=>{
+        const dc=(r[dcI]||'').trim().toUpperCase();
+        const nome=(r[descI]||'').trim().toUpperCase();
+        return dc==='C'&&(nome.startsWith('ID RF FUNDO')||nome.startsWith('ID RF LONGO'));
+      });
+      const entradaVal=entradaFundo?parseV(entradaFundo[valI]):saldoFundoInicial;
+      // Abate resgates e soma aplicações dos cotistas (exceto movimentos internos)
+      let totalDebitosDia=0, totalCreditosDia=0;
+      data.forEach(r=>{
+        const dc=(r[dcI]||'').trim().toUpperCase();
+        const nome=(r[descI]||'').trim().toUpperCase().replace(/\s+/g,' ');
+        const isInterno=nome.includes('TARIFA')||nome.includes('LANCAMENTO DE TARIFA')
+          ||(nome.startsWith('ID RF FUNDO')&&!isSob)
+          ||(nome.startsWith('ID SOBERANO FUNDO')&&isSob)
+          ||nome.startsWith('EBS2 TRADE')
+          ||(nome.startsWith('ID RF LONGO')&&!isSob); // entrada do próprio fundo
+        if(isInterno) return;
+        if(dc==='D') totalDebitosDia+=parseV(r[valI]);
+        else if(dc==='C') totalCreditosDia+=parseV(r[valI]);
+      });
+      const saldoFundoAtual=entradaVal-totalDebitosDia+totalCreditosDia;
 
-      // Agrupa movimentos por cotista (nome do extrato)
+      // Agrupar movimentos por cotista
       const movMap={};
       data.forEach(r=>{
         const dc=(r[dcI]||'').trim().toUpperCase();
@@ -6426,69 +6448,83 @@ function importSaldosExtrato(input){
         if(dc==='D') saldoFundoAtual-=v;
         else if(dc==='C') saldoFundoAtual+=v;
         const nome=(r[descI]||'').trim().toUpperCase().replace(/\s+/g,' ');
-        if(!nome||!['D','C'].includes(dc)) return;
+        // Ignora tarifas e movimentos internos (exceto ID RF que é cotista do SOB)
+        const isInterno=nome.includes('TARIFA')||nome.includes('LANCAMENTO DE TARIFA')
+          ||(nome.startsWith('ID RF FUNDO')&&!isSob)   // ID RF só é interno no próprio extrato RF
+          ||(nome.startsWith('ID SOBERANO FUNDO')&&isSob) // SOB só é interno no próprio extrato SOB
+          ||nome.startsWith('EBS2 TRADE');
+        if(!nome||!['D','C'].includes(dc)||isInterno) return;
         if(!movMap[nome]) movMap[nome]={debitos:0,creditos:0,qtdD:0,qtdC:0,detalhes:[]};
         if(dc==='D'){movMap[nome].debitos+=v;movMap[nome].qtdD++;}
         else{movMap[nome].creditos+=v;movMap[nome].qtdC++;}
         movMap[nome].detalhes.push({dc,v,dt:dtI>=0?r[dtI]:'',hist:histI>=0?r[histI]:''});
       });
 
-      // Remove linhas _wrongFund geradas em importação anterior deste fundo
+      // Remove linhas _wrongFund desta importação anterior
       SD.cotistas=SD.cotistas.filter(c=>!(c._wrongFund&&c.fundo===fundoKey));
 
-      // Helper: match nome do extrato -> cotista da liquidez
+      // Match nome extrato -> cotista liquidez (múltiplas estratégias)
       function matchNome(nomeExt, lista){
-        const ne=nomeExt.replace(/\s+/g,' ').toUpperCase();
-        // exact
-        let r=lista.find(c=>{const nc=c.nome.toUpperCase().replace(/\s+/g,' ');return nc===ne;});
+        const ne=nomeExt.toUpperCase().replace(/\s+/g,' ').trim();
+        // 1. Exato
+        let r=lista.find(c=>c.nome.toUpperCase().replace(/\s+/g,' ').trim()===ne);
         if(r) return r;
-        // prefix 30 chars
-        r=lista.find(c=>{const nc=c.nome.toUpperCase().replace(/\s+/g,' ');return nc.startsWith(ne.slice(0,30))||ne.startsWith(nc.slice(0,30));});
+        // 2. Extrato começa com nome da liquidez ou vice-versa (40 chars)
+        r=lista.find(c=>{
+          const nc=c.nome.toUpperCase().replace(/\s+/g,' ').trim();
+          return ne.startsWith(nc.slice(0,40))||nc.startsWith(ne.slice(0,40));
+        });
         if(r) return r;
-        // prefix 20 chars
-        r=lista.find(c=>{const nc=c.nome.toUpperCase().replace(/\s+/g,' ');return nc.startsWith(ne.slice(0,20))||ne.startsWith(nc.slice(0,20));});
+        // 3. Prefixo 25 chars
+        r=lista.find(c=>{
+          const nc=c.nome.toUpperCase().replace(/\s+/g,' ').trim();
+          return ne.startsWith(nc.slice(0,25))||nc.startsWith(ne.slice(0,25));
+        });
         return r||null;
       }
 
       const fundoCotistas=SD.cotistas.filter(c=>c.fundo===fundoKey);
-      const outroFundoKey=isSob?'ID RF':'ID Soberano';
+
+      // Reset todos para saldoInicial antes de aplicar movimentos
+      fundoCotistas.forEach(c=>{
+        c.saldoAtualizado=c.saldoInicial;
+        c.movDetalhes=null;
+        c.obs=null;
+      });
 
       let matched=0;
-      // Reset all to saldoInicial first
-      fundoCotistas.forEach(c=>{c.saldoAtualizado=c.saldoInicial;c.movDetalhes=null;c.obs=null;});
-
-      // Apply movements
       Object.keys(movMap).forEach(nomeExt=>{
         const mov=movMap[nomeExt];
         const cotista=matchNome(nomeExt, fundoCotistas);
         if(cotista){
           cotista.saldoAtualizado=cotista.saldoInicial - mov.debitos + mov.creditos;
           cotista.movDetalhes=mov;
-          // Flag if multiple resgates
           if(mov.qtdD>1) cotista.obs=mov.qtdD+'x resgates (R$ '+mov.debitos.toLocaleString('pt-BR',{minimumFractionDigits:2})+' total)';
           matched++;
         } else {
-          // Não achou no fundo correto — verifica se tem posição no outro fundo
-          const posOutro=matchNome(nomeExt, SD.cotistas.filter(c=>c.fundo===outroFundoKey));
-          // Cria linha de aviso apenas se tiver débito
+          // Não encontrado no fundo — verifica se tem posição no outro fundo
           if(mov.debitos>0){
+            const posOutro=matchNome(nomeExt, SD.cotistas.filter(c=>c.fundo===outroFundoKey));
             const nomeExibir=posOutro?posOutro.nome:nomeExt;
             SD.cotistas.push({
               nome:nomeExibir, fundo:fundoKey,
-              saldoInicial:0, saldoAtualizado:-mov.debitos+mov.creditos,
-              saldoBloqueado:0, movDetalhes:mov,
-              _wrongFund:true,
-              obs:posOutro?'Tem posição no '+outroFundoKey+' ('+sdFmt(posOutro.saldoInicial)+')':null
+              saldoInicial:0,
+              saldoAtualizado:-mov.debitos+mov.creditos,
+              saldoBloqueado:0, movDetalhes:mov, _wrongFund:true,
+              obs:posOutro?'Tem posi\u00e7\u00e3o no '+outroFundoKey+' ('+sdFmt(posOutro.saldoAtualizado||posOutro.saldoInicial)+')':null
             });
           }
         }
       });
 
-      if(isSob){SD.sobSaldoInicial=saldoFundoInicial;SD.sobSaldoAtual=saldoFundoAtual;}
-      else{SD.rfSaldoInicial=saldoFundoInicial;SD.rfSaldoAtual=saldoFundoAtual;}
+      if(isSob){SD.sobSaldoAtual=saldoFundoAtual;}
+      else{SD.rfSaldoAtual=saldoFundoAtual;}
+      // Recalcula saldoInicial como soma dos cotistas da liquidez (não sobrescreve com o extrato)
+      SD.rfSaldoInicial=SD.cotistas.filter(c=>c.fundo==='ID RF'&&!c._wrongFund).reduce((a,c)=>a+c.saldoInicial,0);
+      SD.sobSaldoInicial=SD.cotistas.filter(c=>c.fundo==='ID Soberano'&&!c._wrongFund).reduce((a,c)=>a+c.saldoInicial,0);
       SD.dataRef=new Date().toLocaleDateString('pt-BR');
       sdSave(); sdRender();
-      toast('\u2705 Extrato '+fundoKey+' importado \u2014 '+matched+' cotistas com movimenta\u00e7\u00e3o');
+      toast('\u2705 Extrato '+fundoKey+' importado \u2014 '+matched+' de '+Object.keys(movMap).length+' cotistas encontrados na liquidez');
     }catch(err){console.error(err);toast('\u26a0 Erro: '+err.message);}
   };
   reader.readAsText(file,'latin1');
@@ -6498,12 +6534,24 @@ window.importSaldosExtrato=importSaldosExtrato;
 
 
 
+
 function sdFmt(v){
   if(v===null||v===undefined) return '—';
   return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
-function sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,movDet){
+// Sort state
+let _sdSort={col:null,asc:true};
+
+function sdSortBy(col){
+  if(_sdSort.col===col){_sdSort.asc=!_sdSort.asc;}
+  else{_sdSort.col=col;_sdSort.asc=true;}
+  sdRender();
+}
+window.sdSortBy=sdSortBy;
+
+function sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,movDet,semSaldoRow){
+  if(semSaldoRow) return '<span class="saldos-badge" style="background:#fff8e1;color:#f9a825">⚪ Fundo sem saldo</span>';
   if(!alerta) return '<span class="saldos-badge" style="background:#e8f5e9;color:#2e7d32">✅ OK</span>';
   if(semPosicao)
     return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2">⚠ Fundo incorreto</span>';
@@ -6538,18 +6586,48 @@ function sdRender(){  const el=document.getElementById('saldosView');
   if(search) rows=rows.filter(r=>r.nome.toLowerCase().includes(search));
   if(filtro==='rf')    rows=rows.filter(r=>r.fundo==='ID RF');
   if(filtro==='sob')   rows=rows.filter(r=>r.fundo==='ID Soberano');
-  if(filtro==='alerta')rows=rows.filter(r=>(r.saldoAtualizado||r.saldoInicial)<-1);
 
-  const alertas=SD.cotistas.filter(r=>(r.saldoAtualizado||r.saldoInicial)<-1).length;
+  // Apply sort
+  if(_sdSort.col){
+    rows.sort((a,b)=>{
+      const sat_a=a.saldoAtualizado!=null?a.saldoAtualizado:a.saldoInicial;
+      const sat_b=b.saldoAtualizado!=null?b.saldoAtualizado:b.saldoInicial;
+      let va,vb;
+      if(_sdSort.col==='nome')    {va=a.nome||'';vb=b.nome||'';return _sdSort.asc?va.localeCompare(vb,'pt-BR'):vb.localeCompare(va,'pt-BR');}
+      if(_sdSort.col==='fundo')   {va=a.fundo||'';vb=b.fundo||'';return _sdSort.asc?va.localeCompare(vb,'pt-BR'):vb.localeCompare(va,'pt-BR');}
+      if(_sdSort.col==='saldoInicial'){va=a.saldoInicial||0;vb=b.saldoInicial||0;}
+      if(_sdSort.col==='mov')     {va=sat_a-(a.saldoInicial||0);vb=sat_b-(b.saldoInicial||0);}
+      if(_sdSort.col==='saldoAtualizado'){va=sat_a;vb=sat_b;}
+      if(_sdSort.col==='saldoBloqueado'){va=a.saldoBloqueado||0;vb=b.saldoBloqueado||0;}
+      if(_sdSort.col==='saldoFinal'){va=(a.saldoAtualizado!=null?a.saldoAtualizado:a.saldoInicial)-(a.saldoBloqueado||0);vb=(b.saldoAtualizado!=null?b.saldoAtualizado:b.saldoInicial)-(b.saldoBloqueado||0);}
+      if(_sdSort.col==='status')  {va=sat_a<-1?0:1;vb=sat_b<-1?0:1;}
+      return _sdSort.asc?va-vb:vb-va;
+    });
+  }
+  // Update arrow indicators
+  ['nome','fundo','saldoInicial','mov','saldoAtualizado','saldoBloqueado','saldoFinal','status'].forEach(col=>{
+    const el=document.getElementById('sdarr-'+col);
+    if(!el) return;
+    if(_sdSort.col===col) el.textContent=_sdSort.asc?' ↑':' ↓';
+    else el.textContent='';
+  });
+  if(filtro==='alerta')rows=rows.filter(r=>(r.saldoAtualizado||r.saldoInicial)<-1);
+  if(filtro==='semsaldo')rows=rows.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund);
+
+  const alertas=SD.cotistas.filter(r=>{const sat=r.saldoAtualizado!=null?r.saldoAtualizado:r.saldoInicial;return sat<-1;}).length;
+  const semSaldo=SD.cotistas.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund).length;
 
   document.getElementById('saldosCards').innerHTML=`
-    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID RF — Saldo Inicial</div><div class="saldos-kpi-val" style="color:#1565c0">${sdFmt(SD.rfSaldoInicial)}</div><div class="saldos-kpi-sub">Planilha de liquidez</div></div>
-    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID RF — Saldo Atual</div><div class="saldos-kpi-val" style="color:#2e7d32">${SD.rfSaldoAtual?sdFmt(SD.rfSaldoAtual):'Aguardando extrato'}</div><div class="saldos-kpi-sub">${SD.rfSaldoAtual?'Extrato importado':''}</div></div>
-    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID Soberano — Saldo Inicial</div><div class="saldos-kpi-val" style="color:#6a1b9a">${sdFmt(SD.sobSaldoInicial)}</div><div class="saldos-kpi-sub">Planilha de liquidez</div></div>
-    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID Soberano — Saldo Atual</div><div class="saldos-kpi-val" style="color:#2e7d32">${SD.sobSaldoAtual?sdFmt(SD.sobSaldoAtual):'Aguardando extrato'}</div><div class="saldos-kpi-sub">${SD.sobSaldoAtual?'Extrato importado':''}</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID RF — Saldo Inicial</div><div class="saldos-kpi-val" style="color:#1565c0">${sdFmt(SD.rfSaldoInicial)}</div><div class="saldos-kpi-sub">Soma cotistas — liquidez</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID RF — Saldo Atual</div><div class="saldos-kpi-val" style="color:#2e7d32">${SD.rfSaldoAtual?sdFmt(SD.rfSaldoAtual):'Aguardando extrato'}</div><div class="saldos-kpi-sub">${SD.rfSaldoAtual?'Saldo do fundo — extrato':''}</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID Soberano — Saldo Inicial</div><div class="saldos-kpi-val" style="color:#6a1b9a">${sdFmt(SD.sobSaldoInicial)}</div><div class="saldos-kpi-sub">Soma cotistas — liquidez</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID Soberano — Saldo Atual</div><div class="saldos-kpi-val" style="color:#2e7d32">${SD.sobSaldoAtual?sdFmt(SD.sobSaldoAtual):'Aguardando extrato'}</div><div class="saldos-kpi-sub">${SD.sobSaldoAtual?'Saldo do fundo — extrato':''}</div></div>
     <div class="saldos-kpi" style="border-color:${alertas>0?'#c62828':'var(--bdr)'}"><div class="saldos-kpi-lbl">Alertas</div>
       <div class="saldos-kpi-val" style="color:${alertas>0?'#c62828':'#2e7d32'}">${alertas>0?'⚠ '+alertas:'\u2705 Todos OK'}</div>
-      <div class="saldos-kpi-sub">Resgate a maior</div></div>`;
+      <div class="saldos-kpi-sub">Resgate a maior</div></div>
+    <div class="saldos-kpi" style="border-color:${semSaldo>0?'#f9a825':'var(--bdr)'}"><div class="saldos-kpi-lbl">Sem Saldo</div>
+      <div class="saldos-kpi-val" style="color:${semSaldo>0?'#f9a825':'var(--tx3)'}">${semSaldo>0?'⚠ '+semSaldo:'—'}</div>
+      <div class="saldos-kpi-sub">Fundo sem posição</div></div>`;
 
   const tbody=document.getElementById('saldosTbody');
   tbody.innerHTML='';
@@ -6563,7 +6641,8 @@ function sdRender(){  const el=document.getElementById('saldosView');
   rows.forEach((r,i)=>{
     const sat=r.saldoAtualizado!=null?r.saldoAtualizado:r.saldoInicial;
     const mov=sat-r.saldoInicial; // positivo=aporte, negativo=resgate
-    const alerta=sat<-1; // só alerta se resgatou mais do que tinha (saldo negativo)
+    const saldoDisp=sat-(r.saldoBloqueado||0); // saldo disponível real
+    const alerta=saldoDisp<-1; // alerta se saldo disponível negativo
     const idx=SD.cotistas.indexOf(r);
 
     // Cross-fund check: se resgatou a maior, verifica se tem saldo no outro fundo
@@ -6573,23 +6652,24 @@ function sdRender(){  const el=document.getElementById('saldosView');
     const alertaCruzado=alerta&&temOutro;
     // semPosicao: tinha saldo 0 neste fundo mas apareceu movimento (resgate no fundo errado)
     const semPosicao=r.saldoInicial<=0.01&&mov<-0.01;
+    const semSaldoRow=(r.saldoInicial||0)<=0.01&&!r._wrongFund&&Math.abs(mov)<=0.01;
 
     const tr=document.createElement('tr');tr.className='saldos-tr';
-    tr.style.background=alerta?'rgba(198,40,40,0.04)':'';
+    tr.style.background=alerta?'rgba(198,40,40,0.04)':semSaldoRow?'rgba(249,168,37,0.04)':'';
     tr.innerHTML=`
       <td style="color:var(--tx3);width:36px;text-align:center">${i+1}</td>
       <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500" title="${r.nome}">${r.nome}</td>
       <td style="text-align:right"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.fundo==='ID RF'?'#e3f2fd':'#f3e5f5'};color:${r.fundo==='ID RF'?'#1565c0':'#6a1b9a'}">${r.fundo}</span></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt(r.saldoInicial)}</td>
       <td style="text-align:right;color:${mov<-1?'#c62828':mov>1?'#2e7d32':'var(--tx3)'};font-variant-numeric:tabular-nums">${Math.abs(mov)>0.01?(mov>0?'+ ':'- ')+sdFmt(Math.abs(mov)):'—'}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt(sat)}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt((r.saldoBloqueado||0)>0?sat-(r.saldoBloqueado||0):sat)}</td>
       <td style="text-align:right"><input class="saldos-bloq-inp" type="text"
         value="${r.saldoBloqueado?Number(r.saldoBloqueado).toLocaleString('pt-BR',{minimumFractionDigits:2}):''}"
         placeholder="0,00"
         onblur="sdSetBloqueado(${idx},this.value)"
         onkeydown="if(event.key==='Enter')this.blur()"></td>
-      <td style="text-align:right;font-weight:700;color:${alerta?'#c62828':'var(--tx3)'};font-variant-numeric:tabular-nums">${alerta?sdFmt(sat):'—'}</td>
-      <td style="text-align:center;min-width:200px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,r.movDetalhes)}</td>
+      <td style="text-align:right;font-weight:700;color:${alerta?'#c62828':'var(--tx3)'};font-variant-numeric:tabular-nums">${alerta?sdFmt(saldoDisp):'—'}</td>
+      <td style="text-align:center;min-width:200px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,r.movDetalhes,semSaldoRow)}</td>
       <td style="font-size:11px;color:${r.obs?'#e65100':'var(--tx3)'};;padding:9px 10px">${r.obs||'—'}</td>`;
     // Click to expand details
     const hasDetail=r.movDetalhes&&r.movDetalhes.detalhes&&r.movDetalhes.detalhes.length>0;
@@ -7414,6 +7494,7 @@ if(document.readyState==='loading'){
           <option value="rf">Apenas ID RF</option>
           <option value="sob">Apenas ID Soberano</option>
           <option value="alerta">⚠ Com alerta</option>
+          <option value="semsaldo">⚪ Sem saldo</option>
         </select>
         <button class="btn btn-p" onclick="document.getElementById('saldosLiqInp').click()" style="font-size:12px">📥 Importar Liquidez</button>
         <input type="file" id="saldosLiqInp" accept=".xls,.xlsx,.html,.htm" style="display:none" onchange="importSaldosLiquidez(this)">
@@ -7431,14 +7512,14 @@ if(document.readyState==='loading'){
           <thead id="saldosThead">
             <tr style="background:var(--sur2);border-bottom:1px solid var(--bdr)" id="saldosTheadRow">
               <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);white-space:nowrap;width:40px">#</th>
-              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);min-width:180px;position:relative">Cotista<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Fundo<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Inicial<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Movimentação<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Atualizado<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Bloqueado<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Utilizado<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
-              <th style="padding:10px 12px;text-align:center;font-weight:600;color:var(--tx2);min-width:200px">Status</th>
+              <th onclick="sdSortBy('nome')" style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);min-width:180px;position:relative;cursor:pointer;user-select:none" id="sdth-nome">Cotista <span id="sdarr-nome"></span><div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th onclick="sdSortBy('fundo')" style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative;cursor:pointer;user-select:none" id="sdth-fundo">Fundo <span id="sdarr-fundo"></span><div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th onclick="sdSortBy('saldoInicial')" style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative;cursor:pointer;user-select:none" id="sdth-saldoInicial">Saldo Inicial <span id="sdarr-saldoInicial"></span><div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th onclick="sdSortBy('mov')" style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative;cursor:pointer;user-select:none" id="sdth-mov">Movimentação <span id="sdarr-mov"></span><div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th onclick="sdSortBy('saldoAtualizado')" style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative;cursor:pointer;user-select:none" id="sdth-saldoAtualizado">Saldo Atualizado <span id="sdarr-saldoAtualizado"></span><div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th onclick="sdSortBy('saldoBloqueado')" style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative;cursor:pointer;user-select:none" id="sdth-saldoBloqueado">Saldo Bloqueado <span id="sdarr-saldoBloqueado"></span><div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th onclick="sdSortBy('saldoFinal')" style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative;cursor:pointer;user-select:none" id="sdth-saldoFinal">Saldo Utilizado <span id="sdarr-saldoFinal"></span><div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
+              <th onclick="sdSortBy('status')" style="padding:10px 12px;text-align:center;font-weight:600;color:var(--tx2);min-width:200px;cursor:pointer;user-select:none" id="sdth-status">Status <span id="sdarr-status"></span></th>
               <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);min-width:160px;position:relative">Observação<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
             </tr>
           </thead>
