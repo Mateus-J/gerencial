@@ -6424,7 +6424,7 @@ function importSaldosLiquidez(input){
       });
       SD.cotistas=cotistas;
       SD.dataRef=new Date().toLocaleDateString('pt-BR');
-      // Limpa extratos e saldos atuais — nova liquidez = novo dia
+      // Limpa extratos, saldos atuais e _wrongFund — nova liquidez = novo dia
       SD.extratos={};
       SD.rfSaldoAtual=0;
       SD.sobSaldoAtual=0;
@@ -6464,12 +6464,14 @@ function importSaldosExtrato(input){
       const fundoKey=isSob?'ID Soberano':'ID RF';
       const outroFundoKey=isSob?'ID RF':'ID Soberano';
 
-      // KPI: saldo atual = vl_saldo_in da última linha ± último movimento = saldo real do fundo
+      // KPI: saldo atual = vl_saldo_in da última linha ± último movimento
       const ultimaLinha=data[data.length-1];
-      const lastSaldoIn=saldoI>=0?parseV(ultimaLinha[saldoI]):0;
+      const lastSaldoIn=(saldoI>=0&&ultimaLinha[saldoI])?parseV(ultimaLinha[saldoI]):null;
       const lastDC=(ultimaLinha[dcI]||'').trim().toUpperCase();
       const lastVal=parseV(ultimaLinha[valI]);
-      const saldoFundoAtual=lastDC==='D'?lastSaldoIn-lastVal:lastSaldoIn+lastVal;
+      const saldoFundoAtual=lastSaldoIn!=null
+        ?(lastDC==='D'?lastSaldoIn-lastVal:lastSaldoIn+lastVal)
+        :0;
 
       // Agrupar movimentos por cotista
       const movMap={};
