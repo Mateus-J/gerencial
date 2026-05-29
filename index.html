@@ -46,6 +46,16 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
 [data-theme=dark] .tab-admin{color:#4caf50}
 [data-theme=dark] .tab-admin:hover{background:#0a1f0a}
 [data-theme=dark] .tab-admin.active{background:var(--sur);color:#4caf50}
+/* Saldos */
+.saldos-kpi{background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:14px 16px}
+.saldos-kpi-lbl{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.saldos-kpi-val{font-size:18px;font-weight:700;color:var(--tx)}
+.saldos-kpi-sub{font-size:10px;color:var(--tx3);margin-top:2px}
+.saldos-tr:hover td{background:var(--sur2)}
+.saldos-tr td{padding:9px 12px;border-bottom:0.5px solid var(--bdr);color:var(--tx)}
+.saldos-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
+.saldos-bloq-inp{background:transparent;border:1px dashed var(--bdr);border-radius:5px;padding:3px 6px;text-align:right;font-size:12px;color:var(--tx);font-family:inherit;width:110px;outline:none}
+.saldos-bloq-inp:focus{border-color:var(--blue);background:var(--sur2)}
 .tabs-left::-webkit-scrollbar{height:3px}
 .tab{padding:8px 14px;font-size:12px;font-weight:500;color:var(--tx2);cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;white-space:nowrap;display:flex;align-items:center;gap:5px;user-select:none;position:relative;top:1px;transition:background .12s}
 .tab:hover{background:var(--sur2)}.tab.active{background:var(--sur);border-color:var(--bdr);color:var(--blue);font-weight:600}
@@ -1447,6 +1457,25 @@ tr:hover .ho-collab-del{opacity:1}
         <div class="agenda-field"><label>Título</label><input type="text" id="evtTitle" placeholder="Ex: Reunião Santander" onkeydown="if(event.key==='Enter')addAgendaItem()"></div>
         <div class="agenda-field"><label>Data</label><input type="date" id="evtDate"></div>
         <div class="agenda-field"><label>Horário (opcional)</label><input type="time" id="evtTime"></div>
+        <div class="agenda-field"><label>Recorrência</label>
+          <select id="evtRecurr" onchange="updateRecurrFields()">
+            <option value="none">Sem recorrência</option>
+            <option value="daily">Diária</option>
+            <option value="weekdays">Dias úteis (Seg–Sex)</option>
+            <option value="weekly">Semanal</option>
+            <option value="monthly">Mensal</option>
+          </select>
+        </div>
+        <div class="agenda-field" id="evtRecurrEndField" style="display:none"><label>Repetir até</label><input type="date" id="evtRecurrEnd"></div>
+        <div class="agenda-field"><label>Frequência diária</label>
+          <select id="evtFreq" onchange="updateFreqFields()">
+            <option value="once">Uma vez no dia</option>
+            <option value="times">N vezes por dia</option>
+            <option value="specific">Horário específico</option>
+          </select>
+        </div>
+        <div class="agenda-field" id="evtFreqTimesField" style="display:none"><label>Quantas vezes</label><input type="number" id="evtFreqTimes" min="2" max="24" value="2" placeholder="Ex: 3"></div>
+        <div class="agenda-field" id="evtFreqSpecificField" style="display:none"><label>Horários (separados por vírgula)</label><input type="text" id="evtFreqSpecific" placeholder="Ex: 09:00, 12:00, 16:00"></div>
         <div class="agenda-field"><label>Notificar</label>
           <select id="evtNotif">
             <option value="0">No dia</option>
@@ -1464,15 +1493,16 @@ tr:hover .ho-collab-del{opacity:1}
 </div>
 
 <!-- NOTIFICATION POP-UP -->
-<div id="notifOverlay" class="notif-overlay" style="display:none">
-  <div class="notif-box">
+<div id="notifOverlay" class="notif-overlay" style="display:none;pointer-events:all">
+  <div class="notif-box" style="max-height:80vh;display:flex;flex-direction:column">
     <div class="notif-hdr">
       <h3>🔔 Lembretes de hoje</h3>
       <button onclick="closeNotif()">✕ Fechar</button>
     </div>
-    <div class="notif-body" id="notifBody"></div>
+    <div class="notif-body" id="notifBody" style="overflow-y:auto;flex:1"></div>
     <div class="notif-footer">
-      <button class="btn btn-sm" onclick="closeNotif()">Dispensar</button>
+      <button class="btn btn-sm" onclick="snoozeNotif(30)">⏱ Lembrar em 30min</button>
+      <button class="btn btn-sm" onclick="snoozeNotif(60)">⏱ 1h</button>
       <button class="btn btn-p btn-sm" onclick="goToAgenda()">📅 Abrir Agenda</button>
     </div>
   </div>
@@ -2052,6 +2082,7 @@ function renderView(){
   const agv=document.getElementById('agendaView');
   av.style.display='none'; agv.style.display='none';
   if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
+  if(document.getElementById('saldosView')) document.getElementById('saldosView').style.display='none';
   const agBtn=document.getElementById('agendaHdrBtn');
   if(agBtn) agBtn.classList.remove('active-agenda');
   document.getElementById('iofView').style.display='none';
@@ -2146,12 +2177,21 @@ function renderTabs(){
       document.getElementById('adminView').style.display='none';
       if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
       if(document.getElementById('agendaView')) document.getElementById('agendaView').style.display='none';
+      if(document.getElementById('saldosView')) document.getElementById('saldosView').style.display='none';
       document.getElementById('iofView').style.display='block';
       if(typeof iof_lazyInit==='function') iof_lazyInit();
       S.activeTab='';
       renderTabs();
     };
     rightArea.appendChild(iofEl);
+    // Saldos tab
+    const saldosEl=document.createElement('div');
+    const saldosActive=document.getElementById('saldosView')&&document.getElementById('saldosView').style.display!=='none';
+    saldosEl.className='tab-admin'+(saldosActive?' active':'');
+    saldosEl.style.color='#2e7d32';
+    saldosEl.innerHTML='<span style="font-size:13px">📊</span><span>Saldos</span>';
+    saldosEl.onclick=()=>switchToSaldos();
+    rightArea.appendChild(saldosEl);
   }
   // Home Office tab - visible for all users
   if(currentUser&&currentUser.role!=='consulta'){
@@ -6028,26 +6068,100 @@ function buildEvtTypeRow(){
 }
 
 // ── Add item ──────────────────────────────────────────────────
+// ── Recurrence / frequency UI helpers ────────────────────────
+function updateRecurrFields(){
+  const v=document.getElementById('evtRecurr').value;
+  document.getElementById('evtRecurrEndField').style.display=v==='none'?'none':'flex';
+}
+function updateFreqFields(){
+  const v=document.getElementById('evtFreq').value;
+  document.getElementById('evtFreqTimesField').style.display=v==='times'?'flex':'none';
+  document.getElementById('evtFreqSpecificField').style.display=v==='specific'?'flex':'none';
+}
+window.updateRecurrFields=updateRecurrFields;
+window.updateFreqFields=updateFreqFields;
+
+// Generate list of dates from recurrence rule
+function expandRecurrDates(startDate, recurrence, endDate){
+  const dates=[];
+  const start=new Date(startDate+'T12:00:00');
+  const end=endDate?new Date(endDate+'T12:00:00'):new Date(start.getTime()+365*86400000);
+  let cur=new Date(start);
+  while(cur<=end && dates.length<500){
+    const iso=cur.toISOString().slice(0,10);
+    const dow=cur.getDay();
+    if(recurrence==='daily') dates.push(iso);
+    else if(recurrence==='weekdays' && dow>=1&&dow<=5) dates.push(iso);
+    else if(recurrence==='weekly') dates.push(iso);
+    else if(recurrence==='monthly') dates.push(iso);
+    // advance
+    if(recurrence==='weekly') cur.setDate(cur.getDate()+7);
+    else if(recurrence==='monthly') cur.setMonth(cur.getMonth()+1);
+    else cur.setDate(cur.getDate()+1);
+  }
+  return dates;
+}
+
 function addAgendaItem(){
   const title=document.getElementById('evtTitle').value.trim();
   const date=document.getElementById('evtDate').value;
   const time=document.getElementById('evtTime').value;
   const note=document.getElementById('evtNote').value.trim();
   const notifDays=parseInt(document.getElementById('evtNotif').value);
+  const recurrence=document.getElementById('evtRecurr').value;
+  const recurrEnd=document.getElementById('evtRecurrEnd').value;
+  const freq=document.getElementById('evtFreq').value;
+  const freqTimes=parseInt(document.getElementById('evtFreqTimes').value)||2;
+  const freqSpecific=document.getElementById('evtFreqSpecific').value.trim();
+
   if(!title){document.getElementById('evtTitle').focus();toast('⚠️ Digite um título');return}
   if(!date){document.getElementById('evtDate').focus();toast('⚠️ Selecione uma data');return}
-  const item={id:'ag'+Date.now(),type:selectedEvtType,title,date,time,note,notifDays,done:false,createdAt:new Date().toISOString()};
-  agendaItems.unshift(item);
+
+  // Build list of times for the day
+  let times=[];
+  if(freq==='once'||!freq){
+    times=[time||''];
+  } else if(freq==='times'){
+    // evenly spaced from 08:00
+    for(let i=0;i<freqTimes;i++){
+      const h=8+Math.floor(i*(10/freqTimes));
+      const m=Math.round((i*(10/freqTimes)%1)*60);
+      times.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
+    }
+  } else if(freq==='specific'){
+    times=freqSpecific.split(',').map(t=>t.trim()).filter(Boolean);
+    if(!times.length){toast('⚠️ Digite ao menos um horário');return}
+  }
+
+  // Build list of dates
+  const dates=recurrence==='none'?[date]:expandRecurrDates(date,recurrence,recurrEnd);
+
+  // Create items
+  const recurGroupId=recurrence!=='none'?'rg'+Date.now():undefined;
+  let count=0;
+  dates.forEach(d=>{
+    times.forEach(t=>{
+      const item={
+        id:'ag'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+        type:selectedEvtType,title,date:d,time:t,note,notifDays,
+        done:false,createdAt:new Date().toISOString(),
+        recurrence:recurrence!=='none'?recurrence:undefined,
+        recurGroupId,freq:freq!=='once'?freq:undefined,
+      };
+      agendaItems.unshift(item);
+      count++;
+    });
+  });
+
   saveAgenda();
   document.getElementById('evtTitle').value='';
   document.getElementById('evtNote').value='';
   document.getElementById('evtTime').value='';
-  renderCalendar();
-  renderAgendaList(selectedDate);
-  renderTabs();
-  toast('✅ Item adicionado à agenda!');
+  document.getElementById('evtFreqSpecific').value='';
+  renderCalendar();renderAgendaList(selectedDate);renderTabs();
+  toast(`✅ ${count} item${count>1?'s':''} adicionado${count>1?'s':''} à agenda!`);
 }
-window.addAgendaItem = addAgendaItem;
+window.addAgendaItem=addAgendaItem;
 
 // ── Render list ───────────────────────────────────────────────
 function renderAgendaList(filterDate){
@@ -6155,6 +6269,236 @@ function checkAndShowNotifications(){
   const count=getAgendaNotifCount();
   if(count>0) setTimeout(showNotifications, 1200); // slight delay after login
 }
+
+// ─── SALDOS DOS FUNDOS DE ZERAGEM ─────────────────────────────
+
+// State
+let SALDOS_DATA = {
+  cotistas: [],          // [{nome, fundo, saldoInicial, movimentacao, saldoAtualizado, saldoBloqueado, saldoFinal}]
+  extratos: {},          // {idRF: {saldoInicial, saldoAtual, debitos, creditos, rows:[]}, idSob: {...}}
+  dataRef: '',
+  rfSaldoInicial: 0, rfSaldoAtual: 0,
+  sobSaldoInicial: 0, sobSaldoAtual: 0,
+};
+
+function switchToSaldos(){
+  ['tableView','canvasView','dashView','adminView','iofView','hoView','agendaView']
+    .forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none'});
+  document.getElementById('saldosView').style.display='block';
+  S.activeTab=''; renderTabs();
+  if(!SALDOS_DATA.cotistas.length) saldosLoadFromFirebase();
+  else renderSaldosTable();
+}
+window.switchToSaldos=switchToSaldos;
+
+function saldosFmt(v){
+  if(!v&&v!==0) return '—';
+  return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function saldosLoadFromFirebase(){
+  if(!fbReady||!fbDb||!fbDocFn||!fbGet) return;
+  fbGet(fbDocFn(fbDb,'controle','saldos_data')).then(snap=>{
+    if(snap.exists()){
+      const d=snap.data();
+      SALDOS_DATA={...SALDOS_DATA,...d};
+    }
+    renderSaldosTable();
+  }).catch(e=>console.warn('saldos load err',e));
+}
+
+function saldosSaveToFirebase(){
+  if(!fbReady||!fbDb||!fbDocFn||!fbSet) return;
+  fbSet(fbDocFn(fbDb,'controle','saldos_data'),SALDOS_DATA,{merge:false})
+    .catch(e=>console.warn('saldos save err',e));
+}
+
+function importSaldosExtrato(input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const text=e.target.result;
+      const lines=text.split('\n').filter(l=>l.trim());
+      // Detect separator
+      const sep=lines[0].includes(';')?';':',';
+      const rows=lines.map(l=>l.split(sep).map(c=>c.replace(/"/g,'').trim()));
+      const header=rows[0].map(h=>h.toLowerCase().replace(/\s+/g,'_'));
+      const data=rows.slice(1).filter(r=>r.length>3);
+
+      const colIdx=(name)=>header.findIndex(h=>h.includes(name));
+      const dcIdx=colIdx('fl_debito_credito')||colIdx('debito_credito')||colIdx('dc');
+      const valIdx=colIdx('valor');
+      const descIdx=colIdx('ds_complemento')||colIdx('complemento')||colIdx('descricao');
+      const saldoIdx=colIdx('vl_saldo_in')||colIdx('saldo');
+      const dtIdx=colIdx('dt_mov')||colIdx('data');
+
+      if(dcIdx<0||valIdx<0){toast('⚠ CSV inválido — colunas fl_debito_credito e valor não encontradas');return;}
+
+      // Detect fund from filename
+      const isSob=file.name.includes('454398')||file.name.toLowerCase().includes('soberano');
+      const fundoKey=isSob?'idSob':'idRF';
+      const fundoNome=isSob?'ID Soberano':'ID RF';
+
+      const parseV=s=>parseFloat(String(s).replace(/\./g,'').replace(',','.'))||0;
+
+      let saldoInicial=0,saldoAtual=0,totalDeb=0,totalCred=0;
+      const extratoRows=[];
+
+      data.forEach((row,i)=>{
+        const dc=(row[dcIdx]||'').trim().toUpperCase();
+        const val=parseV(row[valIdx]);
+        const desc=row[descIdx]||'';
+        const dt=row[dtIdx]||'';
+        const saldoLinha=saldoIdx>=0?parseV(row[saldoIdx]):0;
+
+        if(i===0) saldoInicial=saldoLinha;
+
+        if(dc==='D'){totalDeb+=val;}
+        else if(dc==='C'){totalCred+=val;}
+
+        // Compute running saldo
+        if(i===data.length-1){
+          saldoAtual=dc==='D'?saldoLinha-val:saldoLinha+val;
+        }
+        extratoRows.push({dc,val,desc,dt,saldo:saldoLinha});
+      });
+
+      SALDOS_DATA.extratos[fundoKey]={saldoInicial,saldoAtual,totalDeb,totalCred,rows:extratoRows,fundo:fundoNome,importedAt:new Date().toISOString()};
+
+      if(fundoKey==='idRF'){SALDOS_DATA.rfSaldoInicial=saldoInicial;SALDOS_DATA.rfSaldoAtual=saldoAtual;}
+      else{SALDOS_DATA.sobSaldoInicial=saldoInicial;SALDOS_DATA.sobSaldoAtual=saldoAtual;}
+
+      // Update each cotista's saldo atualizado from liquidez (already loaded)
+      // recalc saldo final for all cotistas
+      SALDOS_DATA.cotistas.forEach(c=>{
+        const bloq=c.saldoBloqueado||0;
+        c.saldoFinal=(c.saldoInicial||0)-(c.saldoAtualizado||0)-bloq;
+      });
+
+      SALDOS_DATA.dataRef=new Date().toLocaleDateString('pt-BR');
+      saldosSaveToFirebase();
+      renderSaldosTable();
+      toast(`✅ Extrato ${fundoNome} importado — ${data.length} lançamentos`);
+    }catch(err){toast('⚠ Erro ao ler extrato: '+err.message);console.error(err);}
+  };
+  reader.readAsText(file,'latin1');
+  input.value='';
+}
+window.importSaldosExtrato=importSaldosExtrato;
+
+function saldosInitFromLiquidez(cotistasData){
+  // cotistasData = [{nome, idRF, idSob}]
+  const rows=[];
+  cotistasData.forEach(c=>{
+    if(c.idRF>0) rows.push({nome:c.nome,fundo:'ID RF',saldoInicial:c.idRF,saldoAtualizado:c.idRF,saldoBloqueado:0,movimentacao:0});
+    if(c.idSob>0) rows.push({nome:c.nome,fundo:'ID Soberano',saldoInicial:c.idSob,saldoAtualizado:c.idSob,saldoBloqueado:0,movimentacao:0});
+  });
+  rows.forEach(r=>{r.saldoFinal=r.saldoInicial-r.saldoBloqueado;});
+  SALDOS_DATA.cotistas=rows;
+  SALDOS_DATA.dataRef=new Date().toLocaleDateString('pt-BR');
+  saldosSaveToFirebase();
+  renderSaldosTable();
+  toast(`✅ ${rows.length} linhas carregadas da planilha de liquidez`);
+}
+
+function renderSaldosTable(){
+  const tbody=document.getElementById('saldosTbody');
+  if(!tbody) return;
+  const search=(document.getElementById('saldosSearch')?.value||'').toLowerCase();
+  const filtro=document.getElementById('saldosFiltro')?.value||'todos';
+  document.getElementById('saldosDataRef').textContent='Data de referência: '+(SALDOS_DATA.dataRef||'—');
+
+  let rows=[...SALDOS_DATA.cotistas];
+  if(search) rows=rows.filter(r=>r.nome.toLowerCase().includes(search)||r.fundo.toLowerCase().includes(search));
+  if(filtro==='rf') rows=rows.filter(r=>r.fundo==='ID RF');
+  if(filtro==='sob') rows=rows.filter(r=>r.fundo==='ID Soberano');
+  if(filtro==='alerta') rows=rows.filter(r=>(r.saldoFinal||0)<0||(r.saldoAtualizado||0)>(r.saldoInicial||0));
+
+  // KPI cards
+  const totalRFInicial=SALDOS_DATA.rfSaldoInicial||0;
+  const totalRFAtual=SALDOS_DATA.rfSaldoAtual||0;
+  const totalSobInicial=SALDOS_DATA.sobSaldoInicial||0;
+  const totalSobAtual=SALDOS_DATA.sobSaldoAtual||0;
+  const alertas=SALDOS_DATA.cotistas.filter(r=>(r.saldoFinal||0)<0).length;
+  document.getElementById('saldosCards').innerHTML=`
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID RF — Saldo Inicial</div><div class="saldos-kpi-val" style="color:#1565c0">${saldosFmt(totalRFInicial)}</div><div class="saldos-kpi-sub">Abertura do dia</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID RF — Saldo Atual</div><div class="saldos-kpi-val" style="color:#2e7d32">${saldosFmt(totalRFAtual)}</div><div class="saldos-kpi-sub">${SALDOS_DATA.extratos?.idRF?.importedAt?'Extrato importado':saldosFmt(totalRFAtual?0:0)+' Aguardando extrato'}</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID Soberano — Saldo Inicial</div><div class="saldos-kpi-val" style="color:#6a1b9a">${saldosFmt(totalSobInicial)}</div><div class="saldos-kpi-sub">Abertura do dia</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID Soberano — Saldo Atual</div><div class="saldos-kpi-val" style="color:#2e7d32">${saldosFmt(totalSobAtual)}</div><div class="saldos-kpi-sub">${SALDOS_DATA.extratos?.idSob?.importedAt?'Extrato importado':'Aguardando extrato'}</div></div>
+    <div class="saldos-kpi" style="border-color:${alertas>0?'#c62828':'var(--bdr)'}"><div class="saldos-kpi-lbl">Alertas</div><div class="saldos-kpi-val" style="color:${alertas>0?'#c62828':'#2e7d32'}">${alertas>0?'⚠ '+alertas+' cotista'+(alertas>1?'s':''):'✅ Todos OK'}</div><div class="saldos-kpi-sub">Resgate a maior</div></div>
+    <div class="saldos-kpi" style="cursor:pointer;border:1.5px dashed var(--bdr)" onclick="document.getElementById('saldosImportInp').click()"><div class="saldos-kpi-lbl">Importar Extrato</div><div class="saldos-kpi-val" style="font-size:24px">⬆</div><div class="saldos-kpi-sub">CSV do fundo de zeragem</div></div>
+  `;
+
+  tbody.innerHTML='';
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--tx3)">Nenhum cotista encontrado. Importe a planilha de liquidez.</td></tr>';return;}
+
+  rows.forEach((r,i)=>{
+    const saldoFinal=(r.saldoInicial||0)-(r.saldoAtualizado||0)-(r.saldoBloqueado||0);
+    const isAlerta=saldoFinal<-1;
+    const isOk=saldoFinal>=-1;
+    const tr=document.createElement('tr');
+    tr.className='saldos-tr';
+    tr.style.background=isAlerta?'rgba(198,40,40,0.04)':'';
+    const movStr=r.movimentacao?saldosFmt(r.movimentacao):'—';
+    tr.innerHTML=`
+      <td style="color:var(--tx3);width:40px">${i+1}</td>
+      <td style="font-weight:500;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nome}">${r.nome}</td>
+      <td style="text-align:right"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.fundo==='ID RF'?'#e3f2fd':'#f3e5f5'};color:${r.fundo==='ID RF'?'#1565c0':'#6a1b9a'}">${r.fundo}</span></td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums">${saldosFmt(r.saldoInicial)}</td>
+      <td style="text-align:right;color:${(r.movimentacao||0)<0?'#c62828':'#2e7d32'};font-variant-numeric:tabular-nums">${movStr}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums">${saldosFmt(r.saldoAtualizado)}</td>
+      <td style="text-align:right"><input class="saldos-bloq-inp" type="text" value="${r.saldoBloqueado?Number(r.saldoBloqueado).toLocaleString('pt-BR',{minimumFractionDigits:2}):''}" placeholder="0,00"
+        onblur="saldosSetBloqueado(${SALDOS_DATA.cotistas.indexOf(r)},this.value)" onkeydown="if(event.key==='Enter')this.blur()"></td>
+      <td style="text-align:right;font-weight:600;color:${isAlerta?'#c62828':isOk?'#2e7d32':'var(--tx)'}; font-variant-numeric:tabular-nums">${saldosFmt(saldoFinal)}</td>
+      <td style="text-align:center">
+        <span class="saldos-badge" style="background:${isAlerta?'#fce8e8':'#e8f5e9'};color:${isAlerta?'#c62828':'#2e7d32'}">
+          ${isAlerta?'⚠ Resgate a maior':'✅ OK'}
+        </span>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('saldosFooter').textContent=`Exibindo ${rows.length} de ${SALDOS_DATA.cotistas.length} cotistas`;
+}
+window.renderSaldosTable=renderSaldosTable;
+
+function saldosSetBloqueado(idx, valStr){
+  if(idx<0||idx>=SALDOS_DATA.cotistas.length) return;
+  const v=parseFloat(String(valStr).replace(/\./g,'').replace(',','.'))||0;
+  SALDOS_DATA.cotistas[idx].saldoBloqueado=v;
+  saldosSaveToFirebase();
+  renderSaldosTable();
+}
+window.saldosSetBloqueado=saldosSetBloqueado;
+
+function exportSaldosCSV(){
+  const rows=SALDOS_DATA.cotistas;
+  if(!rows.length){toast('Nenhum dado para exportar');return;}
+  const header='Cotista;Fundo;Saldo Inicial;Movimentação;Saldo Atualizado;Saldo Bloqueado;Saldo Final;Status';
+  const fmt=v=>v!=null&&v!==''?Number(v).toFixed(2).replace('.',','):'';
+  const lines=rows.map(r=>{
+    const sf=(r.saldoInicial||0)-(r.saldoAtualizado||0)-(r.saldoBloqueado||0);
+    const status=sf<-1?'Resgate a maior':'OK';
+    return [r.nome,r.fundo,fmt(r.saldoInicial),fmt(r.movimentacao),fmt(r.saldoAtualizado),fmt(r.saldoBloqueado),fmt(sf),status].join(';');
+  });
+  const csv='\uFEFF'+header+'\n'+lines.join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='saldos_zeragem_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();URL.revokeObjectURL(url);
+  toast('✅ CSV exportado!');
+}
+window.exportSaldosCSV=exportSaldosCSV;
+
+// Load initial data from liquidez (hardcoded from 29/05/2026 import)
+function saldosCarregarLiquidez(){
+  const cotistas = [{"nome":"AMARILIS FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA - RESPONSABILIDADE LIMITADA","idRF":0,"idSob":42717},{"nome":"ARAWAK FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":0,"idSob":4873208},{"nome":"ASTRA INFRAESTRUTURA I FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":129910758,"idSob":0},{"nome":"BURUNDI FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":0,"idSob":340251},{"nome":"BYRON 61 FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADOS","idRF":2924080701,"idSob":0},{"nome":"CORTONA FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO","idRF":678769,"idSob":0},{"nome":"COXIM FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":7474645,"idSob":0},{"nome":"EXPONENCIAL LOGICA FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":425358636,"idSob":0},{"nome":"FERA12 95 FUNDO DE INVESTIMENTO EM COTAS DE FUNDO DE INVESTIMENTO FINANCEIRO","idRF":12445206,"idSob":0},{"nome":"FUCHSIA II FUNDO DE INVESTIMENTO FINANCEIRO EM COTAS DE FUNDO DE INVESTIMENTO","idRF":63513628,"idSob":0},{"nome":"GLIN FUNDO DE INVESTIMENTO FINANCEIRO EM COTAS DE FUNDO DE INVESTIMENTO","idRF":0,"idSob":30841939},{"nome":"GRAJUBA FUNDO DE INVESTIMENTO FINANCEIRO EM COTAS DE FUNDOS DE INVESTIMENTO","idRF":14633742,"idSob":0},{"nome":"HARPIA 95 FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO","idRF":19533,"idSob":0},{"nome":"JAURU FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA RESPONSABILIDADE LIMITADA","idRF":0,"idSob":64509416},{"nome":"LOGISTICA BR I FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS DE RESPONSABILIDADE LIMITADA","idRF":0,"idSob":4337832},{"nome":"MOGNO LOGISTICA FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":20347,"idSob":0},{"nome":"MONDO FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":3754481,"idSob":0},{"nome":"PILAR CAPITAL FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO CREDITO PRIVADO","idRF":6517672,"idSob":0},{"nome":"POSITIVO I FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO CP IE LP","idRF":15106431,"idSob":0},{"nome":"POSITIVO III FUNDO DE INVESTIMENTO IMOBILIARIO - FII","idRF":0,"idSob":101817075},{"nome":"POSITIVO IV FUNDO DE INVESTIMENTO FINANCEIRO EM ACOES RESPONSABILIDADE LIMITADA","idRF":0,"idSob":308895318},{"nome":"POSITIVO V FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO","idRF":4815308,"idSob":0},{"nome":"PREMIER SOUL FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATGIA","idRF":1497783,"idSob":0},{"nome":"QUEBRA DENTES FUNDO DE INVESTIMENTO EM PARTICIPACOES - INFRAESTRUTURA","idRF":122226687,"idSob":0},{"nome":"RADOMA 16 FUNDO DE INVESTIMENTO IMOBILIARIO - FII","idRF":467032,"idSob":0},{"nome":"RIO NEGRO FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":4338477,"idSob":0},{"nome":"RIO NOVO FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO","idRF":0,"idSob":1660268},{"nome":"SALINAS FUNDO INVEST PARTICIPACOES MULTIESTRATEGIA LTDA","idRF":123572,"idSob":0},{"nome":"SANTA CLARA FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":1445304,"idSob":0},{"nome":"TARUMA FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":0,"idSob":19692474},{"nome":"TROJANS 95 FI FINANCEIRO MULTIMERCADO CREDITO PRIVADO","idRF":0,"idSob":87037},{"nome":"VERTRAULICH FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":175381,"idSob":0},{"nome":"CARMELO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":98747928,"idSob":0},{"nome":"GALAXY CONSIG FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":40746043,"idSob":0},{"nome":"SARON FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":156958444,"idSob":0},{"nome":"AGUIA FUNDO DE INVESTIMENTO EM COTAS DE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":2234362,"idSob":0},{"nome":"BRD FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":0,"idSob":44479132},{"nome":"DEFFENDER FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":0,"idSob":41248347},{"nome":"FIZZ CARD FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO-PADRONIZADO","idRF":0,"idSob":960080845},{"nome":"GENESIS QUATRUM FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":1693259,"idSob":0},{"nome":"INVESTMACH FUNDO DE INVESTIMENTO EM COTAS DE FUNDOS DE INVESTIMENTO MULTIMERCADO","idRF":0,"idSob":491783},{"nome":"INVESTMACH FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS - FIDC","idRF":0,"idSob":133173238},{"nome":"KMRBANK FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":53938223,"idSob":0},{"nome":"MOBILE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RL","idRF":0,"idSob":140960868},{"nome":"NOVA PROSPER FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RL","idRF":0,"idSob":194499579},{"nome":"SQUID FUNDO DE INVESTIMENTO EM DIRETOS CREDITORIOS","idRF":0,"idSob":223948611},{"nome":"SQUID UNO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":0,"idSob":33889998},{"nome":"VETRO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":0,"idSob":144888818},{"nome":"7INVEST CAPITAL FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":64450100,"idSob":0},{"nome":"ATLAS PRIME FI EM COTAS DE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":6432511,"idSob":60065475},{"nome":"AUDIMAIS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RL","idRF":1182501,"idSob":0},{"nome":"CERES CAPITAL FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO-PADRONIZADO","idRF":0,"idSob":99236},{"nome":"CONCRETO-CONSIGNADO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RL","idRF":28313524,"idSob":0},{"nome":"CONSULT PRECATORIOS E RECEBIVEIS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":3645257,"idSob":0},{"nome":"CREDICAN FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":8102290,"idSob":0},{"nome":"FARTURA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":536745070,"idSob":0},{"nome":"FERRAGUTI FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO CREDITO PRIVADO","idRF":61586,"idSob":0},{"nome":"FMV FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":17828703,"idSob":0},{"nome":"GG CAPITAL FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":0,"idSob":121710},{"nome":"GRBK CONSIGNADO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":6218477,"idSob":0},{"nome":"HERMON FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO","idRF":98067,"idSob":0},{"nome":"HT3 FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":2290,"idSob":0},{"nome":"HT3 FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO IE","idRF":1882,"idSob":0},{"nome":"HT3 II FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":412993,"idSob":0},{"nome":"JAFFA 95 FIF MULT. DE RESPONSABILIDADE ILIMITADA","idRF":2148424,"idSob":0},{"nome":"JAFFA FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":35719063,"idSob":0},{"nome":"KOMBI AZUL 95 FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO","idRF":6297715,"idSob":0},{"nome":"KOMBI AZUL FIP MULTIESTRATEGIA","idRF":25345,"idSob":0},{"nome":"LGG INVEST FUNDO DE INVESTIMENTO EM COTAS DE FUNDOS DE INVESTIMENTO MULTIMERCADO","idRF":911570,"idSob":0},{"nome":"LSP FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":3549856,"idSob":0},{"nome":"PARCELA DIARIA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":68818468,"idSob":0},{"nome":"PARUSIA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":63661958,"idSob":0},{"nome":"PODIUM FUNDO DE INVESTIMENTO MULTIMERCADO RL","idRF":18126354,"idSob":0},{"nome":"ROAD CAPITAL & PRECATUR LEGAL CLAIMS OPPORTUNITIES I FIDC","idRF":7353045,"idSob":0},{"nome":"ROHT FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":332556190,"idSob":0},{"nome":"SPESI I FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADOS","idRF":2203388322,"idSob":0},{"nome":"TABOR FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NP RL","idRF":665358104,"idSob":0},{"nome":"TIRULIPA TOPER FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS LTDA","idRF":11552427,"idSob":0},{"nome":"WEV FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":160903,"idSob":0},{"nome":"WINTERFELL FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO-PADRONIZADOS","idRF":30949893,"idSob":10784},{"nome":"FUNDO DE INVESTIMENTOS IMOBILIARIOS DE PERMUTA FINANCEIRA LOTE5 (SENIOR)","idRF":937121,"idSob":0},{"nome":"FUNDO DE INVESTIMENTOS IMOBILIARIOS DE PERMUTA FINANCEIRA LOTE5 MEZANINO","idRF":788013,"idSob":0},{"nome":"PERMUTA LOTE 5 CAMPINAS FUNDO DE INVESTIMENTO IMOBILIARIO RL","idRF":7667513,"idSob":0},{"nome":"VERUM FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO","idRF":3086478,"idSob":0},{"nome":"VERUM II FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":0,"idSob":602479327},{"nome":"FIDC - CANAAN FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":4641145,"idSob":0},{"nome":"CONTEA CAPITAL VERONA FI EM COTAS DE FUNDOS DE DIREITOS CREDITORIOS","idRF":0,"idSob":693727624},{"nome":"MIB FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":4169355,"idSob":0},{"nome":"RIVER II FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":406302965,"idSob":0},{"nome":"BYX CONSIGNADO MULTICONVENIOS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":0,"idSob":196898341},{"nome":"Gerizim FIDC NP","idRF":0,"idSob":173614156},{"nome":"PFC FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":0,"idSob":654358522},{"nome":"FOCUS FUNDO DE INVESTIMENTO FINANCEIRO RENDA FIXA LOGO PRAZO RESPONSABILIDADE LIMITADA","idRF":29427952,"idSob":0},{"nome":"PATMOS FUNDO DE INVESTIMENTO FINANCEIRO RENDA FIXA CREDITO PRIVADO","idRF":197976693,"idSob":0},{"nome":"PRISMA FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO RL","idRF":25624390,"idSob":0},{"nome":"2MONEY FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADOS","idRF":15173798,"idSob":0},{"nome":"A4 FUNDO DE INVESTIMENTO MULTIMERCADO ESTRATEGIA LIVRE CREDITO PRIVADO","idRF":164606305,"idSob":0},{"nome":"ABP VENTURES FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO","idRF":62591354,"idSob":0},{"nome":"AEROTEC - FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":71596210,"idSob":0},{"nome":"AGUNG BRASIL PARTNERS I D FIP MULTIESTRATEGIA IE","idRF":0,"idSob":1683493},{"nome":"ALL RISCKS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADOS","idRF":890781,"idSob":0},{"nome":"ALVORADA FUNDO DE INVESTIMENTO EM COTAS DE FUNDOS DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":500140,"idSob":0},{"nome":"ANHANGUERA FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":41679,"idSob":0},{"nome":"ARIEN ENERGY VENTURES I FUNDO DE INVESTIMENTO EM PARTICIPACOES EM INFRAESTRUTURA","idRF":350205854,"idSob":0},{"nome":"ATRA FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO INVESTIMENTO EXTERIOR","idRF":1085942,"idSob":0},{"nome":"AVGA CAPITAL IPE CREDITO ESTRUTURADO HIGH YIELD FUNDO DE INVESTIMENTO","idRF":7293954,"idSob":0},{"nome":"AVGA CAPITAL JACARANDA SPECIAL SITUATIONS FI MULTIMERCADO CREDITO PRIVADO","idRF":14914333,"idSob":0},{"nome":"AVGA CAPITAL JUSTIX LEGAL CLAIMS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":51387164,"idSob":0},{"nome":"AVGA CAPITAL MANACA PREMIUM SHIELD FIC DE FIDC RL","idRF":3838895,"idSob":0},{"nome":"AVGA CAPITAL WM ANGELIM FUNDO DE INVESTIMENTO FINANCEIRO","idRF":2174060,"idSob":0},{"nome":"AVGA CAPITAL WM AROEIRA FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO","idRF":1814359,"idSob":0},{"nome":"AVGA CAPITAL WM JEQUITIBA FUNDO DE INVESTIMENTO MULTIMERCADO","idRF":10053303,"idSob":0},{"nome":"AVGA CAPITAL WM XYZ NEXT ERA SPECIAL OPPORTUNITIES FIDC","idRF":172126662,"idSob":0},{"nome":"AVT LOG FUNDO DE INVESTIMENTO EM PARTICIPACOES INFRAESTRUTURA","idRF":115672202,"idSob":0},{"nome":"AX EQUILIBRIUM FUNDO DE INVESTIMENTO EM COTAS DE FUNDOS DE INVESTIMENTO","idRF":0,"idSob":8201927},{"nome":"BAY GUANABARA FUNDO DE INVESTIMENTO MULTIMERCADO","idRF":175,"idSob":8383},{"nome":"BAY HA LONG FUNDO DE INVESTIMENTO MULTIMERCADO","idRF":86535,"idSob":5398},{"nome":"BAY INVEST FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":399901,"idSob":0},{"nome":"BAY SAO FRANCISCO FUNDO DE INVESTIMENTO MULTIMERCADO","idRF":17137,"idSob":86382},{"nome":"BAY SIDNEY FUNDO DE INVESTIMENTO MULTIMERCADO","idRF":33203,"idSob":86399},{"nome":"BCJPAR FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":750589,"idSob":0},{"nome":"BEYOND 1618 FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO IE","idRF":7119554,"idSob":0},{"nome":"BLUE OCEAN ARB FI MULTIMERCADO CREDITO PRIVADO INVESTIMENTO NO EXTERIOR","idRF":1307868,"idSob":0},{"nome":"BRAZIL FITNESS INVESTORS FIP","idRF":0,"idSob":2862371},{"nome":"BROADEN CAPITAL MINERAL 01 FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":28056767,"idSob":0},{"nome":"BROWNFIELD FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":8544325,"idSob":0},{"nome":"CAPITOLIO BRASIL PARTNERS I G - FIP MULTI IE","idRF":0,"idSob":1373573},{"nome":"CAPRI FI EM COTAS DE FUNDOS DE INVESTIMENTO EM PARTICIPACOES RL","idRF":19231050,"idSob":0},{"nome":"CARUMBE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":5213488,"idSob":0},{"nome":"CATANZARO FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":959092,"idSob":0},{"nome":"CESSIONARIO 1 FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":434390,"idSob":0},{"nome":"CHAVANTES FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":59622,"idSob":0},{"nome":"CLOUDBREAK FIP MULTIESTRATEGIA IE - RL","idRF":0,"idSob":3869470},{"nome":"CREDINOV FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":30851245,"idSob":0},{"nome":"CRIXUS SPECIAL RETURN FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":27908,"idSob":0},{"nome":"DASI ASSET FI MULTIMERCADO - CREDITO PRIVADO INVESTIMENTO NO EXTERIOR","idRF":0,"idSob":42130919},{"nome":"DASI ASSET FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":0,"idSob":581197336},{"nome":"DAYTONA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAOPADRONIZADOS","idRF":12592289,"idSob":0},{"nome":"DENALI BRASIL PARTNERS I FIP IE","idRF":0,"idSob":3450548},{"nome":"DROMOS FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO IE","idRF":5572185,"idSob":0},{"nome":"EIGER BRASIL PARTNERS I O - FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":0,"idSob":196381},{"nome":"ETNA LBO V - FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA INFRAESTRUTURA","idRF":0,"idSob":1278424},{"nome":"EXODUS FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":1738722,"idSob":0},{"nome":"FEEAGRO FUNDO DE INVESTIMENTO EM PARTICIPACOES - CAPITAL SEMENTE RESPONSABILIDADE LIMITADA","idRF":819049,"idSob":0},{"nome":"FENIX FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO-PADRONIZADOS RL","idRF":117284,"idSob":0},{"nome":"FIDUCIA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO-PADRONIZADOS","idRF":34047932,"idSob":0},{"nome":"FII KRONOS","idRF":140712744,"idSob":0},{"nome":"FUNDO DE INVESTIMENTO IMOBILIARIO DE UNIDADES AUTONOMAS III","idRF":505083609,"idSob":0},{"nome":"FUNDO DE INVESTIMENTO IMOBILIARIO DE UNIDADES AUTONOMAS IV","idRF":143155988,"idSob":0},{"nome":"FUNDO DE INVESTIMENTO UNIDADES AUTONOMAS V FII","idRF":444441138,"idSob":0},{"nome":"GENERATE FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA RL","idRF":47210958,"idSob":0},{"nome":"GO PRO ENERGIA FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":1776703,"idSob":0},{"nome":"GRIFFIN FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":534820,"idSob":0},{"nome":"GRIFFIN FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO INVESTIMENTO EXTERIOR","idRF":0,"idSob":9604622},{"nome":"HC278 FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":388749,"idSob":0},{"nome":"ID GOIANA II FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":24770579,"idSob":0},{"nome":"ID RF LONGO PRAZO FUNDO DE INVESTIMENTO EM COTAS DE FUNDOS DE INVESTIMENTO","idRF":0,"idSob":5421856917},{"nome":"INVICTO 22 FUNDO DE INVESTIMENTOS EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":395455,"idSob":0},{"nome":"IRIS FUNDO DE INVESTIMENTO IMOBILIARIO RL","idRF":1209046778,"idSob":0},{"nome":"JEFER BANKING FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NP RL","idRF":0,"idSob":208078},{"nome":"JEFER CAPITAL FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":4065701,"idSob":0},{"nome":"JEFER FI NAS CADEIAS PRODUTIVAS AGROINDUSTRIAIS - FIAGRO IMOBILIARIO RL","idRF":318549,"idSob":0},{"nome":"JEFER FUNDO DE INVESTIMENTO IMOBILIARIO RL","idRF":409565,"idSob":0},{"nome":"JEFER FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO RESPONSABILIDADE LIMITADA","idRF":822360,"idSob":0},{"nome":"JIOH FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO INVESTIMENTO NO EXTERIOR","idRF":11051,"idSob":0},{"nome":"KILAUEA BRASIL PARTNERS II FIP MULTI IE","idRF":0,"idSob":2212312},{"nome":"KILIMANJARO BRASIL PARTNERS I B FIP MULTIESTRATEGIA","idRF":0,"idSob":5945143},{"nome":"KRONOS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAOPADRONIZADOS","idRF":6453,"idSob":0},{"nome":"KSK FIDC","idRF":1322876878,"idSob":0},{"nome":"KSK FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO","idRF":6735769,"idSob":0},{"nome":"LAZARUS FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA- RL","idRF":89666030,"idSob":0},{"nome":"LE MANS FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO INVESTIMENTO EXTERIOR","idRF":6850973,"idSob":0},{"nome":"LIETO11 FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO-PADRONIZADO","idRF":1874603,"idSob":0},{"nome":"LUX FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS FEEDER RESPONSABILIDADE LIMITADA","idRF":2146724,"idSob":0},{"nome":"MAKALU BRASIL PARTNERS I J FIP MULTIESTRATEGIA IE","idRF":0,"idSob":3261926},{"nome":"MANASLU BRASIL PARTNERS I K FIP MULTI","idRF":0,"idSob":2066056},{"nome":"MATECH PAR FUNDO DE INVESTIMENTO EM PARTICIPACOES CAPITAL SEMENTE","idRF":13358,"idSob":0},{"nome":"MERU REAL ESTATE III FIP MULTIESTRATEGIA IE","idRF":0,"idSob":9910396},{"nome":"MUGELLO FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA - RESPONSABILIDADE LIMITADA","idRF":225150,"idSob":0},{"nome":"NANBAN II FIDC","idRF":99348786,"idSob":0},{"nome":"NANBAN III FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS LTDA","idRF":17251356,"idSob":0},{"nome":"PENSILVANIA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":131451794,"idSob":0},{"nome":"PRINTEMPS FUNDO DE INVESTIMENTO EM ACOES - INVESTIMENTO NO EXTERIOR RL","idRF":82303088,"idSob":0},{"nome":"PRODUZ FUNDO DE INVESTIMENTO MULTIMERCADO INVESTIMENTO","idRF":1178065,"idSob":0},{"nome":"RAC19 FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":0,"idSob":2968130},{"nome":"RBB FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA - RL","idRF":9498702,"idSob":0},{"nome":"RDFPAR FUNDO DE INVESTIMENTOS EM PARTICIPACOES MULTIESTRATEGIA","idRF":2602482,"idSob":0},{"nome":"ROKKO FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO","idRF":881899,"idSob":0},{"nome":"SANVI FUNDO DE INVESTIMENTO EM PARTICIPACOES CAPITAL-SEMENTE","idRF":613997,"idSob":0},{"nome":"SAO BENEDITO FUNDO DE INVESTIMENTO IMOBILIARIO DE RESPONSABILIDADE LIMITADA","idRF":0,"idSob":74447740},{"nome":"SERRO FI EM PARTICIPACOES MULTIESTRATEGIA","idRF":4241639,"idSob":0},{"nome":"SILVERSTONE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":318425670,"idSob":0},{"nome":"SOLIS FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA DE RESP ILIMITADA","idRF":164,"idSob":0},{"nome":"SORORITE FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA - RESPONSABILIDADE LIMITADA","idRF":0,"idSob":269892367},{"nome":"STALLION FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":3720681,"idSob":0},{"nome":"SUN FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":18609756,"idSob":0},{"nome":"SUN FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO","idRF":23991499,"idSob":0},{"nome":"SUZUKA FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":82546265,"idSob":0},{"nome":"TIG FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA RESPONSABILIDADE LIMITADA","idRF":64573338,"idSob":0},{"nome":"TOP 32 FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA - RESPONSABILIDADE LIMITADA","idRF":4047915,"idSob":0},{"nome":"VIATOR FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS FEEDER RESPONSABILIDADE LIMITADA","idRF":668621,"idSob":0},{"nome":"VULTURE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":0,"idSob":44358944},{"nome":"WFT FUNDO DE INVESTIMENTO MULTIMERCADO","idRF":2653953,"idSob":0},{"nome":"Z5 II FI EM COTAS DE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RL","idRF":35909733,"idSob":0},{"nome":"ZEGAMA FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":21486013,"idSob":0},{"nome":"COTA REAL 7 FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":287335597,"idSob":0},{"nome":"5786 AMBIENTAL FUNDO DE INVESTIMENTO NAS CADEIAS PRODUTIVAS DO AGRONEGOCIO","idRF":884071,"idSob":0},{"nome":"BRASIL INCORPORACAO FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":147529862,"idSob":0},{"nome":"COTA REAL 77 FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":97654801,"idSob":0},{"nome":"DCKR FUNDO DE INVESTIMENTO MULTIMERCADO - CREDITO PRIVADO","idRF":5379397,"idSob":0},{"nome":"DELTA FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":490720,"idSob":0},{"nome":"ESTOQUE CENTRO-OESTE FUNDO DE INVESTIMENTO IMOBILIARIO LTDA","idRF":206932614,"idSob":0},{"nome":"HEBROM FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":809897872,"idSob":0},{"nome":"ID GOIANA FUNDO DE INVESTIMENTO FIAGRO IMOBILIARIO","idRF":23530505,"idSob":0},{"nome":"MINAS GERAIS FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":40223448,"idSob":0},{"nome":"SELENE FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":801528021,"idSob":0},{"nome":"LCBANK FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADOS","idRF":0,"idSob":92948962},{"nome":"BDM FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":409337,"idSob":0},{"nome":"SIGHT FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":10503563,"idSob":0},{"nome":"BARUCH FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":14185171,"idSob":0},{"nome":"BE FUND FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":9628129,"idSob":0},{"nome":"FERA20 95 FUNDO DE INVESTIMENTO EM COTAS DE FUNDO DE INVESTIMENTO FINANCEIRO","idRF":258426,"idSob":0},{"nome":"GAIA FUND FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO","idRF":0,"idSob":8455638133},{"nome":"ATIVOS JUDICIAIS PEC - I - FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":672845041,"idSob":0},{"nome":"FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS GYMCRED","idRF":20031722,"idSob":0},{"nome":"PRIME SISTEMAS FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA","idRF":5449521,"idSob":0},{"nome":"KIN FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":350927521,"idSob":0},{"nome":"IAT FUNDO DE INVESTIMENTO MULTIMERCADO CP IE","idRF":237380,"idSob":0},{"nome":"KRATOS FUNDO DE INVESTIMENTO MULTIMERCADO INVESTIMENTO NO EXTERIOR","idRF":0,"idSob":1061067659},{"nome":"SZLEZ FUNDO DE INVESTIMENTO MULTIMERCADO CP IE","idRF":0,"idSob":733868},{"nome":"DIRECTCON FUNDO DE INVESTIMENTO EM COTAS DE FI EM DIREITOS CREDITORIOS","idRF":8494061,"idSob":0},{"nome":"CONSIG FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADO LTDA","idRF":14521336,"idSob":0},{"nome":"DISTRESSWISE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":15361540,"idSob":0},{"nome":"NO STRESS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":13202649,"idSob":0},{"nome":"ONIX FI EM COTAS DE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":21272934,"idSob":0},{"nome":"SICILIA FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO CREDITO PRIVADO","idRF":2733632,"idSob":0},{"nome":"TORINO FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA RESPONSABILIDADE LIMITADA","idRF":3107297,"idSob":0},{"nome":"CREDITO AGRICOLA 2 FI NAS CADEIAS PRODUTIVAS AGROINDUSTRIAIS FIAGRO","idRF":57243593,"idSob":0},{"nome":"OPEN 365 FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS FINANCEIRO","idRF":5269461,"idSob":0},{"nome":"OPI FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":75432081,"idSob":0},{"nome":"OURO MAX FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS - RESPONSABILIDADE LIMITADA","idRF":1299602,"idSob":0},{"nome":"SANTA BARBARA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS MULTISSETORIAL","idRF":3241771,"idSob":0},{"nome":"SANTA LUCIA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS MULTISSETORIAL","idRF":3682232,"idSob":0},{"nome":"BELLENZIER FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":3325030,"idSob":0},{"nome":"STAL FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":54891358,"idSob":0},{"nome":"BARRA RECUPERACOES FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":7349054,"idSob":0},{"nome":"NOVALAR S/A FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":30381434,"idSob":0},{"nome":"AFINZ SINAI FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":453563063,"idSob":0},{"nome":"FIDC SINAI CONSIG FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":1086751644,"idSob":0},{"nome":"ALFA REAL ESTATE FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":898110,"idSob":0},{"nome":"ARVORE GEOS FUNDO DE INVESTIMENTO FIAGRO IMOBILIARIO","idRF":0,"idSob":108959234},{"nome":"BOREAL FUNDO DE INVESTIMENTO FINANCEIRO RENDA FIXA CREDITO PRIVADO LONGO PRAZO","idRF":190630071,"idSob":0},{"nome":"CRONOS LEGAL CLAIMS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADOS","idRF":133190,"idSob":0},{"nome":"FIAGRO SINAI MAXI FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS AGROINDUSTRIAL","idRF":6758965,"idSob":0},{"nome":"FIDC GOLGOTA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS LTDA","idRF":334151061,"idSob":0},{"nome":"FII SINAI ATLAS FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":80371208,"idSob":0},{"nome":"HARPY EAGLE CONSIG FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RL","idRF":379637851,"idSob":0},{"nome":"INVICTO FUNDO DE INVESTIMENTO EM ACOES RESPONSABILIDADE LIMITADA","idRF":8910667,"idSob":0},{"nome":"MAVERICKS CONSIG FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":53061346,"idSob":0},{"nome":"SINAI FUNDO INCENTIVADO DE INVESTIMENTO EM INFRAESTRUTURA RENDA FIXA CREDITO PRIVADO","idRF":69107363,"idSob":0},{"nome":"TRITON FUNDO DE INVESTIMENTO FINANCEIRO RENDA FIXA CREDITO PRIVADO LONGO PRAZO","idRF":0,"idSob":5100773},{"nome":"WAIMEA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADOS","idRF":5377282,"idSob":0},{"nome":"ZAFIRA FUNDO DE INVESTIMENTO FINANCEIRO RENDA FIXA CREDITO PRIVADO LONGO PRAZO","idRF":0,"idSob":76388816},{"nome":"LGFCC FI EM COTAS DE FUNDO DE INVESTIMENTO MULTIMERCADO RESPONSABILIDADE LIMITADA","idRF":17918,"idSob":0},{"nome":"SOMA VP FUNDO DE INVESTIMENTO EM COTAS DE FUNDOS DE INVESTIMENTOS","idRF":461929569,"idSob":0},{"nome":"ST 2003 FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO","idRF":67420840,"idSob":0},{"nome":"ST 3001 FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":0,"idSob":79571676},{"nome":"ST SEA TURTLE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":67738591,"idSob":0},{"nome":"ECLIPSE FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA- RESPONSABILIDADE LIMITADA","idRF":2518656,"idSob":0},{"nome":"MANHATTAN - FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO PADRONIZADOS","idRF":10118650,"idSob":0},{"nome":"JERUSALEM XXX FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":0,"idSob":1271531940},{"nome":"LIQUIDEZ PROJETOS GD FUNDO DE INVESTIMENTO IMOBILIARIO","idRF":0,"idSob":817405226},{"nome":"PISA VII FUNDO DE INVESTIMENTO IMOBILIARIO RL","idRF":0,"idSob":277061242},{"nome":"ROMA VI FUNDO DE INVESTIMENTO IMOBILIARIO RESPONSABILIDADE LIMITADA","idRF":0,"idSob":115234536},{"nome":"ITABIRA I FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS DE RESPONSABILIDADE LIMITADA","idRF":0,"idSob":362478751},{"nome":"PRECATO IV FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS DE RESPONSABILIDADE LIMITADA","idRF":0,"idSob":2975242955},{"nome":"PRECATO VI FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":0,"idSob":314747242},{"nome":"TAG EDGE I FIAGRO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS AGROINDUSTRIAL","idRF":20932897,"idSob":1008461038},{"nome":"AG ANTECIPA I FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":0,"idSob":123696274},{"nome":"BLUMENAU FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":23974902,"idSob":0},{"nome":"BOREAL II CONSIGNADO FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RL","idRF":225117540,"idSob":0},{"nome":"BPI CAPITAIS FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":352441142,"idSob":0},{"nome":"FOCO CAPITAL FIAGRO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":222761203,"idSob":0},{"nome":"GENESIS FI EM COTAS DE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS LTDA","idRF":6231421,"idSob":0},{"nome":"NORTHEX FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":494687,"idSob":0},{"nome":"ONDABRASIL FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS NAO-PADRONIZADOS","idRF":28521213,"idSob":0},{"nome":"POLARIS I FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS RESPONSABILIDADE LIMITADA","idRF":225611565,"idSob":0},{"nome":"RENAISSANCE SJL FI EM COTAS DE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":3336634,"idSob":0},{"nome":"RENAISSANCE SJL FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS LTDA","idRF":2014241,"idSob":0},{"nome":"SETENTRIONAL I FI EM COTAS DE FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":2407620365,"idSob":0},{"nome":"TV LAR FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":62792562,"idSob":0},{"nome":"VEGA FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":28581909,"idSob":148863060},{"nome":"VETORIAL I FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":76193928,"idSob":0},{"nome":"VICTOREM FUNDO DE INVESTIMENTO EM PARTICIPACOES MULTIESTRATEGIA LTDA","idRF":4603336,"idSob":0},{"nome":"VIVALDI FUNDO DE INVESTIMENTO MULTIMERCADO CREDITO PRIVADO","idRF":5385950,"idSob":0},{"nome":"BJP SS FI EM COTAS DE FUNDO DE INVESTIMENTO FINANCEIRO MULTIMERCADO","idRF":200967,"idSob":0},{"nome":"INCOR CRED FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS","idRF":280886141,"idSob":0},{"nome":"OLIVER CRED FUNDO DE INVESTIMENTO EM DIREITOS CREDITORIOS LTDA","idRF":220086180,"idSob":5337689}];
+  saldosInitFromLiquidez(cotistas);
+}
+window.saldosCarregarLiquidez=saldosCarregarLiquidez;
 
 // ─── DASHBOARD ────────────────────────────────────────────────
 function defTabDash(id,label,color){
@@ -6898,6 +7242,57 @@ if(document.readyState==='loading'){
 </script>
 
 <!-- ═══════════════ IOF VIEW ═══════════════ -->
+<!-- SALDOS VIEW -->
+<div id="saldosView" style="display:none;position:absolute;inset:0;overflow:auto;background:var(--bg);z-index:5">
+  <div style="max-width:1400px;margin:0 auto;padding:24px 28px">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;color:var(--tx);margin:0">📊 Saldos dos Fundos de Zeragem</h2>
+        <div style="font-size:12px;color:var(--tx3);margin-top:3px" id="saldosDataRef">Data de referência: —</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="saldosSearch" placeholder="🔍 Buscar cotista..." oninput="renderSaldosTable()"
+          style="padding:7px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:12px;font-family:inherit;outline:none;width:220px">
+        <select id="saldosFiltro" onchange="renderSaldosTable()"
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:12px;font-family:inherit;outline:none">
+          <option value="todos">Todos os fundos</option>
+          <option value="rf">Apenas ID RF</option>
+          <option value="sob">Apenas ID Soberano</option>
+          <option value="alerta">⚠ Com alerta</option>
+        </select>
+        <button class="btn btn-p" onclick="document.getElementById('saldosImportInp').click()" style="font-size:12px">⬆ Importar Extrato</button>
+        <input type="file" id="saldosImportInp" accept=".csv,.CSV" style="display:none" onchange="importSaldosExtrato(this)">
+        <button class="btn" onclick="exportSaldosCSV()" style="font-size:12px">⬇ Exportar CSV</button>
+      </div>
+    </div>
+    <!-- Totalizadores -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px" id="saldosCards"></div>
+    <!-- Tabela -->
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px" id="saldosTable">
+          <thead>
+            <tr style="background:var(--sur2);border-bottom:1px solid var(--bdr)">
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);white-space:nowrap">#</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2)">Cotista</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Fundo</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo Inicial</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Movimentação</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo Atualizado</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo Bloqueado</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo Final</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:600;color:var(--tx2)">Status</th>
+            </tr>
+          </thead>
+          <tbody id="saldosTbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--tx3);margin-top:10px" id="saldosFooter"></div>
+  </div>
+</div>
+
 <div id="iofView" style="display:none">
 <div class="iof-wrap">
 
