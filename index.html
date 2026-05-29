@@ -6428,9 +6428,12 @@ function importSaldosExtrato(input){
       const fundoKey=isSob?'ID Soberano':'ID RF';
       const outroFundoKey=isSob?'ID RF':'ID Soberano';
 
-      // KPI: saldo atual = vl_saldo_in da última linha do extrato (saldo real após todos os movimentos)
+      // KPI: saldo atual = vl_saldo_in da última linha ± último movimento = saldo real do fundo
       const ultimaLinha=data[data.length-1];
-      const saldoFundoAtual=saldoI>=0?parseV(ultimaLinha[saldoI]):0;
+      const lastSaldoIn=saldoI>=0?parseV(ultimaLinha[saldoI]):0;
+      const lastDC=(ultimaLinha[dcI]||'').trim().toUpperCase();
+      const lastVal=parseV(ultimaLinha[valI]);
+      const saldoFundoAtual=lastDC==='D'?lastSaldoIn-lastVal:lastSaldoIn+lastVal;
 
       // Agrupar movimentos por cotista
       const movMap={};
