@@ -1709,6 +1709,35 @@ tr:hover .ho-collab-del{opacity:1}
   </div>
 </div>
 
+<!-- SALDO BLOQUEADO MODAL -->
+<div id="sdBloqModal" class="movl" style="display:none">
+  <div class="mod" style="max-width:480px;width:100%">
+    <h3>🔒 Saldo Bloqueado</h3>
+    <div id="sdBloqNome" style="font-size:12px;color:var(--tx2);margin-bottom:4px"></div>
+    <div id="sdBloqFundo" style="font-size:11px;color:var(--tx3);margin-bottom:16px"></div>
+    <!-- Lista de bloqueios -->
+    <div id="sdBloqList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;max-height:260px;overflow-y:auto"></div>
+    <!-- Adicionar novo bloqueio -->
+    <div style="border-top:1px solid var(--bdr);padding-top:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Adicionar bloqueio</div>
+      <div class="msec">
+        <label>Valor (R$)</label>
+        <input type="text" id="sdBloqValInp" placeholder="0,00" style="width:140px"
+          onkeydown="if(event.key==='Enter')document.getElementById('sdBloqDescInp').focus()">
+      </div>
+      <div class="msec">
+        <label>Descrição</label>
+        <input type="text" id="sdBloqDescInp" placeholder="Ex: Despesa programada — contrato X"
+          onkeydown="if(event.key==='Enter')sdBloqAdicionar()">
+      </div>
+      <div class="moda" style="margin-top:12px">
+        <button class="btn" onclick="closeMod('sdBloqModal')">Fechar</button>
+        <button class="btn btn-p" onclick="sdBloqAdicionar()">+ Adicionar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- TAB LOCK MODAL -->
 <div id="tabLockOverlay" class="tab-lock-overlay" style="display:none">
   <div class="tab-lock-box">
@@ -6388,11 +6417,18 @@ function importSaldosLiquidez(input){
       // Preserve bloqueado values if cotista already exists
       cotistas.forEach(c=>{
         const existing=SD.cotistas.find(x=>x.nome===c.nome&&x.fundo===c.fundo);
-        if(existing) c.saldoBloqueado=existing.saldoBloqueado||0;
+        if(existing){
+          c.saldoBloqueado=existing.saldoBloqueado||0;
+          if(existing.bloqueios) c.bloqueios=existing.bloqueios;
+        }
       });
       SD.cotistas=cotistas;
       SD.dataRef=new Date().toLocaleDateString('pt-BR');
-      // Update KPI saldo inicial from totals
+      // Limpa extratos e saldos atuais — nova liquidez = novo dia
+      SD.extratos={};
+      SD.rfSaldoAtual=0;
+      SD.sobSaldoAtual=0;
+      // Recalcula KPI saldo inicial
       SD.rfSaldoInicial=cotistas.filter(c=>c.fundo==='ID RF').reduce((a,c)=>a+c.saldoInicial,0);
       SD.sobSaldoInicial=cotistas.filter(c=>c.fundo==='ID Soberano').reduce((a,c)=>a+c.saldoInicial,0);
       sdSave(); sdRender();
@@ -6657,11 +6693,13 @@ function sdRender(){  const el=document.getElementById('saldosView');
       <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt(r.saldoInicial)}</td>
       <td style="text-align:right;color:${mov<-1?'#c62828':mov>1?'#2e7d32':'var(--tx3)'};font-variant-numeric:tabular-nums">${Math.abs(mov)>0.01?(mov>0?'+ ':'- ')+sdFmt(Math.abs(mov)):'—'}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt((r.saldoBloqueado||0)>0?sat-(r.saldoBloqueado||0):sat)}</td>
-      <td style="text-align:right"><input class="saldos-bloq-inp" type="text"
-        value="${r.saldoBloqueado?Number(r.saldoBloqueado).toLocaleString('pt-BR',{minimumFractionDigits:2}):''}"
-        placeholder="0,00"
-        onblur="sdSetBloqueado(${idx},this.value)"
-        onkeydown="if(event.key==='Enter')this.blur()"></td>
+      <td style="text-align:right;cursor:pointer" onclick="sdBloqOpen(${idx})" title="Clique para gerenciar bloqueios">
+        ${(r.bloqueios&&r.bloqueios.length)?
+          `<span style="font-variant-numeric:tabular-nums;color:var(--tx)">${sdFmt(r.saldoBloqueado)}</span>
+           <span style="font-size:9px;color:var(--blue);margin-left:4px">${r.bloqueios.length} item${r.bloqueios.length>1?'s':''}</span>`:
+          `<span style="color:var(--tx3);font-size:11px">+ Adicionar</span>`
+        }
+      </td>
       <td style="text-align:right;font-weight:700;color:${alerta?'#c62828':'var(--tx3)'};font-variant-numeric:tabular-nums">${alerta?sdFmt(saldoDisp):'—'}</td>
       <td style="text-align:center;min-width:200px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,r.movDetalhes,semSaldoRow)}</td>
       <td style="font-size:11px;color:${r.obs?'#e65100':'var(--tx3)'};;padding:9px 10px">${r.obs||'—'}</td>`;
@@ -6705,6 +6743,80 @@ function sdSetBloqueado(idx,valStr){
   sdSave();sdRender();
 }
 window.sdSetBloqueado=sdSetBloqueado;
+
+// ── Bloqueio modal ────────────────────────────────────────────
+let _sdBloqIdx=null;
+
+function sdBloqOpen(idx){
+  _sdBloqIdx=idx;
+  const r=SD.cotistas[idx];
+  if(!r)return;
+  document.getElementById('sdBloqNome').textContent=r.nome;
+  document.getElementById('sdBloqFundo').textContent=r.fundo;
+  document.getElementById('sdBloqValInp').value='';
+  document.getElementById('sdBloqDescInp').value='';
+  sdBloqRenderList(r);
+  document.getElementById('sdBloqModal').style.display='flex';
+  setTimeout(()=>document.getElementById('sdBloqValInp').focus(),80);
+}
+window.sdBloqOpen=sdBloqOpen;
+
+function sdBloqRenderList(r){
+  const list=document.getElementById('sdBloqList');
+  if(!r.bloqueios||!r.bloqueios.length){
+    list.innerHTML='<div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">Nenhum bloqueio cadastrado</div>';
+    return;
+  }
+  list.innerHTML='';
+  r.bloqueios.forEach((b,i)=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--sur2);border-radius:8px;border:1px solid var(--bdr)';
+    row.innerHTML=`
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--tx);font-variant-numeric:tabular-nums">${sdFmt(b.valor)}</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.desc||'Sem descrição'}</div>
+        <div style="font-size:10px;color:var(--tx3);margin-top:1px">${b.data||''}</div>
+      </div>
+      <button onclick="sdBloqRemover(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:13px;padding:2px 4px;border-radius:4px;flex-shrink:0" title="Remover">✕</button>`;
+    list.appendChild(row);
+  });
+  // Total
+  const total=r.bloqueios.reduce((a,b)=>a+b.valor,0);
+  const tot=document.createElement('div');
+  tot.style.cssText='display:flex;justify-content:space-between;padding:6px 10px;font-size:12px;font-weight:700;color:var(--tx);border-top:1px solid var(--bdr);margin-top:4px';
+  tot.innerHTML=`<span>Total bloqueado</span><span style="font-variant-numeric:tabular-nums">${sdFmt(total)}</span>`;
+  list.appendChild(tot);
+}
+
+function sdBloqAdicionar(){
+  if(_sdBloqIdx===null)return;
+  const valStr=document.getElementById('sdBloqValInp').value;
+  const desc=document.getElementById('sdBloqDescInp').value.trim();
+  const v=parseFloat(String(valStr).replace(/\./g,'').replace(',','.'))||0;
+  if(!v){toast('⚠ Digite um valor');return;}
+  const r=SD.cotistas[_sdBloqIdx];
+  if(!r.bloqueios) r.bloqueios=[];
+  r.bloqueios.push({valor:v,desc,data:new Date().toLocaleDateString('pt-BR')});
+  r.saldoBloqueado=(r.bloqueios||[]).reduce((a,b)=>a+b.valor,0);
+  document.getElementById('sdBloqValInp').value='';
+  document.getElementById('sdBloqDescInp').value='';
+  sdBloqRenderList(r);
+  sdSave();sdRender();
+  toast('✅ Bloqueio adicionado');
+}
+window.sdBloqAdicionar=sdBloqAdicionar;
+
+function sdBloqRemover(bIdx){
+  if(_sdBloqIdx===null)return;
+  const r=SD.cotistas[_sdBloqIdx];
+  if(!r.bloqueios)return;
+  r.bloqueios.splice(bIdx,1);
+  r.saldoBloqueado=(r.bloqueios||[]).reduce((a,b)=>a+b.valor,0);
+  sdBloqRenderList(r);
+  sdSave();sdRender();
+}
+window.sdBloqRemover=sdBloqRemover;
+
 
 function exportSaldosCSV(){
   if(!SD.cotistas.length){toast('Nenhum dado para exportar');return;}
