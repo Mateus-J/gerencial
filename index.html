@@ -6398,9 +6398,9 @@ function importSaldosExtrato(input){
   reader.onload=e=>{
     try{
       const text=e.target.result;
-      const lines=text.split('\n').filter(l=>l.trim());
-      const sep=lines[0].includes(';')?';':',';
-      const rows=lines.map(l=>l.split(sep).map(c=>c.replace(/"/g,'').trim()));
+      const csvLines=text.split('\n').filter(l=>l.trim());
+      const sep=csvLines[0].includes(';')?';':',';
+      const rows=csvLines.map(l=>l.split(sep).map(c=>c.replace(/"/g,'').trim()));
       const hdr=rows[0].map(h=>h.toLowerCase());
       const dcI=hdr.findIndex(h=>h==='fl_debito_credito');
       const valI=hdr.findIndex(h=>h==='valor');
@@ -6413,11 +6413,13 @@ function importSaldosExtrato(input){
       const data=rows.slice(1).filter(r=>r.length>Math.max(dcI,valI,descI));
       const isSob=file.name.includes('454398');
       const fundoKey=isSob?'ID Soberano':'ID RF';
-      // KPI saldo do fundo
+
+      // KPI: saldo do fundo
       const saldoFundoInicial=saldoI>=0?parseV(data[0][saldoI]):0;
       let saldoFundoAtual=saldoFundoInicial;
-      // Movimentos detalhados por cotista
-      const movimentos={};
+
+      // Agrupa movimentos por cotista (nome do extrato)
+      const movMap={};
       data.forEach(r=>{
         const dc=(r[dcI]||'').trim().toUpperCase();
         const v=parseV(r[valI]);
@@ -6425,80 +6427,75 @@ function importSaldosExtrato(input){
         else if(dc==='C') saldoFundoAtual+=v;
         const nome=(r[descI]||'').trim().toUpperCase().replace(/\s+/g,' ');
         if(!nome||!['D','C'].includes(dc)) return;
-        if(!movimentos[nome]) movimentos[nome]={debitos:0,creditos:0,qtdD:0,qtdC:0,detalhes:[]};
-        if(dc==='D'){movimentos[nome].debitos+=v;movimentos[nome].qtdD++;}
-        else{movimentos[nome].creditos+=v;movimentos[nome].qtdC++;}
-        movimentos[nome].detalhes.push({
-          dc,v,
-          dt:dtI>=0?r[dtI]:'',
-          hist:histI>=0?r[histI]:''
-        });
+        if(!movMap[nome]) movMap[nome]={debitos:0,creditos:0,qtdD:0,qtdC:0,detalhes:[]};
+        if(dc==='D'){movMap[nome].debitos+=v;movMap[nome].qtdD++;}
+        else{movMap[nome].creditos+=v;movMap[nome].qtdC++;}
+        movMap[nome].detalhes.push({dc,v,dt:dtI>=0?r[dtI]:'',hist:histI>=0?r[histI]:''});
       });
-      // Match movimentos -> cotistas
+
+      // Remove linhas _wrongFund geradas em importação anterior deste fundo
+      SD.cotistas=SD.cotistas.filter(c=>!(c._wrongFund&&c.fundo===fundoKey));
+
+      // Helper: match nome do extrato -> cotista da liquidez
+      function matchNome(nomeExt, lista){
+        const ne=nomeExt.replace(/\s+/g,' ').toUpperCase();
+        // exact
+        let r=lista.find(c=>{const nc=c.nome.toUpperCase().replace(/\s+/g,' ');return nc===ne;});
+        if(r) return r;
+        // prefix 30 chars
+        r=lista.find(c=>{const nc=c.nome.toUpperCase().replace(/\s+/g,' ');return nc.startsWith(ne.slice(0,30))||ne.startsWith(nc.slice(0,30));});
+        if(r) return r;
+        // prefix 20 chars
+        r=lista.find(c=>{const nc=c.nome.toUpperCase().replace(/\s+/g,' ');return nc.startsWith(ne.slice(0,20))||ne.startsWith(nc.slice(0,20));});
+        return r||null;
+      }
+
+      const fundoCotistas=SD.cotistas.filter(c=>c.fundo===fundoKey);
+      const outroFundoKey=isSob?'ID RF':'ID Soberano';
+
       let matched=0;
-      SD.cotistas.filter(c=>c.fundo===fundoKey).forEach(c=>{
-        c.saldoAtualizado=c.saldoInicial;
-        c.movDetalhes=null;
-        const nomeC=c.nome.toUpperCase().replace(/\s+/g,' ');
-        let mov=movimentos[nomeC];
-        if(!mov){
-          const key=Object.keys(movimentos).find(k=>
-            nomeC.startsWith(k.slice(0,25))||k.startsWith(nomeC.slice(0,25))
-          );
-          if(key) mov=movimentos[key];
-        }
-        if(mov){
-          c.saldoAtualizado=c.saldoInicial - mov.debitos + mov.creditos;
-          c.movDetalhes={debitos:mov.debitos,creditos:mov.creditos,qtdD:mov.qtdD,qtdC:mov.qtdC,detalhes:mov.detalhes};
+      // Reset all to saldoInicial first
+      fundoCotistas.forEach(c=>{c.saldoAtualizado=c.saldoInicial;c.movDetalhes=null;c.obs=null;});
+
+      // Apply movements
+      Object.keys(movMap).forEach(nomeExt=>{
+        const mov=movMap[nomeExt];
+        const cotista=matchNome(nomeExt, fundoCotistas);
+        if(cotista){
+          cotista.saldoAtualizado=cotista.saldoInicial - mov.debitos + mov.creditos;
+          cotista.movDetalhes=mov;
+          // Flag if multiple resgates
+          if(mov.qtdD>1) cotista.obs=mov.qtdD+'x resgates (R$ '+mov.debitos.toLocaleString('pt-BR',{minimumFractionDigits:2})+' total)';
           matched++;
+        } else {
+          // Não achou no fundo correto — verifica se tem posição no outro fundo
+          const posOutro=matchNome(nomeExt, SD.cotistas.filter(c=>c.fundo===outroFundoKey));
+          // Cria linha de aviso apenas se tiver débito
+          if(mov.debitos>0){
+            const nomeExibir=posOutro?posOutro.nome:nomeExt;
+            SD.cotistas.push({
+              nome:nomeExibir, fundo:fundoKey,
+              saldoInicial:0, saldoAtualizado:-mov.debitos+mov.creditos,
+              saldoBloqueado:0, movDetalhes:mov,
+              _wrongFund:true,
+              obs:posOutro?'Tem posição no '+outroFundoKey+' ('+sdFmt(posOutro.saldoInicial)+')':null
+            });
+          }
         }
       });
-      // Also check movements in THIS fund for cotistas that have NO position here
-      // These are wrong-fund resgates
-      Object.keys(movimentos).forEach(nomeExt=>{
-        const mov=movimentos[nomeExt];
-        if(mov.debitos<=0) return; // only care about resgates
-        // Check if this cotista has a record in this fund
-        const existing=SD.cotistas.find(c=>{
-          const nomeC=c.nome.toUpperCase().replace(/\s+/g,' ');
-          return c.fundo===fundoKey&&(nomeC===nomeExt||nomeC.startsWith(nomeExt.slice(0,25))||nomeExt.startsWith(nomeC.slice(0,25)));
-        });
-        if(!existing){
-          // Cotista não tem posição neste fundo — adiciona linha de alerta
-          const nomeOriginal=SD.cotistas.find(c=>{
-            const nomeC=c.nome.toUpperCase().replace(/\s+/g,' ');
-            return nomeC===nomeExt||nomeC.startsWith(nomeExt.slice(0,25))||nomeExt.startsWith(nomeC.slice(0,25));
-          });
-          const nomeExibir=nomeOriginal?nomeOriginal.nome:nomeExt;
-          // Check if they have position in the other fund
-          const outroFundoKey=isSob?'ID RF':'ID Soberano';
-          const posOutro=SD.cotistas.find(c=>{
-            const nomeC=c.nome.toUpperCase().replace(/\s+/g,' ');
-            return c.fundo===outroFundoKey&&(nomeC===nomeExt||nomeC.startsWith(nomeExt.slice(0,25))||nomeExt.startsWith(nomeC.slice(0,25)));
-          });
-          SD.cotistas.push({
-            nome:nomeExibir,
-            fundo:fundoKey,
-            saldoInicial:0,
-            saldoAtualizado:-mov.debitos+mov.creditos,
-            saldoBloqueado:0,
-            movDetalhes:{debitos:mov.debitos,creditos:mov.creditos,qtdD:mov.qtdD,qtdC:mov.qtdC,detalhes:mov.detalhes},
-            _wrongFund:true,
-            _posOutro:posOutro?sdFmt(posOutro.saldoAtualizado||posOutro.saldoInicial):null
-          });
-        }
-      });
+
       if(isSob){SD.sobSaldoInicial=saldoFundoInicial;SD.sobSaldoAtual=saldoFundoAtual;}
       else{SD.rfSaldoInicial=saldoFundoInicial;SD.rfSaldoAtual=saldoFundoAtual;}
       SD.dataRef=new Date().toLocaleDateString('pt-BR');
       sdSave(); sdRender();
       toast('\u2705 Extrato '+fundoKey+' importado \u2014 '+matched+' cotistas com movimenta\u00e7\u00e3o');
-    }catch(err){console.error(err);toast('\u26a0 Erro ao ler extrato: '+err.message);}
+    }catch(err){console.error(err);toast('\u26a0 Erro: '+err.message);}
   };
   reader.readAsText(file,'latin1');
   input.value='';
 }
 window.importSaldosExtrato=importSaldosExtrato;
+
 
 
 function sdFmt(v){
@@ -6507,17 +6504,12 @@ function sdFmt(v){
 }
 
 function sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,movDet){
-  const multiD=movDet&&movDet.qtdD>1;
-  const multiSuffix=multiD?' <span style="font-size:9px;opacity:.8">('+movDet.qtdD+'x resgates)</span>':'';
-  if(!alerta&&!multiD) return '<span class="saldos-badge" style="background:#e8f5e9;color:#2e7d32">✅ OK</span>';
-  if(!alerta&&multiD) return '<span class="saldos-badge" style="background:#e3f2fd;color:#1565c0">ℹ '+movDet.qtdD+' aportes — clique para ver</span>';
-  if(semPosicao&&alertaCruzado)
-    return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2;white-space:normal">⚠ Fundo incorreto'+multiSuffix+' — sem posição aqui, saldo no '+outroFundo+'</span>';
+  if(!alerta) return '<span class="saldos-badge" style="background:#e8f5e9;color:#2e7d32">✅ OK</span>';
   if(semPosicao)
-    return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2;white-space:normal">⚠ Resgate fundo incorreto'+multiSuffix+' — sem posição neste fundo</span>';
+    return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2">⚠ Fundo incorreto</span>';
   if(alertaCruzado)
-    return '<span class="saldos-badge" style="background:#fff3e0;color:#e65100">⚠ Resgate a maior'+multiSuffix+' — tem saldo no '+outroFundo+'</span>';
-  return '<span class="saldos-badge" style="background:#fce8e8;color:#c62828">⚠ Resgate a maior'+multiSuffix+'</span>';
+    return '<span class="saldos-badge" style="background:#fff3e0;color:#e65100">⚠ Resgate a maior — ver '+outroFundo+'</span>';
+  return '<span class="saldos-badge" style="background:#fce8e8;color:#c62828">⚠ Resgate a maior</span>';
 }
 
 // Column resize
@@ -6597,7 +6589,8 @@ function sdRender(){  const el=document.getElementById('saldosView');
         onblur="sdSetBloqueado(${idx},this.value)"
         onkeydown="if(event.key==='Enter')this.blur()"></td>
       <td style="text-align:right;font-weight:700;color:${alerta?'#c62828':'var(--tx3)'};font-variant-numeric:tabular-nums">${alerta?sdFmt(sat):'—'}</td>
-      <td style="text-align:center;min-width:200px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,r.movDetalhes)}</td>`;
+      <td style="text-align:center;min-width:200px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,r.movDetalhes)}</td>
+      <td style="font-size:11px;color:${r.obs?'#e65100':'var(--tx3)'};;padding:9px 10px">${r.obs||'—'}</td>`;
     // Click to expand details
     const hasDetail=r.movDetalhes&&r.movDetalhes.detalhes&&r.movDetalhes.detalhes.length>0;
     if(hasDetail) tr.classList.add('expandable'); else tr.classList.add('no-detail');
@@ -6610,7 +6603,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
       }
       tr.classList.toggle('expanded');
       const expRow=document.createElement('tr');expRow.className='saldos-expand-row';
-      const td=document.createElement('td');td.colSpan=9;
+      const td=document.createElement('td');td.colSpan=10;
       const d=r.movDetalhes;
       let html='<div class="saldos-detail-panel"><strong>Movimentações no extrato:</strong><table class="saldos-detail-table" style="margin-top:6px">';
       html+='<tr style="font-weight:700;color:var(--tx3);font-size:10px;text-transform:uppercase"><td>Data</td><td>Histórico</td><td style="text-align:right">Tipo</td><td style="text-align:right">Valor</td></tr>';
@@ -6641,7 +6634,7 @@ window.sdSetBloqueado=sdSetBloqueado;
 
 function exportSaldosCSV(){
   if(!SD.cotistas.length){toast('Nenhum dado para exportar');return;}
-  const h='Cotista;Fundo;Saldo Inicial;Movimentação;Saldo Atualizado;Saldo Bloqueado;Saldo Utilizado;Status';
+  const h='Cotista;Fundo;Saldo Inicial;Movimentação;Saldo Atualizado;Saldo Bloqueado;Saldo Utilizado;Status;Observação';
   const fmt=v=>v!=null?Number(v).toFixed(2).replace('.',','):'';
   const lines=SD.cotistas.map(r=>{
     const sat2=r.saldoAtualizado!=null?r.saldoAtualizado:r.saldoInicial;
@@ -6651,7 +6644,7 @@ function exportSaldosCSV(){
     const temOutro2=outro2&&(outro2.saldoAtualizado!=null?outro2.saldoAtualizado:outro2.saldoInicial)>0;
     const semPos2=r.saldoInicial<=0.01&&mov2<-0.01;
     const status2=al2?(semPos2?(temOutro2?'Fundo incorreto - sem posicao aqui, saldo no '+(r.fundo==='ID RF'?'ID Soberano':'ID RF'):'Resgate em fundo incorreto'):(temOutro2?'Resgate a maior - tem saldo no '+(r.fundo==='ID RF'?'ID Soberano':'ID RF'):'Resgate a maior')):'OK';
-    return[r.nome,r.fundo,fmt(r.saldoInicial),fmt(mov2),fmt(sat2),fmt(r.saldoBloqueado||0),al2?fmt(sat2):'',status2].join(';');
+    return[r.nome,r.fundo,fmt(r.saldoInicial),fmt(mov2),fmt(sat2),fmt(r.saldoBloqueado||0),al2?fmt(sat2):'',status2,r.obs||''].join(';');
   });
   const csv='\uFEFF'+h+'\n'+lines.join('\n');
   const a=document.createElement('a');
@@ -7446,6 +7439,7 @@ if(document.readyState==='loading'){
               <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Bloqueado<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
               <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap;position:relative">Saldo Utilizado<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
               <th style="padding:10px 12px;text-align:center;font-weight:600;color:var(--tx2);min-width:200px">Status</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);min-width:160px;position:relative">Observação<div class="sd-col-rz" onmousedown="sdColRzStart(event,this)"></div></th>
             </tr>
           </thead>
           <tbody id="saldosTbody"></tbody>
