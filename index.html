@@ -6367,8 +6367,9 @@ function importSaldosLiquidez(input){
         const nomePareceTotais=!isNaN(parseFloat(nome.replace(/\./g,'').replace(',','.')))&&nome.replace(/[0-9.,]/g,'').trim()==='';
         if(!nome||nome.toUpperCase().includes('TOTAL')||nome==='nan'||nome==='Fundo (Cotista)'||seq.toUpperCase().includes('TOTAL')||nomePareceTotais) return;
         const parseV=s=>{
-          const v=parseFloat(String(s).replace(/\./g,'').replace(',','.'));
-          return isNaN(v)||v<0?0:v;
+          // Valores na planilha estão em centavos (ex: 42717 = R$ 427,17)
+          const v=parseFloat(String(s).replace(/[^0-9]/g,''));
+          return isNaN(v)||v<0?0:v/100;
         };
         const idRF=parseV(cells[4]);
         const idSob=parseV(cells[5]);
