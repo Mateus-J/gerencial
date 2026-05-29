@@ -6428,30 +6428,9 @@ function importSaldosExtrato(input){
       const fundoKey=isSob?'ID Soberano':'ID RF';
       const outroFundoKey=isSob?'ID RF':'ID Soberano';
 
-      // KPI
-      const saldoFundoInicial=saldoI>=0?parseV(data[0][saldoI]):0;
-      // Saldo Atual = entrada do ID RF no extrato - todos os resgates do dia
-      const entradaFundo=data.find(r=>{
-        const dc=(r[dcI]||'').trim().toUpperCase();
-        const nome=(r[descI]||'').trim().toUpperCase();
-        return dc==='C'&&(nome.startsWith('ID RF FUNDO')||nome.startsWith('ID RF LONGO'));
-      });
-      const entradaVal=entradaFundo?parseV(entradaFundo[valI]):saldoFundoInicial;
-      // Abate resgates e soma aplicações dos cotistas (exceto movimentos internos)
-      let totalDebitosDia=0, totalCreditosDia=0;
-      data.forEach(r=>{
-        const dc=(r[dcI]||'').trim().toUpperCase();
-        const nome=(r[descI]||'').trim().toUpperCase().replace(/\s+/g,' ');
-        const isInterno=nome.includes('TARIFA')||nome.includes('LANCAMENTO DE TARIFA')
-          ||(nome.startsWith('ID RF FUNDO')&&!isSob)
-          ||(nome.startsWith('ID SOBERANO FUNDO')&&isSob)
-          ||nome.startsWith('EBS2 TRADE')
-          ||(nome.startsWith('ID RF LONGO')&&!isSob); // entrada do próprio fundo
-        if(isInterno) return;
-        if(dc==='D') totalDebitosDia+=parseV(r[valI]);
-        else if(dc==='C') totalCreditosDia+=parseV(r[valI]);
-      });
-      const saldoFundoAtual=entradaVal-totalDebitosDia+totalCreditosDia;
+      // KPI: saldo atual = vl_saldo_in da última linha do extrato (saldo real após todos os movimentos)
+      const ultimaLinha=data[data.length-1];
+      const saldoFundoAtual=saldoI>=0?parseV(ultimaLinha[saldoI]):0;
 
       // Agrupar movimentos por cotista
       const movMap={};
@@ -6515,7 +6494,7 @@ function importSaldosExtrato(input){
         } else {
           // Não encontrado no fundo — verifica se tem posição no outro fundo
           if(mov.debitos>0){
-            const posOutro=matchNome(nomeExt, SD.cotistas.filter(c=>c.fundo===outroFundoKey));
+            const posOutro=matchNome(nomeExt, SD.cotistas.filter(c=>c.fundo===outroFundoKey&&!c._wrongFund&&!c._semFundo));
             const nomeExibir=posOutro?posOutro.nome:nomeExt;
             SD.cotistas.push({
               nome:nomeExibir, fundo:fundoKey,
