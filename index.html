@@ -6457,13 +6457,11 @@ function importSaldosExtrato(input){
       data.forEach(r=>{
         const dc=(r[dcI]||'').trim().toUpperCase();
         const v=parseV(r[valI]);
-        if(dc==='D') saldoFundoAtual-=v;
-        else if(dc==='C') saldoFundoAtual+=v;
         const nome=(r[descI]||'').trim().toUpperCase().replace(/\s+/g,' ');
         // Ignora tarifas e movimentos internos (exceto ID RF que é cotista do SOB)
         const isInterno=nome.includes('TARIFA')||nome.includes('LANCAMENTO DE TARIFA')
-          ||(nome.startsWith('ID RF FUNDO')&&!isSob)   // ID RF só é interno no próprio extrato RF
-          ||(nome.startsWith('ID SOBERANO FUNDO')&&isSob) // SOB só é interno no próprio extrato SOB
+          ||(nome.startsWith('ID RF FUNDO')&&!isSob)
+          ||(nome.startsWith('ID SOBERANO FUNDO')&&isSob)
           ||nome.startsWith('EBS2 TRADE');
         if(!nome||!['D','C'].includes(dc)||isInterno) return;
         if(!movMap[nome]) movMap[nome]={debitos:0,creditos:0,qtdD:0,qtdC:0,detalhes:[]};
@@ -6672,7 +6670,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
     tr.innerHTML=`
       <td style="color:var(--tx3);width:36px;text-align:center">${i+1}</td>
       <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500" title="${r.nome}">${r.nome}</td>
-      <td style="text-align:right"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:${r.fundo==='ID RF'?'#e3f2fd':r.fundo==='ID Soberano'?'#f3e5f5':'var(--sur2)'};color:${r.fundo==='ID RF'?'#1565c0':r.fundo==='ID Soberano'?'#6a1b9a':'var(--tx3)'}">${r.fundo||'—'}</span></td>
+      <td style="text-align:center"><span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;display:inline-block;width:90%;text-align:center;background:${r.fundo==='ID RF'?'#e3f2fd':r.fundo==='ID Soberano'?'#f3e5f5':'var(--sur2)'};color:${r.fundo==='ID RF'?'#1565c0':r.fundo==='ID Soberano'?'#6a1b9a':'var(--tx3)'}">${r.fundo||'—'}</span></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt(r.saldoInicial)}</td>
       <td style="text-align:right;color:${mov<-1?'#c62828':mov>1?'#2e7d32':'var(--tx3)'};font-variant-numeric:tabular-nums">${Math.abs(mov)>0.01?(mov>0?'+ ':'- ')+sdFmt(Math.abs(mov)):'—'}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums">${sdFmt((r.saldoBloqueado||0)>0?sat-(r.saldoBloqueado||0):sat)}</td>
