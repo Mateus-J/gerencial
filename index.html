@@ -6392,7 +6392,8 @@ function importSaldosExtrato(input){
       const descI=hdr.findIndex(h=>h==='ds_complemento');
       const saldoI=hdr.findIndex(h=>h==='vl_saldo_in');
       if(dcI<0||valI<0||descI<0){toast('\u26a0 Colunas n\u00e3o encontradas no CSV');return;}
-      const parseV=s=>parseFloat(String(s).replace(/\./g,'').replace(',','.'))||0;
+      // CSV usa ponto como decimal (ex: 1136.00), não formato BR
+      const parseV=s=>parseFloat(String(s).replace(',','.'))||0;
       const data=rows.slice(1).filter(r=>r.length>Math.max(dcI,valI,descI));
       const isSob=file.name.includes('454398');
       const fundoKey=isSob?'ID Soberano':'ID RF';
