@@ -2083,7 +2083,6 @@ function renderView(){
   av.style.display='none'; agv.style.display='none';
   if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
   if(document.getElementById('saldosView')) document.getElementById('saldosView').style.display='none';
-  const agBtn=document.getElementById('agendaHdrBtn');
   if(agBtn) agBtn.classList.remove('active-agenda');
   document.getElementById('iofView').style.display='none';
   if(tab&&tab.type==='canvas'){
@@ -6283,8 +6282,13 @@ let SD = {
 };
 
 function switchToSaldos(){
-  ['tableView','canvasView','dashView','adminView','iofView','hoView','agendaView']
-    .forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  document.getElementById('tableView').style.display='none';
+  document.getElementById('canvasView').style.display='none';
+  document.getElementById('dashView').style.display='none';
+  document.getElementById('adminView').style.display='none';
+  document.getElementById('iofView').style.display='none';
+  if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
+  if(document.getElementById('agendaView')) document.getElementById('agendaView').style.display='none';
   document.getElementById('saldosView').style.display='block';
   S.activeTab=''; renderTabs();
   sdLoadFirebase();
@@ -7245,17 +7249,17 @@ if(document.readyState==='loading'){
 
 <!-- ═══════════════ IOF VIEW ═══════════════ -->
 <!-- SALDOS VIEW -->
-<div id="saldosView" style="display:none;position:absolute;inset:0;overflow:auto;background:var(--bg);z-index:5">
+<div id="saldosView" style="display:none;flex:1;overflow-y:auto;background:var(--bg)">
   <div style="max-width:1400px;margin:0 auto;padding:24px 28px">
     <!-- Header -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
       <div>
         <h2 style="font-size:20px;font-weight:700;color:var(--tx);margin:0">📊 Saldos dos Fundos de Zeragem</h2>
         <div style="font-size:12px;color:var(--tx3);margin-top:3px" id="saldosDataRef">Data de referência: —</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input type="text" id="saldosSearch" placeholder="🔍 Buscar cotista..." oninput="sdRender()"
-          style="padding:7px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:12px;font-family:inherit;outline:none;width:220px">
+          style="padding:7px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:12px;font-family:inherit;outline:none;width:200px">
         <select id="saldosFiltro" onchange="sdRender()"
           style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:12px;font-family:inherit;outline:none">
           <option value="todos">Todos os fundos</option>
