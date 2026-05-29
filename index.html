@@ -6494,7 +6494,7 @@ function importSaldosExtrato(input){
         return r||null;
       }
 
-      const fundoCotistas=SD.cotistas.filter(c=>c.fundo===fundoKey);
+      const fundoCotistas=SD.cotistas.filter(c=>c.fundo===fundoKey&&!c._wrongFund&&!c._semFundo);
 
       // Reset todos para saldoInicial antes de aplicar movimentos
       fundoCotistas.forEach(c=>{
@@ -6522,7 +6522,7 @@ function importSaldosExtrato(input){
               saldoInicial:0,
               saldoAtualizado:-mov.debitos+mov.creditos,
               saldoBloqueado:0, movDetalhes:mov, _wrongFund:true,
-              obs:posOutro?'Tem posi\u00e7\u00e3o no '+outroFundoKey+' ('+sdFmt(posOutro.saldoAtualizado||posOutro.saldoInicial)+')':null
+              obs:(mov.qtdD>1?mov.qtdD+'x resgates ('+sdFmt(mov.debitos)+' total) — ':'')+(posOutro?'Tem posição no '+outroFundoKey+' ('+sdFmt(posOutro.saldoAtualizado||posOutro.saldoInicial)+')':'Sem posição em nenhum fundo')
             });
           }
         }
@@ -6626,7 +6626,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
   if(filtro==='semsaldo')rows=rows.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund);
 
   const alertas=SD.cotistas.filter(r=>{const sat=r.saldoAtualizado!=null?r.saldoAtualizado:r.saldoInicial;return sat<-1;}).length;
-  const semSaldo=SD.cotistas.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund&&!r._semFundo).length;
+  const semSaldo=SD.cotistas.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund).length;
   const semFundo=SD.cotistas.filter(r=>r._semFundo).length;
 
   document.getElementById('saldosCards').innerHTML=`
@@ -6638,8 +6638,8 @@ function sdRender(){  const el=document.getElementById('saldosView');
       <div class="saldos-kpi-val" style="color:${alertas>0?'#c62828':'#2e7d32'}">${alertas>0?'⚠ '+alertas:'\u2705 Todos OK'}</div>
       <div class="saldos-kpi-sub">Resgate a maior</div></div>
     <div class="saldos-kpi" style="border-color:${semSaldo>0?'#f9a825':'var(--bdr)'}"><div class="saldos-kpi-lbl">Sem Saldo</div>
-      <div class="saldos-kpi-val" style="color:${semSaldo>0?'#f9a825':'var(--tx3)'}">${semSaldo>0?'⚠ '+semSaldo:'—'}</div>
-      <div class="saldos-kpi-sub">Zerado nos dois fundos (${semFundo} sem fundo)</div></div>`;
+      <div class="saldos-kpi-val" style="color:${semSaldo>0?'#f9a825':'var(--tx3)'}">${semSaldo>0?'⚪ '+semSaldo:'—'}</div>
+      <div class="saldos-kpi-sub">Fundos sem posição nos dois</div></div>`;
 
   const tbody=document.getElementById('saldosTbody');
   tbody.innerHTML='';
