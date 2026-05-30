@@ -6485,6 +6485,7 @@ function importSaldosExtrato(input){
         const isInterno=nome.includes('TARIFA')||nome.includes('LANCAMENTO DE TARIFA')
           ||(nome.startsWith('ID RF FUNDO')&&!isSob)
           ||(nome.startsWith('ID SOBERANO FUNDO')&&isSob)
+          ||(nome.startsWith('ID RF LONGO')&&isSob)   // devolução final do dia SOB→RF
           ||nome.startsWith('EBS2 TRADE');
         if(!nome||!['D','C'].includes(dc)||isInterno) return;
         if(!movMap[nome]) movMap[nome]={debitos:0,creditos:0,qtdD:0,qtdC:0,detalhes:[]};
@@ -6517,14 +6518,21 @@ function importSaldosExtrato(input){
           return ne.startsWith(nc.slice(0,25))||nc.startsWith(ne.slice(0,25));
         });
         if(r) return r;
-        // 4. Token matching: palavras-chave significativas (ignora palavras genéricas)
-        const stopwords=new Set(['DE','DO','DA','EM','NO','NA','DOS','DAS','FUNDO','INVESTIMENTO','DIREITOS','CREDITORIOS']);
+        // 4. Token matching: primeiro token único deve bater + pelo menos 1 outro
+        const stopwords=new Set(['DE','DO','DA','EM','NO','NA','DOS','DAS','FUNDO','INVESTIMENTO',
+          'DIREITOS','CREDITORIOS','FINANCEIRO','RENDA','FIXA','LONGO','PRAZO','CREDITO','PRIVADO',
+          'RESPONSABILIDADE','LIMITADA','SIMPLES','COTAS','FUNDOS','MULTIMERCADO','IMOBILIARIO',
+          'PARTICIPACOES','MULTIESTRATEGIA','NAO','PADRONIZADO','PADRONIZADOS','FIAGRO','AGROINDUSTRIAL']);
         const tokens=s=>s.split(' ').filter(w=>w.length>2&&!stopwords.has(w));
-        const tokExt=tokens(ne);
         r=lista.find(c=>{
           const tokLiq=tokens(c.nome.toUpperCase().replace(/\s+/g,' ').trim());
+          const tokExt=tokens(ne);
+          if(!tokLiq.length||!tokExt.length) return false;
+          // Primeiro token deve ser igual (nome próprio do fundo)
+          if(tokLiq[0]!==tokExt[0]) return false;
+          // E pelo menos 2 tokens em comum no total
           const common=tokExt.filter(t=>tokLiq.includes(t));
-          return common.length>=2; // pelo menos 2 tokens significativos em comum
+          return common.length>=2;
         });
         return r||null;
       }
@@ -6681,6 +6689,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
   });
   if(filtro==='alerta')rows=rows.filter(r=>(r.saldoAtualizado||r.saldoInicial)<-1);
   if(filtro==='semsaldo')rows=rows.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund);
+  if(filtro==='incorreto')rows=rows.filter(r=>r._fundoIncorreto&&r._fundoIncorreto.length>0&&!r._regularizado);
 
   const alertas=SD.cotistas.filter(r=>{const sat=r.saldoAtualizado!=null?r.saldoAtualizado:r.saldoInicial;return sat<-1||(r._fundoIncorreto&&r._fundoIncorreto.length>0&&!r._regularizado);}).length;
   const semSaldo=SD.cotistas.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund).length;
@@ -7640,6 +7649,7 @@ if(document.readyState==='loading'){
           <option value="sob">Apenas ID Soberano</option>
           <option value="alerta">⚠ Com alerta</option>
           <option value="semsaldo">⚪ Sem saldo</option>
+          <option value="incorreto">⚠ Fundo incorreto</option>
         </select>
         <button class="btn btn-p" onclick="document.getElementById('saldosLiqInp').click()" style="font-size:12px">📥 Importar Liquidez</button>
         <input type="file" id="saldosLiqInp" accept=".xls,.xlsx,.html,.htm" style="display:none" onchange="importSaldosLiquidez(this)">
