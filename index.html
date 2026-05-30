@@ -6424,10 +6424,12 @@ function importSaldosLiquidez(input){
       });
       SD.cotistas=cotistas;
       SD.dataRef=new Date().toLocaleDateString('pt-BR');
-      // Limpa extratos, saldos atuais e _wrongFund — nova liquidez = novo dia
+      // Limpa extratos, saldos atuais, _wrongFund e marcações de fundo incorreto — novo dia
       SD.extratos={};
       SD.rfSaldoAtual=0;
       SD.sobSaldoAtual=0;
+      // _fundoIncorreto e _regularizado são resetados (novo dia = nova verificação)
+      SD.cotistas.forEach(c=>{delete c._fundoIncorreto;delete c._regularizado;});
       // Recalcula KPI saldo inicial
       SD.rfSaldoInicial=cotistas.filter(c=>c.fundo==='ID RF').reduce((a,c)=>a+c.saldoInicial,0);
       SD.sobSaldoInicial=cotistas.filter(c=>c.fundo==='ID Soberano').reduce((a,c)=>a+c.saldoInicial,0);
@@ -6491,8 +6493,11 @@ function importSaldosExtrato(input){
         movMap[nome].detalhes.push({dc,v,dt:dtI>=0?r[dtI]:'',hist:histI>=0?r[histI]:''});
       });
 
-      // Remove linhas _wrongFund desta importação anterior
-      SD.cotistas=SD.cotistas.filter(c=>!(c._wrongFund&&c.fundo===fundoKey));
+      // Remove marcações _fundoIncorreto anteriores deste fundo e reseta obs de cotistas do fundo correto
+      SD.cotistas.filter(c=>c.fundo===outroFundoKey).forEach(c=>{
+        if(c._fundoIncorreto) delete c._fundoIncorreto;
+        if(c.obs&&c.obs.includes('Resgate no '+fundoKey)) c.obs=null;
+      });
 
       // Match nome extrato -> cotista liquidez (múltiplas estratégias)
       function matchNome(nomeExt, lista){
@@ -6533,17 +6538,21 @@ function importSaldosExtrato(input){
           if(mov.qtdD>1) cotista.obs=mov.qtdD+'x resgates (R$ '+mov.debitos.toLocaleString('pt-BR',{minimumFractionDigits:2})+' total)';
           matched++;
         } else {
-          // Não encontrado no fundo — verifica se tem posição no outro fundo
+          // Não encontrado neste fundo — marca o cotista no fundo correto com alerta
           if(mov.debitos>0){
             const posOutro=matchNome(nomeExt, SD.cotistas.filter(c=>c.fundo===outroFundoKey&&!c._wrongFund&&!c._semFundo));
-            const nomeExibir=posOutro?posOutro.nome:nomeExt;
-            SD.cotistas.push({
-              nome:nomeExibir, fundo:fundoKey,
-              saldoInicial:0,
-              saldoAtualizado:-mov.debitos+mov.creditos,
-              saldoBloqueado:0, movDetalhes:mov, _wrongFund:true,
-              obs:(mov.qtdD>1?mov.qtdD+'x resgates ('+sdFmt(mov.debitos)+' total) — ':'')+(posOutro?'Tem posição no '+outroFundoKey+' ('+sdFmt(posOutro.saldoAtualizado||posOutro.saldoInicial)+')':'Sem posição em nenhum fundo')
-            });
+            if(posOutro){
+              // Marca na linha do fundo correto
+              posOutro._fundoIncorreto=posOutro._fundoIncorreto||[];
+              posOutro._fundoIncorreto.push({
+                fundo:fundoKey,
+                debitos:mov.debitos,
+                creditos:mov.creditos,
+                qtdD:mov.qtdD,
+                detalhes:mov.detalhes
+              });
+              posOutro.obs=(mov.qtdD>1?mov.qtdD+'x resgates no '+fundoKey+' ('+sdFmt(mov.debitos)+') — ':'Resgate no '+fundoKey+' — ')+'Tem posição aqui no '+outroFundoKey;
+            }
           }
         }
       });
@@ -6581,15 +6590,29 @@ function sdSortBy(col){
 }
 window.sdSortBy=sdSortBy;
 
-function sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,movDet,semSaldoRow){
+function sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,movDet,semSaldoRow,regularizado,idx){
   if(semSaldoRow) return '<span class="saldos-badge" style="background:#fff8e1;color:#f9a825">⚪ Fundo sem saldo</span>';
+  if(semPosicao){
+    if(regularizado)
+      return '<span class="saldos-badge" style="background:#e8f5e9;color:#2e7d32">✅ Regularizado</span>';
+    return '<span style="display:inline-flex;align-items:center;gap:5px">'
+      +'<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2">⚠ Fundo incorreto</span>'
+      +'<button onclick="sdRegularizar('+idx+')" style="font-size:9px;padding:2px 6px;border-radius:10px;border:1px solid #7b1fa2;background:transparent;color:#7b1fa2;cursor:pointer;font-family:inherit;white-space:nowrap">Regularizar</button>'
+      +'</span>';
+  }
   if(!alerta) return '<span class="saldos-badge" style="background:#e8f5e9;color:#2e7d32">✅ OK</span>';
-  if(semPosicao)
-    return '<span class="saldos-badge" style="background:#f3e5f5;color:#7b1fa2">⚠ Fundo incorreto</span>';
   if(alertaCruzado)
     return '<span class="saldos-badge" style="background:#fff3e0;color:#e65100">⚠ Resgate a maior — ver '+outroFundo+'</span>';
   return '<span class="saldos-badge" style="background:#fce8e8;color:#c62828">⚠ Resgate a maior</span>';
 }
+
+function sdRegularizar(idx){
+  if(idx<0||idx>=SD.cotistas.length)return;
+  SD.cotistas[idx]._regularizado=true;
+  sdSave();sdRender();
+  toast('\u2705 Marcado como regularizado');
+}
+window.sdRegularizar=sdRegularizar;
 
 // Column resize
 let _sdRz=null;
@@ -6645,7 +6668,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
   if(filtro==='alerta')rows=rows.filter(r=>(r.saldoAtualizado||r.saldoInicial)<-1);
   if(filtro==='semsaldo')rows=rows.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund);
 
-  const alertas=SD.cotistas.filter(r=>{const sat=r.saldoAtualizado!=null?r.saldoAtualizado:r.saldoInicial;return sat<-1;}).length;
+  const alertas=SD.cotistas.filter(r=>{const sat=r.saldoAtualizado!=null?r.saldoAtualizado:r.saldoInicial;return sat<-1||(r._fundoIncorreto&&r._fundoIncorreto.length>0&&!r._regularizado);}).length;
   const semSaldo=SD.cotistas.filter(r=>(r.saldoInicial||0)<=0.01&&!r._wrongFund).length;
   const semFundo=SD.cotistas.filter(r=>r._semFundo).length;
 
@@ -6683,7 +6706,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
     const temOutro=posOutro&&(posOutro.saldoAtualizado!=null?posOutro.saldoAtualizado:posOutro.saldoInicial)>0;
     const alertaCruzado=alerta&&temOutro;
     // semPosicao: tinha saldo 0 neste fundo mas apareceu movimento (resgate no fundo errado)
-    const semPosicao=r.saldoInicial<=0.01&&mov<-0.01;
+    const semPosicao=!!(r._fundoIncorreto&&r._fundoIncorreto.length>0);
     const semSaldoRow=(r.saldoInicial||0)<=0.01&&!r._wrongFund&&Math.abs(mov)<=0.01;
 
     const tr=document.createElement('tr');tr.className='saldos-tr';
@@ -6703,7 +6726,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
         }
       </td>
       <td style="text-align:right;font-weight:700;color:${alerta?'#c62828':'var(--tx3)'};font-variant-numeric:tabular-nums">${alerta?sdFmt(saldoDisp):'—'}</td>
-      <td style="text-align:center;min-width:200px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,r.movDetalhes,semSaldoRow)}</td>
+      <td style="text-align:center;min-width:200px">${sdStatusBadge(alerta,alertaCruzado,outroFundo,semPosicao,r.movDetalhes,semSaldoRow,r._regularizado,idx)}</td>
       <td style="font-size:11px;color:${r.obs?'#e65100':'var(--tx3)'};;padding:9px 10px">${r.obs||'—'}</td>`;
     // Click to expand details
     const hasDetail=r.movDetalhes&&r.movDetalhes.detalhes&&r.movDetalhes.detalhes.length>0;
