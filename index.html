@@ -6472,8 +6472,8 @@ function importSaldosExtrato(input){
       const lastDC=(ultimaLinha[dcI]||'').trim().toUpperCase();
       const lastVal=parseV(ultimaLinha[valI]);
       const saldoFundoAtual=lastSaldoIn!=null
-        ?(lastDC==='D'?lastSaldoIn-lastVal:lastSaldoIn+lastVal)
-        :0;
+        ? Math.max(0, lastDC==='D'?lastSaldoIn-lastVal:lastSaldoIn+lastVal)
+        : 0;
 
       // Agrupar movimentos por cotista
       const movMap={};
@@ -6505,7 +6505,7 @@ function importSaldosExtrato(input){
         // 1. Exato
         let r=lista.find(c=>c.nome.toUpperCase().replace(/\s+/g,' ').trim()===ne);
         if(r) return r;
-        // 2. Extrato começa com nome da liquidez ou vice-versa (40 chars)
+        // 2. Prefixo 40 chars
         r=lista.find(c=>{
           const nc=c.nome.toUpperCase().replace(/\s+/g,' ').trim();
           return ne.startsWith(nc.slice(0,40))||nc.startsWith(ne.slice(0,40));
@@ -6515,6 +6515,16 @@ function importSaldosExtrato(input){
         r=lista.find(c=>{
           const nc=c.nome.toUpperCase().replace(/\s+/g,' ').trim();
           return ne.startsWith(nc.slice(0,25))||nc.startsWith(ne.slice(0,25));
+        });
+        if(r) return r;
+        // 4. Token matching: palavras-chave significativas (ignora palavras genéricas)
+        const stopwords=new Set(['DE','DO','DA','EM','NO','NA','DOS','DAS','FUNDO','INVESTIMENTO','DIREITOS','CREDITORIOS']);
+        const tokens=s=>s.split(' ').filter(w=>w.length>2&&!stopwords.has(w));
+        const tokExt=tokens(ne);
+        r=lista.find(c=>{
+          const tokLiq=tokens(c.nome.toUpperCase().replace(/\s+/g,' ').trim());
+          const common=tokExt.filter(t=>tokLiq.includes(t));
+          return common.length>=2; // pelo menos 2 tokens significativos em comum
         });
         return r||null;
       }
@@ -6542,16 +6552,20 @@ function importSaldosExtrato(input){
           if(mov.debitos>0){
             const posOutro=matchNome(nomeExt, SD.cotistas.filter(c=>c.fundo===outroFundoKey&&!c._wrongFund&&!c._semFundo));
             if(posOutro){
-              // Marca na linha do fundo correto
+              // Tem posição no outro fundo — marca lá
               posOutro._fundoIncorreto=posOutro._fundoIncorreto||[];
-              posOutro._fundoIncorreto.push({
-                fundo:fundoKey,
-                debitos:mov.debitos,
-                creditos:mov.creditos,
-                qtdD:mov.qtdD,
-                detalhes:mov.detalhes
-              });
+              posOutro._fundoIncorreto.push({fundo:fundoKey,debitos:mov.debitos,creditos:mov.creditos,qtdD:mov.qtdD,detalhes:mov.detalhes});
               posOutro.obs=(mov.qtdD>1?mov.qtdD+'x resgates no '+fundoKey+' ('+sdFmt(mov.debitos)+') — ':'Resgate no '+fundoKey+' — ')+'Tem posição aqui no '+outroFundoKey;
+            } else {
+              // Sem posição em nenhum fundo com saldo — verifica _semFundo
+              const semFundoEntry=matchNome(nomeExt, SD.cotistas.filter(c=>c._semFundo));
+              const alvo=semFundoEntry||null;
+              if(alvo){
+                alvo._fundoIncorreto=alvo._fundoIncorreto||[];
+                alvo._fundoIncorreto.push({fundo:fundoKey,debitos:mov.debitos,creditos:mov.creditos,qtdD:mov.qtdD,detalhes:mov.detalhes});
+                alvo.obs='Resgate no '+fundoKey+' ('+sdFmt(mov.debitos)+') — sem posição em nenhum fundo de zeragem';
+                alvo.movDetalhes=mov;
+              }
             }
           }
         }
@@ -6707,7 +6721,7 @@ function sdRender(){  const el=document.getElementById('saldosView');
     const alertaCruzado=alerta&&temOutro;
     // semPosicao: tinha saldo 0 neste fundo mas apareceu movimento (resgate no fundo errado)
     const semPosicao=!!(r._fundoIncorreto&&r._fundoIncorreto.length>0);
-    const semSaldoRow=(r.saldoInicial||0)<=0.01&&!r._wrongFund&&Math.abs(mov)<=0.01;
+    const semSaldoRow=(r.saldoInicial||0)<=0.01&&!r._wrongFund&&Math.abs(mov)<=0.01&&!semPosicao;
 
     const tr=document.createElement('tr');tr.className='saldos-tr';
     tr.style.background=alerta?'rgba(198,40,40,0.04)':semSaldoRow?'rgba(249,168,37,0.04)':'';
