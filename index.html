@@ -204,7 +204,20 @@ tr.subr td{background:var(--sur2);padding:5px 9px;border-bottom:1px solid var(--
 .cv-sticky{position:absolute;cursor:move;user-select:none;border-radius:3px 3px 3px 0;box-shadow:2px 3px 8px rgba(0,0,0,.18);min-width:140px;min-height:100px}
 .cv-sticky textarea{width:100%;height:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:12px;color:#333;resize:none;padding:10px;box-sizing:border-box;cursor:text;min-height:90px}
 .cv-sticky.cv-sel{box-shadow:0 0 0 2.5px rgba(77,158,247,.5),2px 3px 8px rgba(0,0,0,.18)}
-/* ── Connection line ── */
+/* ── Timeline element ── */
+.cv-timeline-el{position:absolute;cursor:move;user-select:none;background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:14px 16px 16px;box-shadow:var(--sh);min-width:260px}
+.cv-timeline-el.cv-sel{border-color:var(--blue);box-shadow:0 0 0 2px rgba(77,158,247,.3)}
+.cv-timeline-title{font-size:13px;font-weight:700;color:var(--tx);margin-bottom:12px;text-align:center;background:transparent;border:none;outline:none;font-family:inherit;width:100%;cursor:text}
+.cv-tl-line{position:absolute;left:88px;top:36px;bottom:20px;width:2px;background:var(--tx);border-radius:1px}
+.cv-tl-item{display:flex;align-items:flex-start;gap:0;margin-bottom:16px;position:relative}
+.cv-tl-time{width:72px;font-size:11px;font-weight:600;color:var(--tx3);text-align:right;padding-right:12px;padding-top:1px;flex-shrink:0;background:transparent;border:none;outline:none;font-family:inherit;cursor:text}
+.cv-tl-dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--sur);flex-shrink:0;margin-top:2px;position:relative;z-index:1}
+.cv-tl-label{flex:1;font-size:11px;padding-left:10px;padding-top:1px;background:transparent;border:none;outline:none;font-family:inherit;cursor:text;line-height:1.4;resize:none;width:100%}
+.cv-tl-add-btn{font-size:11px;color:var(--blue);background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 4px;border-radius:4px;margin-top:4px}
+.cv-tl-add-btn:hover{background:var(--sur2)}
+.cv-tl-del-item{background:none;border:none;cursor:pointer;color:var(--tx3);font-size:11px;opacity:0;padding:0 2px;position:absolute;right:-18px;top:1px}
+.cv-tl-item:hover .cv-tl-del-item{opacity:1}
+.cv-tl-del-item:hover{color:var(--red)}
 .connline{stroke:var(--blue);stroke-width:2;fill:none;opacity:.75;cursor:pointer}
 .connline:hover{stroke-width:3;opacity:1}
 .connline-dashed{stroke-dasharray:6 3}
@@ -1180,6 +1193,7 @@ tr:hover .ho-collab-del{opacity:1}
       <button class="cvtb-btn" onclick="cvAddShape('diamond')" title="Diamante">◇</button>
       <button class="cvtb-btn" onclick="cvAddShape('triangle')" title="Triângulo">△</button>
       <button class="cvtb-btn" onclick="cvAddShape('arrow')" title="Seta">→</button>
+      <button class="cvtb-btn" onclick="cvAddTimeline()" title="Timeline">📅 Timeline</button>
       <div class="cvtb-sep"></div>
       <button class="cvtb-btn" id="cvConnBtn" onclick="cvToggleConnMode()" title="Conectar elementos">🔗 Conectar</button>
       <button class="cvtb-btn" onclick="cvClrConns()" title="Remover conexões">✂ Conex.</button>
@@ -2057,24 +2071,6 @@ async function _saveToFirebase(){
   if(!fbReady||!fbSet){setSynced();return;}
   const toSave=JSON.parse(JSON.stringify(S));
   delete toSave.activeTab;
-  try{
-    const snap=await fbGet(fbRef);
-    if(snap.exists()){
-      const remote=snap.data();
-      const remoteTabs=remote.tabs?.length||0;
-      const localTabs=toSave.tabs?.length||0;
-      if(localTabs<remoteTabs){
-        console.warn('[GUARD] Bloqueado: '+localTabs+' abas locais < '+remoteTabs+' no Firebase');
-        setSynced();toast('\u26a0 Save bloqueado: dados locais parecem incompletos. Recarregue a p\u00e1gina.');return;
-      }
-      const countItems=d=>(d.tabs||[]).reduce((a,t)=>a+(t.groups?.length||0)+(t.elements?.length||0)+(t.cards?.length||0),0);
-      const rc=countItems(remote),lc=countItems(toSave);
-      if(rc>10&&lc<rc*0.5){
-        console.warn('[GUARD] Bloqueado: itens locais ('+lc+') < 50% Firebase ('+rc+')');
-        setSynced();toast('\u26a0 Save bloqueado: perda de dados detectada. Recarregue a p\u00e1gina.');return;
-      }
-    }
-  }catch(e){console.warn('guard check err',e);}
   try{await fbSet(fbRef,toSave);}catch(e){console.warn('save err',e);}
   setSynced();
 }
@@ -2478,7 +2474,29 @@ function buildGroup(g,filter,search,readonly){
       fb.onclick=e=>{e.stopPropagation();openNfmtPkr(e,col,g)};
       tw.appendChild(fb);
     }
-    if(!col.fixed&&!readonly){const d=document.createElement('button');d.className='thdel';d.textContent='✕';d.onclick=e=>{e.stopPropagation();if(confirm('Remover coluna?')){g.columns=g.columns.filter(c=>c.id!==col.id);g.rows.forEach(r=>{delete r.cells[col.id]});save();renderAll()}};tw.appendChild(d)}
+    if(!col.fixed&&!readonly){const d=document.createElement('button');d.className='thdel';d.textContent='✕';d.onclick=e=>{e.stopPropagation();if(confirm('Remover coluna?')){g.columns=g.columns.filter(c=>c.id!==col.id);g.rows.forEach(r=>{delete r.cells[col.id]});save();renderAll()}};tw.appendChild(d);}
+    // Alignment: right-click on TH to change
+    th.oncontextmenu=e=>{
+      e.preventDefault();e.stopPropagation();
+      if(col.fixed||readonly) return;
+      const existing=document.getElementById('colAlignMenu');if(existing)existing.remove();
+      const menu=document.createElement('div');menu.id='colAlignMenu';
+      menu.style.cssText=`position:fixed;top:${e.clientY}px;left:${e.clientX}px;background:var(--sur);border:1px solid var(--bdr);border-radius:9px;padding:5px;z-index:500;box-shadow:0 6px 20px rgba(0,0,0,.18);min-width:150px`;
+      const lbl=document.createElement('div');lbl.style.cssText='font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;padding:4px 8px 6px';lbl.textContent='Alinhamento';menu.appendChild(lbl);
+      [['left','⬅ Esquerda'],['center','↔ Centro'],['right','➡ Direita']].forEach(([align,label])=>{
+        const item=document.createElement('div');
+        item.style.cssText=`padding:7px 12px;font-size:12px;cursor:pointer;border-radius:6px;color:var(--tx);display:flex;align-items:center;gap:8px;font-family:inherit;background:${col.align===align?'var(--sur2)':'transparent'}`;
+        item.textContent=label;
+        item.onmouseenter=()=>item.style.background='var(--sur2)';
+        item.onmouseleave=()=>item.style.background=col.align===align?'var(--sur2)':'transparent';
+        item.onclick=()=>{col.align=align;menu.remove();save();renderAll();};
+        menu.appendChild(item);
+      });
+      document.body.appendChild(menu);
+      setTimeout(()=>{document.addEventListener('click',function _c(){menu.remove();document.removeEventListener('click',_c)},true)},0);
+    };
+    // Apply alignment to header
+    if(col.align) th.style.textAlign=col.align;
     th.appendChild(tw);
     const rh=document.createElement('div');rh.className='rzsz';
     rh.onmousedown=e=>{e.preventDefault();e.stopPropagation();rh.classList.add('active');rzState={col,th,handle:rh,sx:e.clientX,sw:col.w||120}};
@@ -2519,6 +2537,7 @@ function buildGroup(g,filter,search,readonly){
 
     (g.columns||[]).forEach(col=>{
       const td=document.createElement('td');const val=row.cells[col.id]??'';
+      if(col.align) td.style.textAlign=col.align;
       if(col.type==='text'){
         td.className='ct';
         if(isPassCol(col)){
@@ -2869,6 +2888,7 @@ function buildCanvasEl(tab,el){
   if(el.type==='sticky') return buildCvSticky(tab,el);
   if(el.type==='title') return buildCvTitle(tab,el);
   if(el.type==='shape') return buildCvShape(tab,el);
+  if(el.type==='timeline') return buildCvTimeline(tab,el);
   return buildCvCard(tab,el);
 }
 
@@ -3232,11 +3252,107 @@ function cvCenter(){
 }
 function cvEnsureEls(tab){tab.elements=tab.elements||[];}
 
-function cvAddCard(){
+function cvAddTimeline(){
   const tab=curTab();if(!tab||tab.type!=='canvas')return;
   cvEnsureEls(tab);const c=cvCenter();cvPushUndo();
-  tab.elements.push({id:'ca'+(caid++),type:'card',x:c.x-110,y:c.y-60,w:220,h:110,title:'Cartão',body:'',color:GC[tab.elements.length%GC.length]});
+  tab.elements.push({
+    id:'ca'+(caid++),type:'timeline',
+    x:c.x-160,y:c.y-200,w:320,
+    title:'Timeline',
+    color:'#212121',
+    items:[
+      {time:'09h00',label:'Cobrança ID\nDistribuição de Caixa ID\nPagamento de Notas',color:'#c62828',labelColor:'#212121'},
+      {time:'12h00',label:'Almoço',color:'#e65100',labelColor:'#212121'},
+      {time:'16h00',label:'Zeragem - INÍCIO\nPagamento de Notas FIM',color:'#2e7d32',labelColor:'#212121'},
+      {time:'17h15',label:'Zeragem FIM - Soberano p/ ID RF',color:'#c62828',labelColor:'#c62828'},
+      {time:'17h20',label:'Zeragem - ID RF p/ Santander',color:'#c62828',labelColor:'#c62828'},
+    ]
+  });
   save();renderCanvas(tab);
+}
+window.cvAddTimeline=cvAddTimeline;
+
+function buildCvTimeline(tab,el){
+  const div=document.createElement('div');
+  div.className='cv-timeline-el'+(cvSel===el.id?' cv-sel':'');
+  div.style.cssText=`left:${el.x}px;top:${el.y}px;width:${el.w||320}px;position:absolute`;
+  div.dataset.id=el.id;
+
+  // drag on the card itself (not inputs)
+  const startDrag=e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='BUTTON')return;e.preventDefault();cvDrag={el,div,sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y};};
+  div.onmousedown=startDrag;
+
+  // title
+  const titleInp=document.createElement('input');titleInp.type='text';
+  titleInp.className='cv-timeline-title';titleInp.value=el.title||'Timeline';
+  titleInp.style.color=el.color||'#212121';
+  titleInp.addEventListener('blur',e=>{el.title=e.target.value;save()});
+  titleInp.addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
+  titleInp.onmousedown=e=>e.stopPropagation();
+  div.appendChild(titleInp);
+
+  // vertical line container
+  const container=document.createElement('div');
+  container.style.cssText='position:relative;padding-left:0';
+
+  // vertical line
+  const vline=document.createElement('div');vline.className='cv-tl-line';
+  container.appendChild(vline);
+
+  // items
+  (el.items||[]).forEach((item,i)=>{
+    const row=document.createElement('div');row.className='cv-tl-item';
+
+    const timeInp=document.createElement('input');timeInp.type='text';
+    timeInp.className='cv-tl-time';timeInp.value=item.time||'';
+    timeInp.placeholder='00h00';
+    timeInp.addEventListener('blur',e=>{item.time=e.target.value;save()});
+    timeInp.onmousedown=e=>e.stopPropagation();
+
+    const dot=document.createElement('div');dot.className='cv-tl-dot';
+    dot.style.background=item.color||'#212121';
+    dot.style.cursor='pointer';
+    dot.title='Clique para mudar cor';
+    dot.onclick=e=>{e.stopPropagation();cvOpenColorPick(e,item,tab);item.color=item.color||'#212121';};
+
+    const labelTA=document.createElement('textarea');
+    labelTA.className='cv-tl-label';labelTA.value=item.label||'';
+    labelTA.rows=item.label?item.label.split('\n').length:1;
+    labelTA.style.color=item.labelColor||'var(--tx)';
+    labelTA.style.cssText+=(item.labelColor&&item.labelColor!=='#212121'?`;color:${item.labelColor}`:'');
+    labelTA.placeholder='Evento...';
+    labelTA.oninput=()=>{labelTA.rows=Math.max(1,labelTA.value.split('\n').length);};
+    labelTA.addEventListener('blur',e=>{item.label=e.target.value;save()});
+    labelTA.onmousedown=e=>e.stopPropagation();
+
+    const delBtn=document.createElement('button');delBtn.className='cv-tl-del-item';delBtn.textContent='✕';
+    delBtn.onclick=e=>{e.stopPropagation();cvPushUndo();el.items.splice(i,1);save();renderCanvas(tab);};
+
+    row.appendChild(timeInp);row.appendChild(dot);row.appendChild(labelTA);row.appendChild(delBtn);
+    container.appendChild(row);
+  });
+
+  // add item button
+  const addBtn=document.createElement('button');addBtn.className='cv-tl-add-btn';addBtn.textContent='+ Adicionar evento';
+  addBtn.onmousedown=e=>e.stopPropagation();
+  addBtn.onclick=e=>{e.stopPropagation();cvPushUndo();
+    el.items=el.items||[];el.items.push({time:'',label:'',color:'#212121',labelColor:'#212121'});
+    save();renderCanvas(tab);};
+  container.appendChild(addBtn);
+
+  // delete button
+  const del=document.createElement('button');del.className='ccdel';del.textContent='✕';
+  del.style.cssText='position:absolute;top:6px;right:8px;opacity:0;background:none;border:none;cursor:pointer;color:var(--tx3);font-size:12px;font-family:inherit';
+  del.onclick=e=>{e.stopPropagation();cvDeleteEl(tab,el.id)};
+  div.onmouseenter=()=>del.style.opacity='1';div.onmouseleave=()=>del.style.opacity='0';
+
+  div.appendChild(container);div.appendChild(del);
+  div.oncontextmenu=e=>{e.preventDefault();cvShowElCtx(e,tab,el)};
+  div.addEventListener('click',e=>{if(cvConnMode){cvStartConn(tab,el.id,div)}});
+  return div;
+}
+function cvAddCard(){
+  const tab=curTab();if(!tab||tab.type!=='canvas')return;
 }
 function cvAddSticky(){
   const tab=curTab();if(!tab||tab.type!=='canvas')return;
