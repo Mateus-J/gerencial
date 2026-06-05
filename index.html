@@ -6622,19 +6622,13 @@ function importSaldosExtrato(input){
         // 1. Exato
         let r=lista.find(c=>c.nome.toUpperCase().replace(/\s+/g,' ').trim()===ne);
         if(r) return r;
-        // 2. Prefixo 40 chars
+        // 2. Prefixo 50 chars (longo o suficiente para passar palavras genéricas)
         r=lista.find(c=>{
           const nc=c.nome.toUpperCase().replace(/\s+/g,' ').trim();
-          return ne.startsWith(nc.slice(0,40))||nc.startsWith(ne.slice(0,40));
+          return (ne.length>=50&&nc.length>=50)&&(ne.startsWith(nc.slice(0,50))||nc.startsWith(ne.slice(0,50)));
         });
         if(r) return r;
-        // 3. Prefixo 25 chars
-        r=lista.find(c=>{
-          const nc=c.nome.toUpperCase().replace(/\s+/g,' ').trim();
-          return ne.startsWith(nc.slice(0,25))||nc.startsWith(ne.slice(0,25));
-        });
-        if(r) return r;
-        // 4. Token matching: primeiro token único deve bater + pelo menos 1 outro
+        // 3. Token matching: primeiro token único deve bater + pelo menos 1 outro
         const stopwords=new Set(['DE','DO','DA','EM','NO','NA','DOS','DAS','FUNDO','INVESTIMENTO',
           'DIREITOS','CREDITORIOS','FINANCEIRO','RENDA','FIXA','LONGO','PRAZO','CREDITO','PRIVADO',
           'RESPONSABILIDADE','LIMITADA','SIMPLES','COTAS','FUNDOS','MULTIMERCADO','IMOBILIARIO',
@@ -6644,9 +6638,7 @@ function importSaldosExtrato(input){
           const tokLiq=tokens(c.nome.toUpperCase().replace(/\s+/g,' ').trim());
           const tokExt=tokens(ne);
           if(!tokLiq.length||!tokExt.length) return false;
-          // Primeiro token deve ser igual (nome próprio do fundo)
           if(tokLiq[0]!==tokExt[0]) return false;
-          // E pelo menos 2 tokens em comum no total
           const common=tokExt.filter(t=>tokLiq.includes(t));
           return common.length>=2;
         });
@@ -6769,6 +6761,15 @@ function sdColRzMove(e){
 function sdColRzEnd(){_sdRz=null;document.removeEventListener('mousemove',sdColRzMove);document.removeEventListener('mouseup',sdColRzEnd);}
 window.sdColRzStart=sdColRzStart;
 
+function sdKpiFilter(val){
+  const sel=document.getElementById('saldosFiltro');
+  if(!sel) return;
+  // Toggle: click again to reset
+  sel.value=sel.value===val?'todos':val;
+  sdRender();
+}
+window.sdKpiFilter=sdKpiFilter;
+
 function sdRender(){  const el=document.getElementById('saldosView');
   if(!el||el.style.display==='none') return;
   const search=(document.getElementById('saldosSearch')?.value||'').toLowerCase();
@@ -6816,12 +6817,12 @@ function sdRender(){  const el=document.getElementById('saldosView');
     <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID RF — Saldo Atual</div><div class="saldos-kpi-val" style="color:#2e7d32">${SD.rfSaldoAtual?sdFmt(SD.rfSaldoAtual):'Aguardando extrato'}</div><div class="saldos-kpi-sub">${SD.rfSaldoAtual?'Saldo do fundo — extrato':''}</div></div>
     <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID Soberano — Saldo Inicial</div><div class="saldos-kpi-val" style="color:#6a1b9a">${sdFmt(SD.sobSaldoInicial)}</div><div class="saldos-kpi-sub">Soma cotistas — liquidez</div></div>
     <div class="saldos-kpi"><div class="saldos-kpi-lbl">ID Soberano — Saldo Atual</div><div class="saldos-kpi-val" style="color:#2e7d32">${SD.sobSaldoAtual?sdFmt(SD.sobSaldoAtual):'Aguardando extrato'}</div><div class="saldos-kpi-sub">${SD.sobSaldoAtual?'Saldo do fundo — extrato':''}</div></div>
-    <div class="saldos-kpi" style="border-color:${alertas>0?'#c62828':'var(--bdr)'}"><div class="saldos-kpi-lbl">Alertas</div>
+    <div class="saldos-kpi" onclick="sdKpiFilter('alerta')" style="border-color:${alertas>0?'#c62828':'var(--bdr)'};cursor:pointer;transition:opacity .15s" onmouseenter="this.style.opacity='.8'" onmouseleave="this.style.opacity='1'"><div class="saldos-kpi-lbl">Alertas</div>
       <div class="saldos-kpi-val" style="color:${alertas>0?'#c62828':'#2e7d32'}">${alertas>0?'⚠ '+alertas:'\u2705 Todos OK'}</div>
-      <div class="saldos-kpi-sub">Resgate a maior</div></div>
-    <div class="saldos-kpi" style="border-color:${semSaldo>0?'#f9a825':'var(--bdr)'}"><div class="saldos-kpi-lbl">Sem Saldo</div>
+      <div class="saldos-kpi-sub">Resgate a maior ${alertas>0?'— clique para filtrar':''}</div></div>
+    <div class="saldos-kpi" onclick="sdKpiFilter('semsaldo')" style="border-color:${semSaldo>0?'#f9a825':'var(--bdr)'};cursor:pointer;transition:opacity .15s" onmouseenter="this.style.opacity='.8'" onmouseleave="this.style.opacity='1'"><div class="saldos-kpi-lbl">Sem Saldo</div>
       <div class="saldos-kpi-val" style="color:${semSaldo>0?'#f9a825':'var(--tx3)'}">${semSaldo>0?'⚪ '+semSaldo:'—'}</div>
-      <div class="saldos-kpi-sub">Fundos sem posição nos dois</div></div>`;
+      <div class="saldos-kpi-sub">Fundos sem posição nos dois ${semSaldo>0?'— clique para filtrar':''}</div></div>`;
 
   const tbody=document.getElementById('saldosTbody');
   tbody.innerHTML='';
