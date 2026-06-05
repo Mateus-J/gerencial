@@ -2123,6 +2123,7 @@ function renderView(){
   av.style.display='none'; agv.style.display='none';
   if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
   if(document.getElementById('saldosView')) document.getElementById('saldosView').style.display='none';
+  if(document.getElementById('portalSaldosView')) document.getElementById('portalSaldosView').style.display='none';
   const agBtn=document.getElementById('agendaHdrBtn');
   if(agBtn) agBtn.classList.remove('active-agenda');
   document.getElementById('iofView').style.display='none';
@@ -2232,6 +2233,14 @@ function renderTabs(){
     saldosEl.innerHTML='<span style="font-size:13px">📊</span><span>Saldos</span>';
     saldosEl.onclick=()=>switchToSaldos();
     rightArea.appendChild(saldosEl);
+    // Portal de Saldos tab
+    const portalEl=document.createElement('div');
+    const portalActive=document.getElementById('portalSaldosView')&&document.getElementById('portalSaldosView').style.display!=='none';
+    portalEl.className='tab-admin'+(portalActive?' active':'');
+    portalEl.style.color='#00695c';
+    portalEl.innerHTML='<span style="font-size:13px">🏦</span><span>Portal Saldos</span>';
+    portalEl.onclick=()=>switchToPortalSaldos();
+    rightArea.appendChild(portalEl);
   }
   // Home Office tab - visible for all users
   if(currentUser&&currentUser.role!=='consulta'){
@@ -6461,6 +6470,7 @@ function switchToSaldos(){
   if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
   if(document.getElementById('agendaView')) document.getElementById('agendaView').style.display='none';
   document.getElementById('saldosView').style.display='block';
+  if(document.getElementById('portalSaldosView')) document.getElementById('portalSaldosView').style.display='none';
   S.activeTab=''; renderTabs();
   sdLoadFirebase();
 }
@@ -7004,6 +7014,139 @@ function exportSaldosCSV(){
   a.click();toast('✅ CSV exportado!');
 }
 window.exportSaldosCSV=exportSaldosCSV;
+
+// ─── PORTAL DE SALDOS ─────────────────────────────────────────
+let PS = { rows:[], dataRef:'' };
+
+function switchToPortalSaldos(){
+  ['tableView','canvasView','dashView','adminView','iofView','hoView','agendaView','saldosView']
+    .forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  document.getElementById('portalSaldosView').style.display='block';
+  S.activeTab=''; renderTabs();
+  // Load from Firebase if empty
+  if(!PS.rows.length) psLoadFirebase();
+  else psRender();
+}
+window.switchToPortalSaldos=switchToPortalSaldos;
+
+function psLoadFirebase(){
+  if(!fbReady||!fbDb||!fbDocFn||!fbGet) return;
+  fbGet(fbDocFn(fbDb,'controle','portal_saldos')).then(snap=>{
+    if(snap.exists()){const d=snap.data();if(d){PS.rows=d.rows||[];PS.dataRef=d.dataRef||'';}}
+    psRender();
+  }).catch(e=>{console.warn('psLoad err',e);psRender();});
+}
+
+function psSaveFirebase(){
+  if(!fbReady||!fbDb||!fbDocFn||!fbSet) return;
+  fbSet(fbDocFn(fbDb,'controle','portal_saldos'),{rows:PS.rows,dataRef:PS.dataRef},{merge:false})
+    .catch(e=>console.warn('psSave err',e));
+}
+
+function psFmt(v){
+  if(!v&&v!==0) return '—';
+  return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function psImport(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    try{
+      const {read,utils}=await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
+      const wb=read(new Uint8Array(e.target.result),{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const data=utils.sheet_to_json(ws,{header:1,defval:''});
+      const rows=[];
+      data.forEach(row=>{
+        const nome=String(row[0]||'').trim().replace(/_x0009_/g,'').trim();
+        const cnpj=String(row[1]||'').trim();
+        const saldo=parseFloat(String(row[2]||'0').replace(',','.'))||0;
+        const conta=String(row[3]||'').trim();
+        const tipo=String(row[4]||'').trim();
+        if(!nome||nome==='Nome Fundo'||nome==='Portal IDSF'||nome==='Tipo Operacao') return;
+        if(!['Contas de Liquidação','Contas de Cobrança'].includes(tipo)) return;
+        rows.push({nome:nome.substring(0,120),cnpj,saldo,conta,tipo});
+      });
+      PS.rows=rows;
+      PS.dataRef=new Date().toLocaleDateString('pt-BR')+' '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      psSaveFirebase();psRender();
+      toast('✅ '+rows.length+' fundos importados do Portal IDSF');
+    }catch(err){console.error(err);toast('⚠ Erro: '+err.message);}
+  };
+  reader.readAsArrayBuffer(file);
+  input.value='';
+}
+window.psImport=psImport;
+
+function psRender(){
+  const el=document.getElementById('portalSaldosView');
+  if(!el||el.style.display==='none') return;
+  const search=(document.getElementById('portalSaldosSearch')?.value||'').toLowerCase();
+  const tipo=document.getElementById('portalSaldosTipo')?.value||'todos';
+  const sort=document.getElementById('portalSaldosSort')?.value||'nome';
+  document.getElementById('portalSaldosRef').textContent=PS.dataRef?'Atualizado em: '+PS.dataRef:'Nenhum arquivo importado';
+
+  let rows=[...PS.rows];
+  if(search) rows=rows.filter(r=>r.nome.toLowerCase().includes(search)||r.cnpj.includes(search));
+  if(tipo==='liquidacao') rows=rows.filter(r=>r.tipo==='Contas de Liquidação');
+  if(tipo==='cobranca')   rows=rows.filter(r=>r.tipo==='Contas de Cobrança');
+  if(tipo==='comsaldo')   rows=rows.filter(r=>r.saldo>0);
+  if(tipo==='zerado')     rows=rows.filter(r=>r.saldo<=0);
+  if(sort==='saldo_desc') rows.sort((a,b)=>b.saldo-a.saldo);
+  else if(sort==='saldo_asc') rows.sort((a,b)=>a.saldo-b.saldo);
+  else rows.sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+
+  // KPIs
+  const totalLiq=PS.rows.filter(r=>r.tipo==='Contas de Liquidação').reduce((a,r)=>a+r.saldo,0);
+  const totalCob=PS.rows.filter(r=>r.tipo==='Contas de Cobrança').reduce((a,r)=>a+r.saldo,0);
+  const comSaldo=PS.rows.filter(r=>r.saldo>0).length;
+  const zerados=PS.rows.filter(r=>r.saldo<=0).length;
+  document.getElementById('portalSaldosKpis').innerHTML=`
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">Total Liquidação</div><div class="saldos-kpi-val" style="color:#1565c0">${psFmt(totalLiq)}</div><div class="saldos-kpi-sub">${PS.rows.filter(r=>r.tipo==='Contas de Liquidação').length} fundos</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">Total Cobrança</div><div class="saldos-kpi-val" style="color:#2e7d32">${psFmt(totalCob)}</div><div class="saldos-kpi-sub">${PS.rows.filter(r=>r.tipo==='Contas de Cobrança').length} fundos</div></div>
+    <div class="saldos-kpi"><div class="saldos-kpi-lbl">Total Geral</div><div class="saldos-kpi-val" style="color:#00695c">${psFmt(totalLiq+totalCob)}</div><div class="saldos-kpi-sub">${PS.rows.length} contas</div></div>
+    <div class="saldos-kpi" onclick="document.getElementById('portalSaldosTipo').value='comsaldo';psRender()" style="cursor:pointer"><div class="saldos-kpi-lbl">Com Saldo</div><div class="saldos-kpi-val" style="color:#2e7d32">${comSaldo}</div><div class="saldos-kpi-sub">Clique para filtrar</div></div>
+    <div class="saldos-kpi" onclick="document.getElementById('portalSaldosTipo').value='zerado';psRender()" style="cursor:pointer"><div class="saldos-kpi-lbl">Zerados</div><div class="saldos-kpi-val" style="color:var(--tx3)">${zerados}</div><div class="saldos-kpi-sub">Clique para filtrar</div></div>`;
+
+  const tbody=document.getElementById('portalSaldosTbody');
+  tbody.innerHTML='';
+  if(!rows.length){
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--tx3)">'+(PS.rows.length?'Nenhum resultado.':'Clique em <b>📥 Importar Excel</b> para começar.')+'</td></tr>';
+    document.getElementById('portalSaldosFooter').textContent='';
+    return;
+  }
+  rows.forEach((r,i)=>{
+    const isLiq=r.tipo==='Contas de Liquidação';
+    const tr=document.createElement('tr');
+    tr.style.cssText='border-bottom:0.5px solid var(--bdr)';
+    tr.onmouseenter=()=>tr.style.background='var(--sur2)';
+    tr.onmouseleave=()=>tr.style.background='';
+    tr.innerHTML=`
+      <td style="padding:9px 12px;color:var(--tx3);width:40px;text-align:center">${i+1}</td>
+      <td style="padding:9px 12px;font-weight:500;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nome}">${r.nome}</td>
+      <td style="padding:9px 12px;color:var(--tx3);white-space:nowrap;font-size:11px">${r.cnpj}</td>
+      <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:${r.saldo>0?'600':'400'};color:${r.saldo>0?'var(--tx)':'var(--tx3)'}">${psFmt(r.saldo)}</td>
+      <td style="padding:9px 12px;color:var(--tx3);font-size:11px;white-space:nowrap">${r.conta}</td>
+      <td style="padding:9px 12px;text-align:center"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${isLiq?'#e3f2fd':'#e8f5e9'};color:${isLiq?'#1565c0':'#2e7d32'}">${isLiq?'Liquidação':'Cobrança'}</span></td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('portalSaldosFooter').textContent=`${rows.length} de ${PS.rows.length} contas`;
+}
+window.psRender=psRender;
+
+function psExportCSV(){
+  if(!PS.rows.length){toast('Nenhum dado para exportar');return;}
+  const h='Fundo;CNPJ;Saldo;Conta;Tipo';
+  const fmt=v=>v!=null?Number(v).toFixed(2).replace('.',','):'';
+  const lines=PS.rows.map(r=>[r.nome,r.cnpj,fmt(r.saldo),r.conta,r.tipo].join(';'));
+  const csv='\uFEFF'+h+'\n'+lines.join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='portal_saldos_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();toast('✅ CSV exportado!');
+}
+window.psExportCSV=psExportCSV;
 
 // ─── DASHBOARD ────────────────────────────────────────────────
 function defTabDash(id,label,color){
@@ -7748,6 +7891,60 @@ if(document.readyState==='loading'){
 
 <!-- ═══════════════ IOF VIEW ═══════════════ -->
 <!-- SALDOS VIEW -->
+<!-- PORTAL SALDOS VIEW -->
+<div id="portalSaldosView" style="display:none;flex:1;overflow-y:auto;background:var(--bg)">
+  <div style="max-width:1400px;margin:0 auto;padding:24px 28px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;color:var(--tx);margin:0">🏦 Portal de Saldos — ID CTVM</h2>
+        <div style="font-size:12px;color:var(--tx3);margin-top:3px" id="portalSaldosRef">Nenhum arquivo importado</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="portalSaldosSearch" placeholder="🔍 Buscar fundo..." oninput="psRender()"
+          style="padding:7px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:12px;font-family:inherit;outline:none;width:220px">
+        <select id="portalSaldosTipo" onchange="psRender()"
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:12px;font-family:inherit;outline:none">
+          <option value="todos">Todos os tipos</option>
+          <option value="liquidacao">Contas de Liquidação</option>
+          <option value="cobranca">Contas de Cobrança</option>
+          <option value="comsaldo">Com saldo</option>
+          <option value="zerado">Zerados</option>
+        </select>
+        <select id="portalSaldosSort" onchange="psRender()"
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:12px;font-family:inherit;outline:none">
+          <option value="nome">A → Z</option>
+          <option value="saldo_desc">Maior saldo</option>
+          <option value="saldo_asc">Menor saldo</option>
+        </select>
+        <button class="btn btn-p" onclick="document.getElementById('portalSaldosInp').click()" style="font-size:12px">📥 Importar Excel</button>
+        <input type="file" id="portalSaldosInp" accept=".xlsx,.xls" style="display:none" onchange="psImport(this)">
+        <button class="btn" onclick="psExportCSV()" style="font-size:12px">⬇ Exportar CSV</button>
+      </div>
+    </div>
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px" id="portalSaldosKpis"></div>
+    <!-- Table -->
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:var(--sur2);border-bottom:1px solid var(--bdr)">
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);white-space:nowrap">#</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2)">Fundo</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);white-space:nowrap">CNPJ</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;color:var(--tx2);white-space:nowrap">Saldo</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--tx2);white-space:nowrap">Conta</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:600;color:var(--tx2);white-space:nowrap">Tipo</th>
+            </tr>
+          </thead>
+          <tbody id="portalSaldosTbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--tx3);margin-top:10px" id="portalSaldosFooter"></div>
+  </div>
+</div>
+
 <div id="saldosView" style="display:none;flex:1;overflow-y:auto;background:var(--bg)">
   <div style="max-width:1400px;margin:0 auto;padding:24px 28px">
     <!-- Header -->
