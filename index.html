@@ -2124,6 +2124,7 @@ function renderView(){
   if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
   if(document.getElementById('saldosView')) document.getElementById('saldosView').style.display='none';
   if(document.getElementById('portalSaldosView')) document.getElementById('portalSaldosView').style.display='none';
+  if(document.getElementById('taxaAdmView')) document.getElementById('taxaAdmView').style.display='none';
   const agBtn=document.getElementById('agendaHdrBtn');
   if(agBtn) agBtn.classList.remove('active-agenda');
   document.getElementById('iofView').style.display='none';
@@ -2241,6 +2242,14 @@ function renderTabs(){
     portalEl.innerHTML='<span style="font-size:13px">🏦</span><span>Portal Saldos</span>';
     portalEl.onclick=()=>switchToPortalSaldos();
     rightArea.appendChild(portalEl);
+    // Taxa ADM tab
+    const admEl=document.createElement('div');
+    const admActive=document.getElementById('taxaAdmView')&&document.getElementById('taxaAdmView').style.display!=='none';
+    admEl.className='tab-admin'+(admActive?' active':'');
+    admEl.style.color='#2e7d32';
+    admEl.innerHTML='<span style="font-size:13px">📈</span><span>Taxa ADM</span>';
+    admEl.onclick=()=>switchToTaxaAdm();
+    rightArea.appendChild(admEl);
   }
   // Home Office tab - visible for all users
   if(currentUser&&currentUser.role!=='consulta'){
@@ -7015,6 +7024,199 @@ function exportSaldosCSV(){
 }
 window.exportSaldosCSV=exportSaldosCSV;
 
+// Chart.js loaded in taxaAdmView via dynamic import in taImport
+// ─── TAXA ADM DASHBOARD ───────────────────────────────────────
+let TA = {data:null, mode:'all', selMes:null, lineChart:null, donutChart:null, gaugeChart:null};
+const TA_COLORS = ['#3a9a3a','#2a9a6a','#5a7aaa','#8a5aaa','#aa7a2a','#aa3a3a','#2a8a8a','#7a9a2a'];
+
+function switchToTaxaAdm(){
+  ['tableView','canvasView','dashView','adminView','iofView','hoView','agendaView','saldosView','portalSaldosView']
+    .forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  document.getElementById('taxaAdmView').style.display='block';
+  S.activeTab=''; renderTabs();
+  if(TA.data) taRender();
+}
+window.switchToTaxaAdm=switchToTaxaAdm;
+
+function taFmt(v){return 'R$ '+(v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':v.toFixed(0)).replace('.',',')}
+function taFull(v){return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})}
+
+function taImport(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    try{
+      const {read,utils}=await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
+      const wb=read(new Uint8Array(e.target.result),{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const raw=utils.sheet_to_json(ws,{header:1,defval:''});
+
+      // Find header row
+      let hdrIdx=raw.findIndex(r=>String(r[0]||'').includes('Data da receita'));
+      if(hdrIdx<0) hdrIdx=0;
+      const rows=raw.slice(hdrIdx+1);
+
+      const validMonthRe=/^\d{2}\.\d{4}'?$/;
+      const parsed=[];
+      rows.forEach(r=>{
+        const fundo=String(r[7]||'').trim();
+        if(!fundo) return;
+        const gestor=String(r[9]||'').trim();
+        const classif=String(r[10]||'').trim();
+        const mesRef=String(r[18]||'').trim();
+        const status=String(r[17]||'').trim();
+        const val=parseFloat(String(r[12]||'0').replace(',','.'))||0;
+        if(!validMonthRe.test(mesRef)||val<=0) return;
+        parsed.push({fundo,gestor,classif,mesRef:mesRef.replace("'",''),status,val});
+      });
+
+      if(!parsed.length){toast('⚠ Nenhum dado válido encontrado');return;}
+
+      // Build monthly aggregates
+      const sortKey=m=>{const p=m.split('.');return parseInt(p[1])*100+parseInt(p[0]);};
+      const months=[...new Set(parsed.map(r=>r.mesRef))].sort((a,b)=>sortKey(a)-sortKey(b));
+      const monthly=months.map(mes=>{
+        const mRows=parsed.filter(r=>r.mesRef===mes);
+        const pago=mRows.filter(r=>r.status==='PAGO').reduce((a,r)=>a+r.val,0);
+        const pend=mRows.filter(r=>r.status==='PENDENTE').reduce((a,r)=>a+r.val,0);
+        return{mes,total:pago+pend,pago,pend,count:mRows.length};
+      });
+
+      // Build last-month details
+      const lastMes=months[months.length-1];
+      const buildDetail=mes=>{
+        const mRows=parsed.filter(r=>r.mesRef===mes);
+        const total=mRows.reduce((a,r)=>a+r.val,0);
+        const pago=mRows.filter(r=>r.status==='PAGO').reduce((a,r)=>a+r.val,0);
+        const pend=mRows.filter(r=>r.status==='PENDENTE').reduce((a,r)=>a+r.val,0);
+        // top fundos
+        const fMap={};mRows.forEach(r=>fMap[r.fundo]=(fMap[r.fundo]||0)+r.val);
+        const topFundos=Object.entries(fMap).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>({name,value}));
+        // top gestores
+        const gMap={};mRows.forEach(r=>{if(r.gestor&&r.gestor!=='0')gMap[r.gestor]=(gMap[r.gestor]||0)+r.val;});
+        const topGestores=Object.entries(gMap).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([name,value])=>({name,value}));
+        // class dist
+        const cMap={};mRows.forEach(r=>{if(r.classif&&r.classif!=='0')cMap[r.classif]=(cMap[r.classif]||0)+r.val;});
+        const classDist=Object.entries(cMap).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>({name,value}));
+        const pctPago=total>0?parseFloat((pago/total*100).toFixed(2)):0;
+        return{total,pago,pend,pctPago,topFundos,topGestores,classDist};
+      };
+
+      // Pre-compute details for all months
+      const byMes={};months.forEach(m=>byMes[m]=buildDetail(m));
+      const allTotal=parsed.reduce((a,r)=>a+r.val,0);
+      const allPago=parsed.filter(r=>r.status==='PAGO').reduce((a,r)=>a+r.val,0);
+      const allPend=parsed.filter(r=>r.status==='PENDENTE').reduce((a,r)=>a+r.val,0);
+      const allPct=allTotal>0?parseFloat((allPago/allTotal*100).toFixed(2)):0;
+
+      TA.data={monthly,byMes,months,lastMes,allTotal,allPago,allPend,allPct,lastDetail:byMes[lastMes]};
+      TA.selMes=lastMes;
+      document.getElementById('taEmpty').style.display='none';
+      document.getElementById('taDash').style.display='block';
+      document.getElementById('taActiveMes').textContent=lastMes;
+      taBuildSidebar();taRender();
+      toast('✅ '+parsed.length+' registros importados — '+months.length+' meses');
+    }catch(err){console.error(err);toast('⚠ Erro: '+err.message);}
+  };
+  reader.readAsArrayBuffer(file);
+  input.value='';
+}
+window.taImport=taImport;
+
+function taBuildSidebar(){
+  if(!TA.data) return;
+  const sb=document.getElementById('taSidebar');
+  const months=[...TA.data.months].reverse().slice(0,18);
+  const classes=[...new Set(TA.data.monthly.flatMap(m=>{
+    const d=TA.data.byMes[m.mes];return d.classDist.map(c=>c.name);
+  }))].slice(0,10);
+  sb.innerHTML=`<div class="ta-sb-h">Mês Referência</div>`+
+    months.map(m=>`<div class="ta-sb-i${TA.selMes===m?' active':''}" onclick="taSetMes('${m}')">${m}<span class="ta-sb-badge">${TA.data.byMes[m]?.total>0?TA.data.monthly.find(x=>x.mes===m)?.count||'':''}</span></div>`).join('')+
+    `<div class="ta-sb-h" style="margin-top:8px">Classificação</div>`+
+    classes.map(c=>`<div class="ta-sb-i" onclick="void(0)">${c}</div>`).join('');
+}
+
+function taSetMode(m){
+  TA.mode=m;
+  document.getElementById('taBtnAll').className='ta-btn'+(m==='all'?' active':'');
+  document.getElementById('taBtnMes').className='ta-btn'+(m==='mes'?' active':'');
+  taRender();
+}
+window.taSetMode=taSetMode;
+
+function taSetMes(m){TA.selMes=m;document.getElementById('taActiveMes').textContent=m;taBuildSidebar();taRender();}
+window.taSetMes=taSetMes;
+
+function taRender(){
+  if(!TA.data) return;
+  const d=TA.mode==='mes'?(TA.data.byMes[TA.selMes]||TA.data.lastDetail):TA.data;
+  const total=TA.mode==='mes'?d.total:TA.data.allTotal;
+  const pago=TA.mode==='mes'?d.pago:TA.data.allPago;
+  const pend=TA.mode==='mes'?d.pend:TA.data.allPend;
+  const pct=TA.mode==='mes'?d.pctPago:TA.data.allPct;
+  const lm=TA.data.byMes[TA.selMes]||TA.data.lastDetail;
+
+  // Growth
+  const mo=TA.data.monthly;
+  const prev=mo[mo.length-2],cur=mo[mo.length-1];
+  const growth=prev?((cur.total-prev.total)/prev.total*100).toFixed(1):0;
+
+  document.getElementById('taKpis').innerHTML=`
+    <div class="ta-kpi k1"><div class="ta-kpi-lbl">Total Cobrado</div><div class="ta-kpi-val">${taFmt(total)}</div><div class="ta-kpi-sub">${TA.mode==='mes'?TA.selMes:'Acumulado'}</div></div>
+    <div class="ta-kpi k2"><div class="ta-kpi-lbl">Valor Recebido</div><div class="ta-kpi-val">${taFmt(pago)}</div><div class="ta-kpi-sub" style="color:#2a9a6a">✓ PAGO</div></div>
+    <div class="ta-kpi k3"><div class="ta-kpi-lbl">Valor em Aberto</div><div class="ta-kpi-val">${taFmt(pend)}</div><div class="ta-kpi-sub" style="color:#e05a2a">PENDENTE</div></div>
+    <div class="ta-kpi k4"><div class="ta-kpi-lbl">Recebido %</div><div class="ta-kpi-val">${pct}%</div><div class="ta-kpi-sub">Taxa recebimento</div></div>
+    <div class="ta-kpi k5"><div class="ta-kpi-lbl">Crescimento Mensal</div><div class="ta-kpi-val">${growth>0?'+':''}${growth}%</div><div class="ta-kpi-sub">${prev.mes} → ${cur.mes}</div></div>`;
+
+  document.getElementById('taChartPeriod').textContent=mo[0].mes+' → '+mo[mo.length-1].mes;
+  document.getElementById('taTopFundosMes').textContent=TA.selMes;
+  document.getElementById('taTopGestMes').textContent=TA.selMes;
+
+  // Top Fundos bars
+  const tf=lm.topFundos,maxF=tf[0]?.value||1;
+  document.getElementById('taTopFundos').innerHTML=tf.map((f,i)=>`
+    <div class="ta-bar-row"><div class="ta-bar-nm" title="${f.name}">${f.name}</div>
+    <div class="ta-bar-trk"><div class="ta-bar-fill" style="width:${(f.value/maxF*100).toFixed(0)}%;background:${TA_COLORS[i%TA_COLORS.length]}"></div></div>
+    <div class="ta-bar-val">${taFmt(f.value)}</div></div>`).join('');
+
+  // Top Gestores bars
+  const tg=lm.topGestores,maxG=tg[0]?.value||1;
+  document.getElementById('taTopGestores').innerHTML=tg.map((g,i)=>`
+    <div class="ta-bar-row"><div class="ta-bar-nm" title="${g.name}">${g.name}</div>
+    <div class="ta-bar-trk"><div class="ta-bar-fill" style="width:${(g.value/maxG*100).toFixed(0)}%;background:${TA_COLORS[i%TA_COLORS.length]}"></div></div>
+    <div class="ta-bar-val">${taFmt(g.value)}</div></div>`).join('');
+
+  // Line chart
+  if(TA.lineChart) TA.lineChart.destroy();
+  TA.lineChart=new Chart(document.getElementById('taChartLine'),{
+    type:'line',
+    data:{labels:mo.map(m=>m.mes),datasets:[{label:'Receita',data:mo.map(m=>m.total),borderColor:'#3a9a3a',borderWidth:2,pointRadius:2,pointBackgroundColor:'#3a9a3a',fill:true,backgroundColor:'rgba(58,154,58,0.07)',tension:0.4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+taFull(c.parsed.y)}}},scales:{x:{ticks:{color:'#3a6a3a',font:{size:8},maxRotation:45,autoSkip:true,maxTicksLimit:12},grid:{color:'rgba(58,154,58,0.06)'},border:{display:false}},y:{ticks:{color:'#3a6a3a',font:{size:8},callback:v=>taFmt(v)},grid:{color:'rgba(58,154,58,0.07)'},border:{display:false}}}}
+  });
+
+  // Donut
+  const cls=lm.classDist,clsTotal=cls.reduce((a,c)=>a+c.value,0);
+  document.getElementById('taDonutLegend').innerHTML=cls.slice(0,5).map((c,i)=>`
+    <div class="ta-leg"><div class="ta-leg-dot" style="background:${TA_COLORS[i]}"></div>${c.name}<span style="margin-left:auto;font-family:'DM Mono',monospace;font-size:9px;color:#4a8a4a">${(c.value/clsTotal*100).toFixed(0)}%</span></div>`).join('');
+  if(TA.donutChart) TA.donutChart.destroy();
+  TA.donutChart=new Chart(document.getElementById('taChartDonut'),{
+    type:'doughnut',
+    data:{labels:cls.map(c=>c.name),datasets:[{data:cls.map(c=>c.value),backgroundColor:TA_COLORS,borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${(c.parsed/clsTotal*100).toFixed(1)}%`}}},cutout:'68%'}
+  });
+
+  // Gauge
+  const gaugeColor=pct>=90?'#3a9a3a':pct>=75?'#8aaa2a':'#e05a2a';
+  document.getElementById('taGaugeVal').textContent=pct+'%';
+  document.getElementById('taGaugeVal').style.color=gaugeColor;
+  if(TA.gaugeChart) TA.gaugeChart.destroy();
+  TA.gaugeChart=new Chart(document.getElementById('taChartGauge'),{
+    type:'doughnut',
+    data:{labels:['Pago','Em aberto'],datasets:[{data:[pct,100-pct],backgroundColor:[gaugeColor,'#1a3a1a'],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,rotation:-90,circumference:180,plugins:{legend:{display:false},tooltip:{enabled:false}},cutout:'72%'}
+  });
+}
+
 // ─── PORTAL DE SALDOS ─────────────────────────────────────────
 let PS = { rows:[], dataRef:'' };
 
@@ -7891,6 +8093,121 @@ if(document.readyState==='loading'){
 
 <!-- ═══════════════ IOF VIEW ═══════════════ -->
 <!-- SALDOS VIEW -->
+<!-- TAXA ADM VIEW -->
+<div id="taxaAdmView" style="display:none;flex:1;overflow-y:auto;background:#0a0f0a;font-family:'Syne',sans-serif">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+  #taxaAdmView .ta-hdr{background:#0d1a0d;border-bottom:1px solid #1a3a1a;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  #taxaAdmView .ta-logo{width:36px;height:36px;background:#1e6b1e;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#7fff7f;font-family:'Syne',sans-serif}
+  #taxaAdmView .ta-title{font-size:14px;font-weight:700;color:#e8f0e8;letter-spacing:.03em}
+  #taxaAdmView .ta-sub{font-size:10px;color:#4a7a4a;font-family:'DM Mono',monospace}
+  #taxaAdmView .ta-btn{background:#1a3a1a;border:1px solid #2a5a2a;color:#8fcc8f;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;padding:5px 12px;border-radius:5px;cursor:pointer;letter-spacing:.04em;transition:all .2s}
+  #taxaAdmView .ta-btn:hover{background:#2a5a2a;color:#bfffbf}
+  #taxaAdmView .ta-btn.active{background:#1e6b1e;color:#7fff7f;border-color:#3a9a3a}
+  #taxaAdmView .ta-import{background:#1a3a1a;border:1px solid #2a5a2a;color:#5aaa5a;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;padding:5px 12px;border-radius:5px;cursor:pointer;transition:all .2s}
+  #taxaAdmView .ta-import:hover{background:#2a5a2a;color:#9acc9a}
+  #taxaAdmView .ta-body{display:grid;grid-template-columns:180px 1fr;min-height:calc(100vh - 120px)}
+  #taxaAdmView .ta-sb{background:#080d08;border-right:1px solid #1a3a1a;padding:12px 0;overflow-y:auto;max-height:calc(100vh - 120px)}
+  #taxaAdmView .ta-sb-h{font-size:9px;font-weight:700;color:#3a6a3a;letter-spacing:.12em;text-transform:uppercase;padding:8px 14px 5px}
+  #taxaAdmView .ta-sb-i{padding:7px 14px;font-size:11px;color:#5a8a5a;cursor:pointer;border-left:2px solid transparent;display:flex;align-items:center;justify-content:space-between;transition:all .15s}
+  #taxaAdmView .ta-sb-i:hover{background:#0f1f0f;color:#9acc9a;border-left-color:#2a5a2a}
+  #taxaAdmView .ta-sb-i.active{background:#0f2a0f;color:#7fff7f;border-left-color:#3a9a3a}
+  #taxaAdmView .ta-sb-badge{font-family:'DM Mono',monospace;font-size:10px;background:#1a3a1a;color:#5aaa5a;padding:1px 5px;border-radius:3px}
+  #taxaAdmView .ta-content{padding:16px;overflow-y:auto}
+  #taxaAdmView .ta-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:16px}
+  #taxaAdmView .ta-kpi{background:#0d1a0d;border:1px solid #1a3a1a;border-radius:9px;padding:14px 12px;position:relative;overflow:hidden}
+  #taxaAdmView .ta-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+  #taxaAdmView .ta-kpi.k1::before{background:#3a9a3a}
+  #taxaAdmView .ta-kpi.k2::before{background:#2a9a6a}
+  #taxaAdmView .ta-kpi.k3::before{background:#e05a2a}
+  #taxaAdmView .ta-kpi.k4::before{background:#2a6a9a}
+  #taxaAdmView .ta-kpi.k5::before{background:#8a5aaa}
+  #taxaAdmView .ta-kpi-lbl{font-size:8px;font-weight:700;color:#4a7a4a;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
+  #taxaAdmView .ta-kpi-val{font-size:18px;font-weight:800;line-height:1;margin-bottom:3px;font-family:'DM Mono',monospace}
+  #taxaAdmView .ta-kpi-sub{font-size:9px;color:#3a6a3a}
+  #taxaAdmView .ta-kpi.k1 .ta-kpi-val{color:#7fff7f}
+  #taxaAdmView .ta-kpi.k2 .ta-kpi-val{color:#5addaa}
+  #taxaAdmView .ta-kpi.k3 .ta-kpi-val{color:#ff7a4a}
+  #taxaAdmView .ta-kpi.k4 .ta-kpi-val{color:#5aaadd}
+  #taxaAdmView .ta-kpi.k5 .ta-kpi-val{color:#cc9aff}
+  #taxaAdmView .ta-row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  #taxaAdmView .ta-row3{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:12px}
+  #taxaAdmView .ta-card{background:#0d1a0d;border:1px solid #1a3a1a;border-radius:9px;padding:14px}
+  #taxaAdmView .ta-card-t{font-size:9px;font-weight:700;color:#4a7a4a;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+  #taxaAdmView .ta-card-t span{font-family:'DM Mono',monospace;font-size:10px;color:#3a6a3a;font-weight:400;letter-spacing:0}
+  #taxaAdmView .ta-bar-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  #taxaAdmView .ta-bar-nm{font-size:10px;color:#6a9a6a;width:76px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #taxaAdmView .ta-bar-trk{flex:1;height:4px;background:#0f2a0f;border-radius:2px;overflow:hidden}
+  #taxaAdmView .ta-bar-fill{height:100%;border-radius:2px;transition:width .7s ease}
+  #taxaAdmView .ta-bar-val{font-family:'DM Mono',monospace;font-size:10px;color:#5aaa5a;width:60px;text-align:right;flex-shrink:0}
+  #taxaAdmView .ta-leg{display:flex;align-items:center;gap:5px;margin-bottom:5px;font-size:10px;color:#6a9a6a}
+  #taxaAdmView .ta-leg-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+  #taxaAdmView .ta-gauge-v{font-size:26px;font-weight:800;font-family:'DM Mono',monospace;margin-top:-6px}
+  #taxaAdmView .ta-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;color:#3a6a3a;gap:12px}
+  #taxaAdmView .ta-empty-icon{font-size:40px;opacity:.4}
+  #taxaAdmView .ta-empty-txt{font-size:13px;text-align:center;line-height:1.6}
+  #taxaAdmView .ta-month-pill{font-family:'DM Mono',monospace;font-size:10px;background:#1a3a1a;border:1px solid #2a5a2a;color:#5aaa5a;padding:4px 10px;border-radius:4px}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <div class="ta-hdr">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="ta-logo">ID</div>
+      <div>
+        <div class="ta-title">DASHBOARD RECEITAS IDCTVM</div>
+        <div class="ta-sub">TAXA DE ADMINISTRAÇÃO · ID CORRETORA DE TÍTULOS E VALORES MOBILIÁRIOS</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="ta-month-pill" id="taActiveMes">—</span>
+      <button class="ta-btn active" id="taBtnAll" onclick="taSetMode('all')">ACUMULADO</button>
+      <button class="ta-btn" id="taBtnMes" onclick="taSetMode('mes')">MÊS ATUAL</button>
+      <button class="ta-import" onclick="document.getElementById('taxaAdmFileInp').click()">📥 Importar Excel</button>
+      <input type="file" id="taxaAdmFileInp" accept=".xlsx,.xls" style="display:none" onchange="taImport(this)">
+    </div>
+  </div>
+  <div class="ta-body">
+    <div class="ta-sb" id="taSidebar"></div>
+    <div class="ta-content" id="taContent">
+      <div class="ta-empty" id="taEmpty">
+        <div class="ta-empty-icon">📊</div>
+        <div class="ta-empty-txt">Nenhum dado carregado.<br>Clique em <b>📥 Importar Excel</b> para começar.</div>
+      </div>
+      <div id="taDash" style="display:none">
+        <div class="ta-kpis" id="taKpis"></div>
+        <div class="ta-row2">
+          <div class="ta-card">
+            <div class="ta-card-t">PROJEÇÃO MENSAL <span id="taChartPeriod">—</span></div>
+            <div style="position:relative;height:180px"><canvas id="taChartLine" role="img" aria-label="Evolução mensal receitas taxa ADM"></canvas></div>
+          </div>
+          <div class="ta-card">
+            <div class="ta-card-t">TOP FUNDOS <span id="taTopFundosMes">—</span></div>
+            <div id="taTopFundos"></div>
+          </div>
+        </div>
+        <div class="ta-row3">
+          <div class="ta-card">
+            <div class="ta-card-t">TOP GESTORES <span id="taTopGestMes">—</span></div>
+            <div id="taTopGestores"></div>
+          </div>
+          <div class="ta-card">
+            <div class="ta-card-t">POR CLASSIFICAÇÃO</div>
+            <div style="position:relative;height:160px"><canvas id="taChartDonut" role="img" aria-label="Distribuição por classificação"></canvas></div>
+            <div id="taDonutLegend" style="margin-top:8px"></div>
+          </div>
+          <div class="ta-card">
+            <div class="ta-card-t">RECEBIMENTO</div>
+            <div style="display:flex;flex-direction:column;align-items:center;padding:4px 0">
+              <canvas id="taChartGauge" role="img" aria-label="Percentual de recebimento" style="max-height:140px"></canvas>
+              <div class="ta-gauge-v" id="taGaugeVal" style="color:#7fff7f">—</div>
+              <div style="font-size:9px;color:#4a7a4a;margin-top:2px">PAGO vs TOTAL</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- PORTAL SALDOS VIEW -->
 <div id="portalSaldosView" style="display:none;flex:1;overflow-y:auto;background:var(--bg)">
   <div style="max-width:1400px;margin:0 auto;padding:24px 28px">
