@@ -6478,8 +6478,9 @@ function switchToSaldos(){
   document.getElementById('iofView').style.display='none';
   if(document.getElementById('hoView')) document.getElementById('hoView').style.display='none';
   if(document.getElementById('agendaView')) document.getElementById('agendaView').style.display='none';
-  document.getElementById('saldosView').style.display='block';
   if(document.getElementById('portalSaldosView')) document.getElementById('portalSaldosView').style.display='none';
+  if(document.getElementById('taxaAdmView')) document.getElementById('taxaAdmView').style.display='none';
+  document.getElementById('saldosView').style.display='block';
   S.activeTab=''; renderTabs();
   sdLoadFirebase();
 }
@@ -7024,10 +7025,25 @@ function exportSaldosCSV(){
 }
 window.exportSaldosCSV=exportSaldosCSV;
 
+// ─── XLSX LOADER ──────────────────────────────────────────────
+function loadXLSX(){
+  return new Promise((resolve)=>{
+    if(window.XLSX){resolve(window.XLSX);return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=()=>resolve(window.XLSX);
+    s.onerror=()=>resolve(null);
+    document.head.appendChild(s);
+  });
+}
+
 // ─── TAXA ADM DASHBOARD ───────────────────────────────────────
 let TA={data:null,filtered:null,mode:'all',selMes:null,sortCol:'val',sortAsc:false,
         lineChart:null,donutChart:null,gaugeChart:null};
 const TA_COLORS=['#2e7d32','#1565c0','#6a1b9a','#e65100','#00695c','#c62828','#0277bd','#558b2f','#ad1457','#f57f17'];
+const _g=id=>{try{return document.getElementById(id)}catch(e){return null}};
+const _t=(id,v)=>{const e=_g(id);if(e)e.textContent=v;};
+const _h=(id,v)=>{const e=_g(id);if(e)e.innerHTML=v;};
 
 function switchToTaxaAdm(){
   ['tableView','canvasView','dashView','adminView','iofView','hoView','agendaView','saldosView','portalSaldosView']
@@ -7046,10 +7062,11 @@ function taImport(input){
   const reader=new FileReader();
   reader.onload=async e=>{
     try{
-      const {read,utils}=await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
-      const wb=read(new Uint8Array(e.target.result),{type:'array'});
+      const XLSX_lib=await loadXLSX();
+      if(!XLSX_lib){toast('⚠ Erro ao carregar SheetJS');return;}
+      const wb=XLSX_lib.read(new Uint8Array(e.target.result),{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const raw=utils.sheet_to_json(ws,{header:1,defval:''});
+      const raw=XLSX_lib.utils.sheet_to_json(ws,{header:1,defval:''});
       let hdrIdx=raw.findIndex(r=>String(r[0]||'').includes('Data da receita'));
       if(hdrIdx<0)hdrIdx=0;
       const parsed=[];
@@ -7087,11 +7104,11 @@ function taImport(input){
       const cSel=document.getElementById('taFiltClass');
       gSel.innerHTML='<option value="">Todos gestores</option>'+gestores.map(g=>`<option>${g}</option>`).join('');
       cSel.innerHTML='<option value="">Todas classificações</option>'+classes.map(c=>`<option>${c}</option>`).join('');
-      document.getElementById('taFiltersBar').style.display='flex';
+      // filters now inline in header
       document.getElementById('taEmpty').style.display='none';
       document.getElementById('taDash').style.display='block';
-      document.getElementById('taActiveMes').textContent=lastMes;
-      document.getElementById('taRefLabel').textContent='Última atualização: '+new Date().toLocaleString('pt-BR');
+      _t('taActiveMes',lastMes);
+      _t('taRefLabel','Última atualização: '+new Date().toLocaleString('pt-BR'));
       taBuildSidebar();taApplyFilters();
       toast('✅ '+parsed.length+' registros — '+months.length+' meses');
     }catch(err){console.error(err);toast('⚠ Erro: '+err.message);}
@@ -7134,7 +7151,7 @@ function taSetMode(m){
 }
 window.taSetMode=taSetMode;
 
-function taSetMes(m){TA.selMes=m;document.getElementById('taActiveMes').textContent=m;taBuildSidebar();taApplyFilters();}
+function taSetMes(m){TA.selMes=m;_t('taActiveMes',m);taBuildSidebar();taApplyFilters();}
 window.taSetMes=taSetMes;
 
 function taSort(col){
@@ -7155,7 +7172,7 @@ function taBuildSidebar(){
 
 function makeBars(items,container,color){
   const max=items[0]?.value||1;
-  document.getElementById(container).innerHTML=items.map((f,i)=>`
+  el.innerHTML=items.map((f,i)=>`
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <div style="width:88px;font-size:11px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${f.name}">${f.name}</div>
       <div style="flex:1;height:8px;background:var(--sur2);border-radius:4px;overflow:hidden">
@@ -7218,11 +7235,11 @@ function taRender(){
   const topGest=agg('gestor').filter(g=>g.name&&g.name!=='0').slice(0,6);
   const clsDist=agg('classif').filter(c=>c.name&&c.name!=='0').slice(0,8);
 
-  document.getElementById('taTopFundosMes').textContent=TA.mode==='mes'?TA.selMes:'Período';
-  document.getElementById('taTopDevMes').textContent=TA.mode==='mes'?TA.selMes:'Período';
-  document.getElementById('taTopPagMes').textContent=TA.mode==='mes'?TA.selMes:'Período';
-  document.getElementById('taTopGestMes').textContent=TA.mode==='mes'?TA.selMes:'Período';
-  document.getElementById('taTableMes').textContent=TA.mode==='mes'?TA.selMes:'Período';
+  _t('taTopFundosMes',TA.mode==='mes'?TA.selMes:'Período');
+  _t('taTopDevMes',TA.mode==='mes'?TA.selMes:'Período');
+  _t('taTopPagMes',TA.mode==='mes'?TA.selMes:'Período');
+  _t('taTopGestMes',TA.mode==='mes'?TA.selMes:'Período');
+  _t('taTableMes',TA.mode==='mes'?TA.selMes:'Período');
 
   makeBars(topFundos,'taTopFundos');
   makeBars(topDev,'taTopDevedores','#c62828');
@@ -7320,6 +7337,7 @@ function taRenderTable(){
     if(el)el.textContent=TA.sortCol===c?(asc?'↑':'↓'):'';
   });
   const tbody=document.getElementById('taFundoTbody');
+  if(!tbody)return;
   const shown=rows.slice(0,100);
   tbody.innerHTML=shown.map(r=>`
     <tr style="border-bottom:0.5px solid var(--bdr)" onmouseenter="this.style.background='var(--sur2)'" onmouseleave="this.style.background=''">
@@ -7350,7 +7368,7 @@ window.taExportCSV=taExportCSV;
 let PS = { rows:[], dataRef:'' };
 
 function switchToPortalSaldos(){
-  ['tableView','canvasView','dashView','adminView','iofView','hoView','agendaView','saldosView']
+  ['tableView','canvasView','dashView','adminView','iofView','hoView','agendaView','saldosView','taxaAdmView']
     .forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
   document.getElementById('portalSaldosView').style.display='block';
   S.activeTab=''; renderTabs();
@@ -7384,10 +7402,11 @@ function psImport(input){
   const reader=new FileReader();
   reader.onload=async e=>{
     try{
-      const {read,utils}=await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
-      const wb=read(new Uint8Array(e.target.result),{type:'array'});
+      const XLSX_lib=await loadXLSX();
+      if(!XLSX_lib){toast('⚠ Erro ao carregar SheetJS');return;}
+      const wb=XLSX_lib.read(new Uint8Array(e.target.result),{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const data=utils.sheet_to_json(ws,{header:1,defval:''});
+      const data=XLSX_lib.utils.sheet_to_json(ws,{header:1,defval:''});
       const rows=[];
       data.forEach(row=>{
         const nome=String(row[0]||'').trim().replace(/_x0009_/g,'').trim();
@@ -8226,7 +8245,7 @@ if(document.readyState==='loading'){
 <!-- TAXA ADM VIEW -->
 <!-- TAXA ADM VIEW -->
 <!-- TAXA ADM VIEW -->
-<div id="taxaAdmView" style="display:none;flex:1;overflow-y:auto;background:var(--bg)">
+<div id="taxaAdmView" style="display:none;width:100%;overflow-y:auto;background:var(--bg)">
   <div style="padding:14px 18px;max-width:1600px;margin:0 auto">
 
     <!-- Header compacto -->
@@ -8357,7 +8376,7 @@ if(document.readyState==='loading'){
 </div>
 
 <!-- PORTAL SALDOS VIEW -->
-<div id="portalSaldosView" style="display:none;flex:1;overflow-y:auto;background:var(--bg)">
+<div id="portalSaldosView" style="display:none;width:100%;overflow-y:auto;background:var(--bg)">
   <div style="max-width:1400px;margin:0 auto;padding:24px 28px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
       <div>
@@ -8410,7 +8429,7 @@ if(document.readyState==='loading'){
   </div>
 </div>
 
-<div id="saldosView" style="display:none;flex:1;overflow-y:auto;background:var(--bg)">
+<div id="saldosView" style="display:none;width:100%;overflow-y:auto;background:var(--bg)">
   <div style="max-width:1400px;margin:0 auto;padding:24px 28px">
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
