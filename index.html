@@ -7038,24 +7038,44 @@ function loadXLSX(){
 }
 
 // ─── TAXA ADM DASHBOARD ───────────────────────────────────────
-let TA={data:null,filtered:null,mode:'all',selMes:null,sortCol:'val',sortAsc:false,
+let TA={data:null,filtered:null,mode:'all',selMes:null,
+        sortCol:'val',sortAsc:false,
         lineChart:null,donutChart:null,gaugeChart:null};
-const TA_COLORS=['#2e7d32','#1565c0','#6a1b9a','#e65100','#00695c','#c62828','#0277bd','#558b2f','#ad1457','#f57f17'];
-const _g=id=>{try{return document.getElementById(id)}catch(e){return null}};
-const _t=(id,v)=>{const e=_g(id);if(e)e.textContent=v;};
-const _h=(id,v)=>{const e=_g(id);if(e)e.innerHTML=v;};
+const TA_C=['#2e7d32','#1565c0','#6a1b9a','#e65100','#00695c','#c62828','#0277bd','#558b2f','#ad1457','#f57f17'];
+const taEl=id=>document.getElementById(id);
+const taSet=(id,v)=>{const e=taEl(id);if(e)e.textContent=v;};
+const taHtml=(id,v)=>{const e=taEl(id);if(e)e.innerHTML=v;};
+const taFmt=v=>{v=Number(v)||0;return'R$ '+(v>=1e6?(v/1e6).toFixed(2).replace('.',',')+'M':v>=1e3?(v/1e3).toFixed(1).replace('.',',')+'K':v.toFixed(0));};
+const taFull=v=>'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2});
 
 function switchToTaxaAdm(){
   ['tableView','canvasView','dashView','adminView','iofView','hoView','agendaView','saldosView','portalSaldosView']
-    .forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
-  document.getElementById('taxaAdmView').style.display='block';
+    .forEach(id=>{const e=taEl(id);if(e)e.style.display='none';});
+  taEl('taxaAdmView').style.display='block';
   S.activeTab='';renderTabs();
-  if(TA.data)taApplyFilters();
+  if(!TA.data)taLoadFirebase();else taApplyFilters();
 }
 window.switchToTaxaAdm=switchToTaxaAdm;
 
-const taFmt=v=>'R$ '+(v>=1e6?(v/1e6).toFixed(2).replace('.',',')+'M':v>=1e3?(v/1e3).toFixed(1).replace('.',',')+'K':Number(v).toFixed(0));
-const taFull=v=>'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2});
+function taLoadFirebase(){
+  if(!fbReady||!fbDb||!fbDocFn||!fbGet)return;
+  fbGet(fbDocFn(fbDb,'controle','taxa_adm')).then(snap=>{
+    if(snap.exists()){const d=snap.data();if(d&&d.parsed){TA.data=d;TA.selMes=d.lastMes;taPopulateFilters();taApplyFilters();taShowDash();}}
+  }).catch(e=>console.warn('taLoad err',e));
+}
+
+function taSaveFirebase(){
+  if(!TA.data||!fbReady||!fbDb||!fbDocFn||!fbSet)return;
+  fbSet(fbDocFn(fbDb,'controle','taxa_adm'),TA.data,{merge:false}).catch(e=>console.warn('taSave err',e));
+}
+
+function taShowDash(){
+  taEl('taEmpty').style.display='none';
+  taEl('taDash').style.display='block';
+  taSet('taActiveMes',TA.selMes||'—');
+  taSet('taRefLabel','Atualizado: '+(TA.data.importedAt||'—'));
+  taBuildSidebar();
+}
 
 function taImport(input){
   const file=input.files[0];if(!file)return;
@@ -7084,32 +7104,20 @@ function taImport(input){
       const sk=m=>{const p=m.split('.');return parseInt(p[1])*100+parseInt(p[0]);};
       const months=[...new Set(parsed.map(r=>r.mesRef))].sort((a,b)=>sk(a)-sk(b));
       const lastMes=months[months.length-1];
-      // Monthly agg
       const monthly=months.map(mes=>{
         const mr=parsed.filter(r=>r.mesRef===mes);
         const pago=mr.filter(r=>r.status==='PAGO').reduce((a,r)=>a+r.val,0);
         const pend=mr.filter(r=>r.status==='PENDENTE').reduce((a,r)=>a+r.val,0);
         return{mes,total:pago+pend,pago,pend,count:mr.length};
       });
-      // All totals
       const allTotal=parsed.reduce((a,r)=>a+r.val,0);
       const allPago=parsed.filter(r=>r.status==='PAGO').reduce((a,r)=>a+r.val,0);
-      TA.data={parsed,months,lastMes,monthly,allTotal,allPago,allPend:allTotal-allPago,allPct:allTotal>0?parseFloat((allPago/allTotal*100).toFixed(2)):0};
-      TA.selMes=lastMes;
-      TA.mode='all';
-      // Populate filter dropdowns
-      const gestores=[...new Set(parsed.map(r=>r.gestor).filter(g=>g&&g!=='0'))].sort();
-      const classes=[...new Set(parsed.map(r=>r.classif).filter(c=>c&&c!=='0'))].sort();
-      const gSel=document.getElementById('taFiltGestor');
-      const cSel=document.getElementById('taFiltClass');
-      gSel.innerHTML='<option value="">Todos gestores</option>'+gestores.map(g=>`<option>${g}</option>`).join('');
-      cSel.innerHTML='<option value="">Todas classificações</option>'+classes.map(c=>`<option>${c}</option>`).join('');
-      // filters now inline in header
-      document.getElementById('taEmpty').style.display='none';
-      document.getElementById('taDash').style.display='block';
-      _t('taActiveMes',lastMes);
-      _t('taRefLabel','Última atualização: '+new Date().toLocaleString('pt-BR'));
-      taBuildSidebar();taApplyFilters();
+      TA.data={parsed,months,lastMes,monthly,
+               allTotal,allPago,allPend:allTotal-allPago,
+               allPct:allTotal>0?parseFloat((allPago/allTotal*100).toFixed(2)):0,
+               importedAt:new Date().toLocaleString('pt-BR')};
+      TA.selMes=lastMes;TA.mode='all';
+      taPopulateFilters();taSaveFirebase();taShowDash();taApplyFilters();
       toast('✅ '+parsed.length+' registros — '+months.length+' meses');
     }catch(err){console.error(err);toast('⚠ Erro: '+err.message);}
   };
@@ -7117,13 +7125,22 @@ function taImport(input){
 }
 window.taImport=taImport;
 
+function taPopulateFilters(){
+  if(!TA.data)return;
+  const gestores=[...new Set(TA.data.parsed.map(r=>r.gestor).filter(g=>g&&g!=='0'))].sort();
+  const classes=[...new Set(TA.data.parsed.map(r=>r.classif).filter(c=>c&&c!=='0'))].sort();
+  const gs=taEl('taFiltGestor');const cs=taEl('taFiltClass');
+  if(gs)gs.innerHTML='<option value="">Todos gestores</option>'+gestores.map(g=>`<option>${g}</option>`).join('');
+  if(cs)cs.innerHTML='<option value="">Todas classif.</option>'+classes.map(c=>`<option>${c}</option>`).join('');
+}
+
 function taApplyFilters(){
   if(!TA.data)return;
-  const gestor=document.getElementById('taFiltGestor')?.value||'';
-  const classif=document.getElementById('taFiltClass')?.value||'';
-  const status=document.getElementById('taFiltStatus')?.value||'';
-  const fundo=(document.getElementById('taFiltFundo')?.value||'').toLowerCase();
-  let rows=TA.data.parsed.filter(r=>{
+  const gestor=(taEl('taFiltGestor')||{}).value||'';
+  const classif=(taEl('taFiltClass')||{}).value||'';
+  const status=(taEl('taFiltStatus')||{}).value||'';
+  const fundo=((taEl('taFiltFundo')||{}).value||'').toLowerCase();
+  TA.filtered=TA.data.parsed.filter(r=>{
     if(TA.mode==='mes'&&r.mesRef!==TA.selMes)return false;
     if(gestor&&r.gestor!==gestor)return false;
     if(classif&&r.classif!==classif)return false;
@@ -7131,32 +7148,36 @@ function taApplyFilters(){
     if(fundo&&!r.fundo.toLowerCase().includes(fundo))return false;
     return true;
   });
-  TA.filtered=rows;
   taRender();
 }
 window.taApplyFilters=taApplyFilters;
 
 function taResetFilters(){
-  ['taFiltGestor','taFiltClass','taFiltStatus'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const fi=document.getElementById('taFiltFundo');if(fi)fi.value='';
+  ['taFiltGestor','taFiltClass','taFiltStatus'].forEach(id=>{const e=taEl(id);if(e)e.value='';});
+  const fi=taEl('taFiltFundo');if(fi)fi.value='';
   taApplyFilters();
 }
 window.taResetFilters=taResetFilters;
 
 function taSetMode(m){
   TA.mode=m;
-  document.getElementById('taBtnAll').className='btn'+(m==='all'?' btn-p':'');
-  document.getElementById('taBtnMes').className='btn'+(m==='mes'?' btn-p':'');
+  const ba=taEl('taBtnAll'),bm=taEl('taBtnMes');
+  if(ba)ba.className='btn'+(m==='all'?' btn-p':'');
+  if(bm)bm.className='btn'+(m==='mes'?' btn-p':'');
   taApplyFilters();
 }
 window.taSetMode=taSetMode;
 
-function taSetMes(m){TA.selMes=m;_t('taActiveMes',m);taBuildSidebar();taApplyFilters();}
+function taSetMes(m){
+  TA.selMes=m;
+  taSet('taActiveMes',m);
+  taBuildSidebar();taApplyFilters();
+}
 window.taSetMes=taSetMes;
 
 function taSort(col){
   if(TA.sortCol===col)TA.sortAsc=!TA.sortAsc;
-  else{TA.sortCol=col;TA.sortAsc=col==='fundo'||col==='gestor'||col==='classif';}
+  else{TA.sortCol=col;TA.sortAsc=(col!=='val');}
   taRenderTable();
 }
 window.taSort=taSort;
@@ -7164,21 +7185,21 @@ window.taSort=taSort;
 function taBuildSidebar(){
   if(!TA.data)return;
   const months=[...TA.data.months].reverse().slice(0,18);
-  document.getElementById('taSidebar').innerHTML=
-    '<span style="font-size:10px;color:var(--tx3);font-weight:600;align-self:center;margin-right:2px">MÊS:</span>'+
-    months.map(m=>`<span onclick="taSetMes('${m}')" style="padding:3px 9px;border-radius:20px;font-size:11px;cursor:pointer;font-family:monospace;border:1px solid ${TA.selMes===m?'var(--blue)':'var(--bdr)'};background:${TA.selMes===m?'var(--blue)':'var(--sur2)'};color:${TA.selMes===m?'#fff':'var(--tx2)'};transition:all .15s">${m}</span>`).join('');
-  document.getElementById('taFooter').textContent=TA.data.months.length+' meses · '+TA.data.parsed.length+' registros totais';
+  taHtml('taSidebar',
+    '<span style="font-size:10px;color:var(--tx3);font-weight:600;align-self:center;margin-right:4px">MÊS:</span>'+
+    months.map(m=>`<span onclick="taSetMes('${m}')" style="padding:3px 9px;border-radius:20px;font-size:11px;cursor:pointer;font-family:monospace;border:1px solid ${TA.selMes===m?'var(--blue)':'var(--bdr)'};background:${TA.selMes===m?'var(--blue)':'var(--sur2)'};color:${TA.selMes===m?'#fff':'var(--tx2)'}">${m}</span>`).join('')
+  );
+  taSet('taFooter',TA.data.months.length+' meses · '+TA.data.parsed.length+' registros totais');
 }
 
-function makeBars(items,container,color){
-  const max=items[0]?.value||1;
+function taBars(items,container,color){
+  const el=taEl(container);if(!el||!items||!items.length)return;
+  const max=items[0].value||1;
   el.innerHTML=items.map((f,i)=>`
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <div style="width:88px;font-size:11px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${f.name}">${f.name}</div>
-      <div style="flex:1;height:8px;background:var(--sur2);border-radius:4px;overflow:hidden">
-        <div style="width:${(f.value/max*100).toFixed(0)}%;height:100%;background:${color||TA_COLORS[i%TA_COLORS.length]};border-radius:3px"></div>
-      </div>
-      <div style="font-size:11px;color:var(--tx2);font-family:monospace;width:62px;text-align:right;flex-shrink:0">${taFmt(f.value)}</div>
+    <div class="ta-bar">
+      <div class="ta-bar-nm" title="${f.name}">${f.name}</div>
+      <div class="ta-bar-trk"><div class="ta-bar-fill" style="width:${(f.value/max*100).toFixed(0)}%;background:${color||TA_C[i%TA_C.length]}"></div></div>
+      <div class="ta-bar-val">${taFmt(f.value)}</div>
     </div>`).join('');
 }
 
@@ -7190,133 +7211,90 @@ function taRender(){
   const pend=rows.filter(r=>r.status==='PENDENTE').reduce((a,r)=>a+r.val,0);
   const pct=total>0?parseFloat((pago/total*100).toFixed(2)):0;
   const mo=TA.data.monthly;
-  const prev=mo[mo.length-2],cur=mo[mo.length-1];
-  const growth=prev?((cur.total-prev.total)/prev.total*100).toFixed(1):0;
-  // Fundos únicos
-  const fundosUnicos=new Set(rows.map(r=>r.fundo)).size;
-  const gestoresUnicos=new Set(rows.map(r=>r.gestor).filter(g=>g&&g!=='0')).size;
-  // Ticket médio
-  const ticket=fundosUnicos>0?total/fundosUnicos:0;
-  // YoY se tiver 12+ meses
+  const prev=mo.length>=2?mo[mo.length-2]:null;
+  const cur=mo[mo.length-1];
+  const growth=prev?((cur.total-prev.total)/prev.total*100).toFixed(1):'0';
   const yoy=mo.length>=13?((cur.total-mo[mo.length-13].total)/mo[mo.length-13].total*100).toFixed(1):null;
+  const fundosU=new Set(rows.map(r=>r.fundo)).size;
+  const gestU=new Set(rows.map(r=>r.gestor).filter(g=>g&&g!=='0')).size;
+  const ticket=fundosU>0?total/fundosU:0;
 
-  // KPIs — 9 in one compact row
+  // KPIs
   const kpis=[
-    {lbl:'Total Cobrado',val:taFmt(total),sub:TA.mode==='mes'?TA.selMes:'Período filtrado',color:'var(--tx)',top:'#2e7d32'},
-    {lbl:'Valor Recebido',val:taFmt(pago),sub:'✓ Pago',color:'#2e7d32',top:'#2e7d32'},
-    {lbl:'Valor em Aberto',val:taFmt(pend),sub:'Pendente',color:pend>0?'#c62828':'var(--tx3)',top:pend>0?'#c62828':'var(--bdr)'},
-    {lbl:'% Recebido',val:pct+'%',sub:'Taxa de recebimento',color:pct>=90?'#2e7d32':pct>=75?'#e65100':'#c62828',top:pct>=90?'#2e7d32':pct>=75?'#e65100':'#c62828'},
-    {lbl:'Crescimento Mensal',val:(growth>0?'+':'')+growth+'%',sub:prev.mes+' → '+cur.mes,color:parseFloat(growth)>0?'#2e7d32':'#c62828',top:'#1565c0'},
+    {l:'Total Cobrado',v:taFmt(total),s:TA.mode==='mes'?TA.selMes:'Período',c:'var(--tx)',t:'#2e7d32'},
+    {l:'Valor Recebido',v:taFmt(pago),s:'✓ Pago',c:'#2e7d32',t:'#2e7d32'},
+    {l:'Valor em Aberto',v:taFmt(pend),s:'Pendente',c:pend>0?'#c62828':'var(--tx3)',t:pend>0?'#c62828':'#aaa'},
+    {l:'% Recebido',v:pct+'%',s:'Recebimento',c:pct>=90?'#2e7d32':pct>=75?'#e65100':'#c62828',t:pct>=90?'#2e7d32':pct>=75?'#e65100':'#c62828'},
+    {l:'Crescimento Mensal',v:(growth>0?'+':'')+growth+'%',s:prev?(prev.mes+' → '+cur.mes):cur.mes,c:parseFloat(growth)>=0?'#2e7d32':'#c62828',t:'#1565c0'},
+    {l:'Crescimento Anual',v:yoy!=null?((parseFloat(yoy)>=0?'+':'')+yoy+'%'):'N/D',s:yoy!=null?(mo[mo.length-13].mes+' → '+cur.mes):'< 12 meses',c:yoy&&parseFloat(yoy)>=0?'#2e7d32':'#c62828',t:'#e65100'},
+    {l:'Fundos no Período',v:fundosU,s:'Únicos',c:'var(--tx)',t:'#00695c'},
+    {l:'Gestores Ativos',v:gestU,s:'Com cobranças',c:'var(--tx)',t:'#6a1b9a'},
+    {l:'Ticket Médio/Fundo',v:taFmt(ticket),s:'Receita média',c:'var(--tx)',t:'#558b2f'},
   ];
-  const k2=[
-    {lbl:'Fundos no Período',val:fundosUnicos,sub:'Fundos únicos',color:'var(--tx)',top:'#2e7d32'},
-    {lbl:'Gestores Ativos',val:gestoresUnicos,sub:'Com cobranças',color:'var(--tx)',top:'#1565c0'},
-    {lbl:'Ticket Médio / Fundo',val:taFmt(ticket),sub:'Receita média por fundo',color:'var(--tx)',top:'#6a1b9a'},
-    {lbl:'Crescimento Anual (YoY)',val:yoy!=null?(parseFloat(yoy)>0?'+':'')+yoy+'%':'N/D',sub:yoy!=null?mo[mo.length-13].mes+' → '+cur.mes:'Menos de 12 meses',color:yoy&&parseFloat(yoy)>0?'#2e7d32':yoy?'#c62828':'var(--tx3)',top:'#e65100'},
-  ];
-  const allKpis=[...kpis,...k2];
-  document.getElementById('taKpis').innerHTML=allKpis.map(k=>`
+  taHtml('taKpis',kpis.map(k=>`
     <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:9px;padding:10px 12px;position:relative;overflow:hidden">
-      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${k.top}"></div>
-      <div style="font-size:8px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k.lbl}</div>
-      <div style="font-size:16px;font-weight:700;color:${k.color};font-variant-numeric:tabular-nums;white-space:nowrap">${k.val}</div>
-      <div style="font-size:9px;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k.sub}</div>
-    </div>`).join('');
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${k.t}"></div>
+      <div style="font-size:8px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.l}</div>
+      <div style="font-size:16px;font-weight:700;color:${k.c};font-variant-numeric:tabular-nums;white-space:nowrap">${k.v}</div>
+      <div style="font-size:9px;color:var(--tx3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.s}</div>
+    </div>`).join(''));
 
-  // Build aggregates from filtered rows
-  const agg=(key,statusFilter)=>{
-    const m={};
-    rows.filter(r=>!statusFilter||r.status===statusFilter).forEach(r=>m[r[key]]=(m[r[key]]||0)+r.val);
-    return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>({name,value}));
-  };
-  const topFundos=agg('fundo');
-  const topDev=agg('fundo','PENDENTE').slice(0,8);
-  const topPag=agg('fundo','PAGO').slice(0,8);
-  const topGest=agg('gestor').filter(g=>g.name&&g.name!=='0').slice(0,6);
-  const clsDist=agg('classif').filter(c=>c.name&&c.name!=='0').slice(0,8);
+  const per=TA.mode==='mes'?TA.selMes:'Período';
+  taSet('taChartPeriod',mo[0].mes+' → '+cur.mes);
+  taSet('taTopDevMes',per);taSet('taTopPagMes',per);
+  taSet('taTopGestMes',per);taSet('taTableMes',per);
 
-  _t('taTopFundosMes',TA.mode==='mes'?TA.selMes:'Período');
-  _t('taTopDevMes',TA.mode==='mes'?TA.selMes:'Período');
-  _t('taTopPagMes',TA.mode==='mes'?TA.selMes:'Período');
-  _t('taTopGestMes',TA.mode==='mes'?TA.selMes:'Período');
-  _t('taTableMes',TA.mode==='mes'?TA.selMes:'Período');
+  // Aggregations
+  const agg=(key,sf)=>{const m={};rows.filter(r=>!sf||r.status===sf).forEach(r=>m[r[key]]=(m[r[key]]||0)+r.val);return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>({name,value}));};
+  taBars(agg('fundo','PENDENTE').slice(0,7),'taTopDevedores','#c62828');
+  taBars(agg('fundo','PAGO').slice(0,7),'taTopPagadores','#2e7d32');
+  taBars(agg('gestor').filter(g=>g.name&&g.name!=='0').slice(0,6),'taTopGestores');
 
-  makeBars(topFundos,'taTopFundos');
-  makeBars(topDev,'taTopDevedores','#c62828');
-  makeBars(topPag,'taTopPagadores','#2e7d32');
-  makeBars(topGest,'taTopGestores');
-
-  // Inadimplência por classificação
-  const inadMap={};
-  const totalMap={};
-  rows.forEach(r=>{
-    if(!r.classif||r.classif==='0')return;
-    totalMap[r.classif]=(totalMap[r.classif]||0)+r.val;
-    if(r.status==='PENDENTE')inadMap[r.classif]=(inadMap[r.classif]||0)+r.val;
-  });
-  const inadList=Object.keys(totalMap).map(c=>({name:c,pct:totalMap[c]>0?(inadMap[c]||0)/totalMap[c]*100:0}))
-    .filter(c=>c.pct>0).sort((a,b)=>b.pct-a.pct).slice(0,8);
-  document.getElementById('taInadClass').innerHTML=inadList.length?inadList.map(c=>`
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <div style="width:70px;font-size:11px;color:var(--tx2);flex-shrink:0">${c.name}</div>
-      <div style="flex:1;height:8px;background:var(--sur2);border-radius:4px;overflow:hidden">
-        <div style="width:${Math.min(100,c.pct).toFixed(0)}%;height:100%;background:${c.pct>50?'#c62828':c.pct>25?'#e65100':'#e65100'};border-radius:3px"></div>
-      </div>
-      <div style="font-size:11px;font-family:monospace;color:${c.pct>50?'#c62828':c.pct>25?'#e65100':'var(--tx2)'};width:38px;text-align:right">${c.pct.toFixed(1)}%</div>
-    </div>`).join(''):'<div style="font-size:12px;color:var(--tx3)">Sem inadimplência no período ✅</div>';
-
-  // Ticket médio por gestor
-  const tickMap={};const cntMap={};
-  rows.forEach(r=>{if(!r.gestor||r.gestor==='0')return;tickMap[r.gestor]=(tickMap[r.gestor]||0)+r.val;cntMap[r.gestor]=(cntMap[r.gestor]||0)+1;});
-  const tickList=Object.keys(tickMap).map(g=>({name:g,ticket:tickMap[g]/cntMap[g],total:tickMap[g]}))
-    .sort((a,b)=>b.ticket-a.ticket).slice(0,7);
-  const maxTick=tickList[0]?.ticket||1;
-  document.getElementById('taTicketGestor').innerHTML=tickList.map((g,i)=>`
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <div style="width:80px;font-size:11px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${g.name}">${g.name}</div>
-      <div style="flex:1;height:5px;background:var(--sur2);border-radius:3px;overflow:hidden">
-        <div style="width:${(g.ticket/maxTick*100).toFixed(0)}%;height:100%;background:${TA_COLORS[i%TA_COLORS.length]};border-radius:3px"></div>
-      </div>
-      <div style="font-size:11px;font-family:monospace;color:var(--tx2);width:62px;text-align:right">${taFmt(g.ticket)}</div>
-    </div>`).join('');
-
-  // Line chart (always full monthly)
-  if(TA.lineChart)TA.lineChart.destroy();
-  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
-  const gc=isDark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.05)';
-  const tc=isDark?'#666':'#999';
-  const mo2=TA.data.monthly;
-  TA.lineChart=new Chart(document.getElementById('taChartLine'),{
-    type:'line',
-    data:{labels:mo2.map(m=>m.mes),datasets:[
-      {label:'Total',data:mo2.map(m=>m.total),borderColor:'#2e7d32',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#2e7d32',fill:true,backgroundColor:isDark?'rgba(46,125,50,0.08)':'rgba(46,125,50,0.06)',tension:0.35},
-      {label:'Pago',data:mo2.map(m=>m.pago),borderColor:'#1565c0',borderWidth:2,pointRadius:2.5,borderDash:[],fill:false,tension:0.35},
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:tc,font:{size:10},boxWidth:10}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${taFull(c.parsed.y)}`},backgroundColor:isDark?'#1e1e1e':'#fff',titleColor:isDark?'#fff':'#111',bodyColor:isDark?'#aaa':'#555',borderColor:isDark?'#333':'#e0e0e0',borderWidth:1}},scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{color:gc},border:{display:false}},y:{ticks:{color:tc,font:{size:9},callback:v=>taFmt(v)},grid:{color:gc},border:{display:false}}}}
-  });
+  // Inadimplência
+  const totalMap={};const inadMap={};
+  rows.forEach(r=>{if(!r.classif||r.classif==='0')return;totalMap[r.classif]=(totalMap[r.classif]||0)+r.val;if(r.status==='PENDENTE')inadMap[r.classif]=(inadMap[r.classif]||0)+r.val;});
+  const inadList=Object.keys(totalMap).map(c=>({name:c,pct:totalMap[c]>0?((inadMap[c]||0)/totalMap[c]*100):0})).filter(c=>c.pct>0).sort((a,b)=>b.pct-a.pct).slice(0,7);
+  taHtml('taInadClass',inadList.length?inadList.map(c=>`
+    <div class="ta-bar">
+      <div class="ta-bar-nm">${c.name}</div>
+      <div class="ta-bar-trk"><div class="ta-bar-fill" style="width:${Math.min(100,c.pct).toFixed(0)}%;background:${c.pct>50?'#c62828':'#e65100'}"></div></div>
+      <div class="ta-bar-val" style="color:${c.pct>50?'#c62828':'#e65100'}">${c.pct.toFixed(1)}%</div>
+    </div>`).join(''):'<div style="font-size:11px;color:#2e7d32;margin-top:4px">✅ Sem inadimplência</div>');
 
   // Donut
+  const clsDist=agg('classif').filter(c=>c.name&&c.name!=='0').slice(0,8);
   const clsTotal=clsDist.reduce((a,c)=>a+c.value,0);
-  document.getElementById('taDonutLegend').innerHTML=clsDist.slice(0,5).map((c,i)=>`
-    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;font-size:10px;color:var(--tx2)">
-      <div style="width:6px;height:6px;border-radius:2px;background:${TA_COLORS[i]};flex-shrink:0"></div>
-      ${c.name}<span style="margin-left:auto;font-family:monospace;font-size:10px;color:var(--tx3)">${(c.value/clsTotal*100).toFixed(0)}%</span>
-    </div>`).join('');
-  if(TA.donutChart)TA.donutChart.destroy();
-  TA.donutChart=new Chart(document.getElementById('taChartDonut'),{
-    type:'doughnut',
-    data:{labels:clsDist.map(c=>c.name),datasets:[{data:clsDist.map(c=>c.value),backgroundColor:TA_COLORS,borderWidth:0,hoverOffset:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${(c.parsed/clsTotal*100).toFixed(1)}%`},backgroundColor:isDark?'#1e1e1e':'#fff',titleColor:isDark?'#fff':'#111',bodyColor:isDark?'#aaa':'#555',borderColor:isDark?'#333':'#e0e0e0',borderWidth:1}},cutout:'70%'}
+  taHtml('taDonutLegend',clsDist.slice(0,5).map((c,i)=>`
+    <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;font-size:10px;color:var(--tx2)">
+      <div style="width:6px;height:6px;border-radius:2px;background:${TA_C[i]};flex-shrink:0"></div>
+      ${c.name}<span style="margin-left:auto;font-family:monospace;color:var(--tx3)">${(c.value/clsTotal*100).toFixed(0)}%</span>
+    </div>`).join(''));
+
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  const gc=isDark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.05)';
+  const tc=isDark?'#555':'#aaa';
+  const ttopts={backgroundColor:isDark?'#1e1e1e':'#fff',titleColor:isDark?'#fff':'#111',bodyColor:isDark?'#aaa':'#555',borderColor:isDark?'#333':'#e0e0e0',borderWidth:1};
+
+  if(TA.lineChart)TA.lineChart.destroy();
+  TA.lineChart=new Chart(taEl('taChartLine'),{type:'line',
+    data:{labels:mo.map(m=>m.mes),datasets:[
+      {label:'Total',data:mo.map(m=>m.total),borderColor:'#2e7d32',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#2e7d32',fill:true,backgroundColor:isDark?'rgba(46,125,50,0.08)':'rgba(46,125,50,0.05)',tension:0.35},
+      {label:'Pago',data:mo.map(m=>m.pago),borderColor:'#1565c0',borderWidth:2,pointRadius:2,fill:false,tension:0.35}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:tc,font:{size:10},boxWidth:10}},tooltip:{...ttopts,callbacks:{label:c=>` ${c.dataset.label}: ${taFull(c.parsed.y)}`}}},
+      scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{color:gc},border:{display:false}},y:{ticks:{color:tc,font:{size:9},callback:v=>taFmt(v)},grid:{color:gc},border:{display:false}}}}
   });
 
-  // Gauge
+  if(TA.donutChart)TA.donutChart.destroy();
+  TA.donutChart=new Chart(taEl('taChartDonut'),{type:'doughnut',
+    data:{labels:clsDist.map(c=>c.name),datasets:[{data:clsDist.map(c=>c.value),backgroundColor:TA_C,borderWidth:0,hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...ttopts,callbacks:{label:c=>` ${c.label}: ${(c.parsed/clsTotal*100).toFixed(1)}%`}}},cutout:'70%'}
+  });
+
   const gc2=pct>=90?'#2e7d32':pct>=75?'#e65100':'#c62828';
-  document.getElementById('taGaugeVal').textContent=pct+'%';
-  document.getElementById('taGaugeVal').style.color=gc2;
+  const gv=taEl('taGaugeVal');if(gv){gv.textContent=pct+'%';gv.style.color=gc2;}
   if(TA.gaugeChart)TA.gaugeChart.destroy();
-  TA.gaugeChart=new Chart(document.getElementById('taChartGauge'),{
-    type:'doughnut',
-    data:{labels:['Pago','Em aberto'],datasets:[{data:[pct,100-pct],backgroundColor:[gc2,isDark?'#2a2a2a':'#f0f0f0'],borderWidth:0}]},
+  TA.gaugeChart=new Chart(taEl('taChartGauge'),{type:'doughnut',
+    data:{labels:['Pago','Aberto'],datasets:[{data:[pct,100-pct],backgroundColor:[gc2,isDark?'#2a2a2a':'#f0f0f0'],borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,rotation:-90,circumference:180,plugins:{legend:{display:false},tooltip:{enabled:false}},cutout:'72%'}
   });
 
@@ -7325,44 +7303,72 @@ function taRender(){
 
 function taRenderTable(){
   if(!TA.filtered)return;
+  const tbody=taEl('taFundoTbody');if(!tbody)return;
   const rows=[...TA.filtered];
   const col=TA.sortCol,asc=TA.sortAsc;
   rows.sort((a,b)=>{
-    const va=col==='val'?a.val:(a[col]||'').toString().toLowerCase();
-    const vb=col==='val'?b.val:(b[col]||'').toString().toLowerCase();
+    const va=col==='val'?a.val:(a[col]||'').toLowerCase();
+    const vb=col==='val'?b.val:(b[col]||'').toLowerCase();
     return asc?(va>vb?1:va<vb?-1:0):(va<vb?1:va>vb?-1:0);
   });
-  ['fundo','gestor','classif','val'].forEach(c=>{
-    const el=document.getElementById('taSort'+c.charAt(0).toUpperCase()+c.slice(1));
-    if(el)el.textContent=TA.sortCol===c?(asc?'↑':'↓'):'';
+  ['fundo','gestor','classif','mesRef','val'].forEach(c=>{
+    const e=taEl('taSort'+c.charAt(0).toUpperCase()+c.slice(1));
+    if(e)e.textContent=TA.sortCol===c?(asc?'↑':'↓'):'';
   });
-  const tbody=document.getElementById('taFundoTbody');
-  if(!tbody)return;
-  const shown=rows.slice(0,100);
-  tbody.innerHTML=shown.map(r=>`
-    <tr style="border-bottom:0.5px solid var(--bdr)" onmouseenter="this.style.background='var(--sur2)'" onmouseleave="this.style.background=''">
-      <td style="padding:7px 10px;font-size:12px;color:var(--tx);font-weight:500;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.fundo}">${r.fundo}</td>
-      <td style="padding:7px 10px;font-size:11px;color:var(--tx2)">${r.gestor||'—'}</td>
-      <td style="padding:7px 10px;font-size:11px;color:var(--tx3)">${r.classif||'—'}</td>
-      <td style="padding:7px 10px;font-size:12px;font-family:monospace;text-align:right;color:var(--tx);font-variant-numeric:tabular-nums">${taFull(r.val)}</td>
-      <td style="padding:7px 10px;text-align:center">
-        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${r.status==='PAGO'?'#e8f5e9':r.status==='PENDENTE'?'#fce8e8':'var(--sur2)'};color:${r.status==='PAGO'?'#2e7d32':r.status==='PENDENTE'?'#c62828':'var(--tx3)'}">${r.status||'—'}</span>
+  const shown=rows.slice(0,150);
+  tbody.innerHTML=shown.map((r,idx)=>{
+    const ri=TA.data.parsed.indexOf(r);
+    return`<tr style="border-bottom:0.5px solid var(--bdr)" onmouseenter="this.style.background='var(--sur2)'" onmouseleave="this.style.background=''">
+      <td style="padding:5px 8px"><input class="ta-edit-inp" value="${r.fundo}" onblur="taEditRow(${ri},'fundo',this.value)" onclick="event.stopPropagation()"></td>
+      <td style="padding:5px 8px"><input class="ta-edit-inp" value="${r.gestor||''}" onblur="taEditRow(${ri},'gestor',this.value)" onclick="event.stopPropagation()"></td>
+      <td style="padding:5px 8px"><input class="ta-edit-inp" value="${r.classif||''}" onblur="taEditRow(${ri},'classif',this.value)" onclick="event.stopPropagation()"></td>
+      <td style="padding:5px 8px"><input class="ta-edit-inp" style="width:60px;font-family:monospace" value="${r.mesRef}" onblur="taEditRow(${ri},'mesRef',this.value)" onclick="event.stopPropagation()"></td>
+      <td style="padding:5px 8px;text-align:right"><input class="ta-edit-inp" style="text-align:right;font-family:monospace;width:80px" value="${r.val.toFixed(2)}" onblur="taEditRow(${ri},'val',this.value)" onclick="event.stopPropagation()"></td>
+      <td style="padding:5px 8px;text-align:center">
+        <select class="ta-edit-inp" style="width:80px;text-align:center" onchange="taEditRow(${ri},'status',this.value)" onclick="event.stopPropagation()">
+          <option${r.status==='PAGO'?' selected':''}>PAGO</option>
+          <option${r.status==='PENDENTE'?' selected':''}>PENDENTE</option>
+        </select>
       </td>
-    </tr>`).join('');
-  document.getElementById('taTableFooter').textContent=`${shown.length} de ${rows.length} registros${rows.length>100?' (mostrando 100)':''}`;
+      <td style="padding:5px 4px;text-align:center"><button onclick="taDeleteRow(${ri})" style="background:none;border:none;cursor:pointer;color:var(--tx3);font-size:11px;padding:2px" title="Remover">✕</button></td>
+    </tr>`;
+  }).join('');
+  taSet('taTableFooter',shown.length+' de '+rows.length+' registros');
 }
 
+function taEditRow(ri,field,val){
+  if(!TA.data||ri<0||ri>=TA.data.parsed.length)return;
+  TA.data.parsed[ri][field]=field==='val'?(parseFloat(val)||0):val;
+  taSaveFirebase();taApplyFilters();
+}
+window.taEditRow=taEditRow;
+
+function taDeleteRow(ri){
+  if(!TA.data||ri<0)return;
+  TA.data.parsed.splice(ri,1);
+  taSaveFirebase();taApplyFilters();
+}
+window.taDeleteRow=taDeleteRow;
+
+function taAddRow(){
+  if(!TA.data)return;
+  const mes=TA.mode==='mes'?TA.selMes:(TA.data.lastMes||'');
+  TA.data.parsed.unshift({fundo:'Novo Fundo',gestor:'',classif:'',mesRef:mes,status:'PENDENTE',val:0});
+  taSaveFirebase();taApplyFilters();
+}
+window.taAddRow=taAddRow;
+
 function taExportCSV(){
-  if(!TA.filtered||!TA.filtered.length){toast('Nenhum dado para exportar');return;}
+  if(!TA.filtered||!TA.filtered.length){toast('Nenhum dado');return;}
   const h='Fundo;Gestor;Classificação;Mês Ref;Status;Valor';
-  const lines=TA.filtered.map(r=>[r.fundo,r.gestor,r.classif,r.mesRef,r.status,Number(r.val).toFixed(2).replace('.',',')].join(';'));
-  const csv='\uFEFF'+h+'\n'+lines.join('\n');
+  const lines=TA.filtered.map(r=>[r.fundo,r.gestor,r.classif,r.mesRef,r.status,r.val.toFixed(2).replace('.',',')].join(';'));
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.href=URL.createObjectURL(new Blob(['\uFEFF'+h+'\n'+lines.join('\n')],{type:'text/csv;charset=utf-8'}));
   a.download='taxa_adm_'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();toast('✅ CSV exportado!');
 }
 window.taExportCSV=taExportCSV;
+
 
 // ─── PORTAL DE SALDOS ─────────────────────────────────────────
 let PS = { rows:[], dataRef:'' };
@@ -8245,135 +8251,129 @@ if(document.readyState==='loading'){
 <!-- TAXA ADM VIEW -->
 <!-- TAXA ADM VIEW -->
 <!-- TAXA ADM VIEW -->
+<!-- TAXA ADM VIEW -->
 <div id="taxaAdmView" style="display:none;width:100%;overflow-y:auto;background:var(--bg)">
-  <div style="padding:14px 18px;max-width:1600px;margin:0 auto">
+<div style="max-width:1600px;margin:0 auto;padding:16px 20px">
 
-    <!-- Header compacto -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div>
-          <span style="font-size:16px;font-weight:700;color:var(--tx)">📈 Taxa de Administração</span>
-          <span id="taRefLabel" style="font-size:11px;color:var(--tx3);margin-left:10px">—</span>
-        </div>
-        <span id="taActiveMes" style="font-size:11px;font-family:monospace;background:var(--sur2);border:1px solid var(--bdr);color:var(--tx2);padding:3px 9px;border-radius:5px">—</span>
-        <button class="btn btn-p" id="taBtnAll" onclick="taSetMode('all')" style="font-size:11px;padding:4px 10px">Acumulado</button>
-        <button class="btn" id="taBtnMes" onclick="taSetMode('mes')" style="font-size:11px;padding:4px 10px">Mês</button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <select id="taFiltGestor" onchange="taApplyFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:11px;font-family:inherit;outline:none"><option value="">Todos gestores</option></select>
-        <select id="taFiltClass" onchange="taApplyFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:11px;font-family:inherit;outline:none"><option value="">Todas classif.</option></select>
-        <select id="taFiltStatus" onchange="taApplyFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:11px;font-family:inherit;outline:none"><option value="">Todos status</option><option value="PAGO">Pago</option><option value="PENDENTE">Pendente</option></select>
-        <input type="text" id="taFiltFundo" oninput="taApplyFilters()" placeholder="🔍 Fundo..." style="padding:4px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:11px;font-family:inherit;outline:none;width:130px">
-        <button class="btn" onclick="taResetFilters()" style="font-size:11px;padding:4px 8px">✕</button>
-        <button class="btn" onclick="document.getElementById('taxaAdmFileInp').click()" style="font-size:11px;padding:4px 10px">📥 Excel</button>
-        <button class="btn" onclick="taExportCSV()" style="font-size:11px;padding:4px 10px">⬇ CSV</button>
-        <input type="file" id="taxaAdmFileInp" accept=".xlsx,.xls" style="display:none" onchange="taImport(this)">
-      </div>
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:16px;font-weight:700;color:var(--tx)">📈 Taxa ADM</span>
+      <span id="taRefLabel" style="font-size:11px;color:var(--tx3)">—</span>
+      <span id="taActiveMes" style="font-size:11px;font-family:monospace;background:var(--sur2);border:1px solid var(--bdr);color:var(--tx2);padding:3px 9px;border-radius:5px">—</span>
+      <button class="btn btn-p" id="taBtnAll" onclick="taSetMode('all')" style="font-size:11px;padding:4px 10px">Acumulado</button>
+      <button class="btn" id="taBtnMes" onclick="taSetMode('mes')" style="font-size:11px;padding:4px 10px">Mês</button>
     </div>
-
-    <!-- Empty -->
-    <div id="taEmpty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:260px;gap:12px;background:var(--sur);border:1px solid var(--bdr);border-radius:10px">
-      <div style="font-size:40px;opacity:.2">📊</div>
-      <div style="font-size:13px;color:var(--tx3);text-align:center">Clique em <b>📥 Excel</b> para importar o arquivo ADM</div>
-      <button class="btn btn-p" onclick="document.getElementById('taxaAdmFileInp').click()" style="font-size:12px">📥 Importar Excel</button>
-    </div>
-
-    <!-- Dashboard -->
-    <div id="taDash" style="display:none">
-
-      <!-- KPIs: 9 em 2 linhas compactas -->
-      <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:7px;margin-bottom:10px" id="taKpis"></div>
-
-      <!-- Grid principal: 3 colunas -->
-      <div style="display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:10px;margin-bottom:10px">
-        <!-- Gráfico linha -->
-        <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em">Projeção Mensal</span>
-            <span id="taChartPeriod" style="font-size:10px;color:var(--tx3);font-family:monospace">—</span>
-          </div>
-          <div style="position:relative;height:150px"><canvas id="taChartLine" role="img" aria-label="Evolução mensal"></canvas></div>
-        </div>
-        <!-- Top Devedores -->
-        <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-size:10px;font-weight:700;color:#c62828;text-transform:uppercase;letter-spacing:.07em">⚠ Top Devedores</span>
-            <span id="taTopDevMes" style="font-size:10px;color:var(--tx3);font-family:monospace">—</span>
-          </div>
-          <div id="taTopDevedores"></div>
-        </div>
-        <!-- Top Pagadores -->
-        <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-size:10px;font-weight:700;color:#2e7d32;text-transform:uppercase;letter-spacing:.07em">✅ Top Pagadores</span>
-            <span id="taTopPagMes" style="font-size:10px;color:var(--tx3);font-family:monospace">—</span>
-          </div>
-          <div id="taTopPagadores"></div>
-        </div>
-      </div>
-
-      <!-- Grid secundário: 4 colunas -->
-      <div style="display:grid;grid-template-columns:1.3fr 1fr 0.75fr 0.75fr;gap:10px;margin-bottom:10px">
-        <!-- Top Gestores -->
-        <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em">Top Gestores</span>
-            <span id="taTopGestMes" style="font-size:10px;color:var(--tx3);font-family:monospace">—</span>
-          </div>
-          <div id="taTopGestores"></div>
-        </div>
-        <!-- Inadimplência por classe -->
-        <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px">
-          <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Inadimplência %</div>
-          <div id="taInadClass"></div>
-        </div>
-        <!-- Donut -->
-        <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px">
-          <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Classificação</div>
-          <div style="position:relative;height:110px"><canvas id="taChartDonut" role="img" aria-label="Distribuição por classificação"></canvas></div>
-          <div id="taDonutLegend" style="margin-top:6px"></div>
-        </div>
-        <!-- Gauge -->
-        <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;align-self:flex-start">Recebimento</div>
-          <canvas id="taChartGauge" role="img" style="max-height:100px;max-width:160px"></canvas>
-          <div id="taGaugeVal" style="font-size:22px;font-weight:700;margin-top:-6px;font-variant-numeric:tabular-nums">—</div>
-          <div style="font-size:10px;color:var(--tx3);margin-top:2px">Pago vs Total</div>
-        </div>
-      </div>
-
-      <!-- Tabela compacta -->
-      <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em">Detalhamento por Fundo</span>
-          <div style="display:flex;gap:6px;align-items:center">
-            <span id="taTableMes" style="font-size:10px;color:var(--tx3);font-family:monospace">—</span>
-          </div>
-        </div>
-        <div style="overflow-x:auto;max-height:200px;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <thead style="position:sticky;top:0;z-index:1">
-              <tr style="background:var(--sur2);border-bottom:1px solid var(--bdr)">
-                <th style="padding:6px 10px;text-align:left;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap" onclick="taSort('fundo')">Fundo <span id="taSortFundo"></span></th>
-                <th style="padding:6px 10px;text-align:left;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap" onclick="taSort('gestor')">Gestor <span id="taSortGestor"></span></th>
-                <th style="padding:6px 10px;text-align:left;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap" onclick="taSort('classif')">Classif. <span id="taSortClassif"></span></th>
-                <th style="padding:6px 10px;text-align:right;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap" onclick="taSort('val')">Valor <span id="taSortVal"></span></th>
-                <th style="padding:6px 10px;text-align:center;font-weight:600;color:var(--tx2)">Status</th>
-              </tr>
-            </thead>
-            <tbody id="taFundoTbody"></tbody>
-          </table>
-        </div>
-        <div style="font-size:10px;color:var(--tx3);margin-top:6px" id="taTableFooter"></div>
-      </div>
-
-      <!-- Month chips -->
-      <div id="taSidebar" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px"></div>
-      <div style="font-size:10px;color:var(--tx3);margin-top:4px" id="taFooter"></div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <select id="taFiltGestor" onchange="taApplyFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:11px;font-family:inherit;outline:none"><option value="">Todos gestores</option></select>
+      <select id="taFiltClass" onchange="taApplyFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:11px;font-family:inherit;outline:none"><option value="">Todas classif.</option></select>
+      <select id="taFiltStatus" onchange="taApplyFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:11px;font-family:inherit;outline:none"><option value="">Todos status</option><option value="PAGO">Pago</option><option value="PENDENTE">Pendente</option></select>
+      <input type="text" id="taFiltFundo" oninput="taApplyFilters()" placeholder="🔍 Fundo..." style="padding:4px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:11px;font-family:inherit;outline:none;width:130px">
+      <button class="btn" onclick="taResetFilters()" style="font-size:11px;padding:4px 8px" title="Limpar filtros">✕</button>
+      <button class="btn" onclick="document.getElementById('taxaAdmFileInp').click()" style="font-size:11px;padding:4px 10px">📥 Atualizar Excel</button>
+      <input type="file" id="taxaAdmFileInp" accept=".xlsx,.xls" style="display:none" onchange="taImport(this)">
+      <button class="btn" onclick="taExportCSV()" style="font-size:11px;padding:4px 10px">⬇ CSV</button>
     </div>
   </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+  <!-- Empty -->
+  <div id="taEmpty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:260px;gap:12px;background:var(--sur);border:1px solid var(--bdr);border-radius:10px">
+    <div style="font-size:40px;opacity:.2">📊</div>
+    <div style="font-size:13px;color:var(--tx3);text-align:center">Clique em <b>📥 Atualizar Excel</b> para importar o arquivo ADM</div>
+    <button class="btn btn-p" onclick="document.getElementById('taxaAdmFileInp').click()" style="font-size:12px">📥 Importar Excel</button>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="taDash" style="display:none">
+
+    <!-- KPIs: 9 em linha única -->
+    <div id="taKpis" style="display:grid;grid-template-columns:repeat(9,1fr);gap:7px;margin-bottom:10px"></div>
+
+    <!-- Row 1: linha + devedores + pagadores -->
+    <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="ta-card">
+        <div class="ta-card-h">Projeção Mensal <span id="taChartPeriod" class="ta-card-h-sub">—</span></div>
+        <div style="position:relative;height:150px"><canvas id="taChartLine"></canvas></div>
+      </div>
+      <div class="ta-card">
+        <div class="ta-card-h" style="color:#c62828">⚠ Top Devedores <span id="taTopDevMes" class="ta-card-h-sub">—</span></div>
+        <div id="taTopDevedores"></div>
+      </div>
+      <div class="ta-card">
+        <div class="ta-card-h" style="color:#2e7d32">✅ Top Pagadores <span id="taTopPagMes" class="ta-card-h-sub">—</span></div>
+        <div id="taTopPagadores"></div>
+      </div>
+    </div>
+
+    <!-- Row 2: gestores + inadimplência + donut + gauge -->
+    <div style="display:grid;grid-template-columns:1.3fr 1fr 0.75fr 0.75fr;gap:10px;margin-bottom:10px">
+      <div class="ta-card">
+        <div class="ta-card-h">Top Gestores <span id="taTopGestMes" class="ta-card-h-sub">—</span></div>
+        <div id="taTopGestores"></div>
+      </div>
+      <div class="ta-card">
+        <div class="ta-card-h">Inadimplência % por Classif.</div>
+        <div id="taInadClass"></div>
+      </div>
+      <div class="ta-card">
+        <div class="ta-card-h">Classificação</div>
+        <div style="position:relative;height:110px"><canvas id="taChartDonut"></canvas></div>
+        <div id="taDonutLegend" style="margin-top:6px"></div>
+      </div>
+      <div class="ta-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <div class="ta-card-h" style="align-self:flex-start">Recebimento</div>
+        <canvas id="taChartGauge" style="max-height:100px;max-width:160px"></canvas>
+        <div id="taGaugeVal" style="font-size:22px;font-weight:700;margin-top:-4px;font-variant-numeric:tabular-nums;color:var(--tx)">—</div>
+        <div style="font-size:10px;color:var(--tx3);margin-top:2px">Pago vs Total</div>
+      </div>
+    </div>
+
+    <!-- Row 3: tabela editável -->
+    <div class="ta-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span class="ta-card-h" style="margin:0">Detalhamento — <span id="taTableMes" style="color:var(--tx3);font-weight:400">—</span></span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span id="taTableFooter" style="font-size:10px;color:var(--tx3)"></span>
+          <button class="btn" onclick="taAddRow()" style="font-size:11px;padding:3px 8px">+ Linha</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;max-height:220px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead style="position:sticky;top:0;z-index:1">
+            <tr style="background:var(--sur2);border-bottom:1px solid var(--bdr)">
+              <th onclick="taSort('fundo')" style="padding:6px 10px;text-align:left;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap">Fundo <span id="taSortFundo"></span></th>
+              <th onclick="taSort('gestor')" style="padding:6px 10px;text-align:left;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap">Gestor <span id="taSortGestor"></span></th>
+              <th onclick="taSort('classif')" style="padding:6px 10px;text-align:left;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap">Classif. <span id="taSortClassif"></span></th>
+              <th onclick="taSort('mesRef')" style="padding:6px 10px;text-align:left;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap">Mês <span id="taSortMesRef"></span></th>
+              <th onclick="taSort('val')" style="padding:6px 10px;text-align:right;font-weight:600;color:var(--tx2);cursor:pointer;white-space:nowrap">Valor <span id="taSortVal"></span></th>
+              <th style="padding:6px 10px;text-align:center;font-weight:600;color:var(--tx2)">Status</th>
+              <th style="padding:6px 10px;width:24px"></th>
+            </tr>
+          </thead>
+          <tbody id="taFundoTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Month chips -->
+    <div id="taSidebar" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px"></div>
+    <div id="taFooter" style="font-size:10px;color:var(--tx3);margin-top:4px"></div>
+  </div>
 </div>
+<style>
+.ta-card{background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px}
+.ta-card-h{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.ta-card-h-sub{font-family:monospace;font-size:10px;color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:0}
+.ta-bar{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.ta-bar-nm{width:76px;font-size:10px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+.ta-bar-trk{flex:1;height:8px;background:var(--sur2);border-radius:4px;overflow:hidden}
+.ta-bar-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.ta-bar-val{font-size:10px;color:var(--tx2);font-family:monospace;width:56px;text-align:right;flex-shrink:0}
+.ta-edit-inp{background:transparent;border:none;outline:none;font-family:inherit;font-size:11px;color:var(--tx);width:100%;padding:2px 4px;border-radius:4px}
+.ta-edit-inp:focus{background:var(--sur2);outline:1px solid var(--blue)}
+</style>
+</div>
+
 
 <!-- PORTAL SALDOS VIEW -->
 <div id="portalSaldosView" style="display:none;width:100%;overflow-y:auto;background:var(--bg)">
