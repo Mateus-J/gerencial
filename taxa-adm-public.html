@@ -251,6 +251,24 @@ window.toggleTheme=()=>{
   if(DATA)applyFilters();
 };
 
+function parseValue(v){
+  if(!v)return null;
+  if(v.stringValue!==undefined)return v.stringValue;
+  if(v.integerValue!==undefined)return parseInt(v.integerValue);
+  if(v.doubleValue!==undefined)return parseFloat(v.doubleValue);
+  if(v.booleanValue!==undefined)return v.booleanValue;
+  if(v.nullValue!==undefined)return null;
+  if(v.arrayValue)return(v.arrayValue.values||[]).map(parseValue);
+  if(v.mapValue)return parseFirestore(v.mapValue.fields||{});
+  return null;
+}
+function parseFirestore(fields){
+  if(!fields)return null;
+  const out={};
+  for(const[k,v]of Object.entries(fields))out[k]=parseValue(v);
+  return out;
+}
+
 async function load(){
   try{
     const projectId=cfg.projectId;
