@@ -241,6 +241,7 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
   <div style="font-size:10px;color:var(--tx3);margin-top:6px;font-family:monospace" id="dataFooter"></div>
 </div>
 
+
 <!-- PAINEL INADIMPLENTES -->
 <div id="inadPanel" style="display:none">
 <div class="wrap">
@@ -298,6 +299,7 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
   </div>
 </div>
 </div>
+
 
 <div class="footer-bar">
   <span>ID Corretora de Títulos e Valores Mobiliários — 16.695.922/0001-09</span>
@@ -392,7 +394,20 @@ window.toggleInad=()=>{
   inadMode=!inadMode;
   const btn=el('btnInad');
   if(btn)btn.className='btn'+(inadMode?' btn-p':'');
-  el('dash').style.display=inadMode?'none':'block';
+  // Hide/show sections individually instead of hiding parent dash
+  ['filters','kpisGrid','heroCard','miniPago','miniAberto',
+   'chartLine','topDev','topPag','topGest','inadClass',
+   'chartDonut','chartGauge','tblBody','monthChips','dataFooter']
+    .forEach(id=>{const e=el(id);if(e&&e.closest){}});
+  // Toggle the main content area vs inad panel
+  const dashContent=el('dash').querySelectorAll(':scope > .wrap > *:not(#inadPanel)');
+  const wrapChildren=el('dash').querySelector('.wrap');
+  if(wrapChildren){
+    Array.from(wrapChildren.children).forEach(child=>{
+      if(child.id==='inadPanel')return;
+      child.style.display=inadMode?'none':'';
+    });
+  }
   el('inadPanel').style.display=inadMode?'block':'none';
   if(inadMode)renderInad();
 };
