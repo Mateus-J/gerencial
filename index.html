@@ -7105,24 +7105,43 @@ function taImport(input){
       const idxFundo=(()=>{const i=findCol('a que se refere','despesa paga');return i>=0?i:7;})();
       const idxGestor=(()=>{const i=findCol('gestor');return i>=0?i:9;})();
       const idxClassif=(()=>{const i=findCol('classificaç');return i>=0?i:10;})();
+      const idxCNPJ=(()=>{const i=findCol('cnpj');return i>=0?i:11;})();
+      const idxConta=(()=>{const i=findCol('conta do fundo','conta');return i>=0?i:8;})();
       const idxValor=(()=>{const i=findCol('valor total');return i>=0?i:12;})();
       const idxStatus=(()=>{const i=findCol('status');return i>=0?i:17;})();
       const idxMesRef=(()=>{const i=findCol('mês referencia','mes referencia','mês ref','mes ref');return i>=0?i:18;})();
+
+      // Normaliza mês ref — lida com formatos variados
+      const normMesRef=v=>{
+        let s=String(v||'').trim().replace(/'/g,'');
+        // Formato correto MM.AAAA
+        if(/^\d{2}\.\d{4}$/.test(s))return s;
+        // Formato MM.AAAA' com aspas
+        if(/^\d{2}\.\d{4}$/.test(s.replace(/'/g,'')))return s.replace(/'/g,'');
+        // Formato data "AAAA-MM-DD..." — extrai MM.AAAA
+        const dm=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if(dm)return dm[2]+'.'+dm[1];
+        return null;
+      };
+
       const parsed=[];
       raw.slice(hdrIdx+1).forEach(r=>{
         const fundo=String(r[idxFundo]||'').trim();if(!fundo)return;
         const gestor=String(r[idxGestor]||'').trim();
         const classif=String(r[idxClassif]||'').trim();
-        const mesRef=String(r[idxMesRef]||'').trim().replace("'",'');
+        const cnpj=String(r[idxCNPJ]||'').trim();
+        const conta=String(r[idxConta]||'').trim();
+        const mesRef=normMesRef(r[idxMesRef]);
         const status=String(r[idxStatus]||'').trim().toUpperCase();
         const val=parseFloat(String(r[idxValor]||'0').replace(',','.'))||0;
-        if(!/^\d{2}\.\d{4}$/.test(mesRef)||val<=0)return;
-        parsed.push({fundo,gestor,classif,mesRef,status,val});
+        if(!mesRef||val<=0)return;
+        parsed.push({fundo,gestor,classif,cnpj,conta,mesRef,status,val});
       });
       if(!parsed.length){toast('⚠ Nenhum dado válido');return;}
 
       // ── MERGE INTELIGENTE ──────────────────────────────────
-      // Chave única: fundo + mês de referência (identifica a mesma cobrança em importações diferentes)
+      // Chave: fundo + mesRef. Campos atualizados: todos (status, valor, gestor, classif, cnpj, conta)
+      // Campos preservados: edições manuais de campos não presentes na planilha
       const makeKey=r=>(r.fundo||'').trim().toUpperCase()+'|'+(r.mesRef||'').trim();
       const existing=(TA.data&&TA.data.parsed)?TA.data.parsed:[];
       const existingMap={};
