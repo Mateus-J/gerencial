@@ -99,6 +99,7 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
   </div>
   <div class="nav-right">
     <span id="activeMesChip" class="chip active" style="font-size:11px">—</span>
+    <button class="btn" id="btnInad" onclick="toggleInad()" style="font-size:11px;padding:4px 10px">⚠ Inadimplentes</button>
     <span class="nav-badge">👁 Visualização</span>
     <button class="dtog" id="dtog" onclick="toggleTheme()" title="Alternar tema">🌙</button>
   </div>
@@ -218,6 +219,64 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
   <div style="font-size:10px;color:var(--tx3);margin-top:6px;font-family:monospace" id="dataFooter"></div>
 </div>
 
+<!-- PAINEL INADIMPLENTES -->
+<div id="inadPanel" style="display:none">
+<div class="wrap">
+  <!-- KPIs -->
+  <div class="g1" style="margin-bottom:12px">
+    <div class="kpi-hero" style="--top:#c62828">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:var(--red)"></div>
+      <div class="eyebrow" style="color:var(--red)">Total Inadimplente · <span id="inadPeriodo">—</span></div>
+      <div class="bignum" style="color:var(--red)" id="inadTotalVal">—</div>
+      <div style="font-size:11px;color:var(--tx3);margin-top:8px" id="inadTotalSub">—</div>
+    </div>
+    <div class="kpi-mini">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:var(--red)"></div>
+      <div class="eyebrow">Fundos Inadimplentes</div>
+      <div class="midnum" id="inadFundosNum">—</div>
+      <div style="font-size:10px;color:var(--tx3);margin-top:3px" id="inadFundosPct">—</div>
+    </div>
+    <div class="kpi-mini">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#e65100"></div>
+      <div class="eyebrow">Gestores Afetados</div>
+      <div class="midnum" id="inadGestNum">—</div>
+      <div style="font-size:10px;color:var(--tx3);margin-top:3px" id="inadGestPct">—</div>
+    </div>
+  </div>
+
+  <!-- Gráficos -->
+  <div style="display:grid;grid-template-columns:1.4fr 0.85fr;gap:10px;margin-bottom:12px">
+    <div class="card">
+      <div class="card-h">Evolução da Inadimplência <span class="card-h-sub">12 meses</span></div>
+      <div style="position:relative;height:165px"><canvas id="inadEvoChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-h">Concentração por Classificação</div>
+      <div style="position:relative;height:135px"><canvas id="inadClassChart"></canvas></div>
+      <div id="inadClassLeg" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- Rankings -->
+  <div class="g5">
+    <div class="card">
+      <div class="card-h" style="color:var(--red)">⚠ Fundos Inadimplentes <span id="inadFundoCount" class="card-h-sub">—</span></div>
+      <div style="overflow-y:auto;max-height:360px" id="inadFundoList"></div>
+    </div>
+    <div class="card">
+      <div class="card-h" style="color:var(--red)">⚠ Gestores com Inadimplência <span id="inadGestCount" class="card-h-sub">—</span></div>
+      <div style="overflow-y:auto;max-height:360px" id="inadGestList"></div>
+    </div>
+  </div>
+
+  <!-- Chips -->
+  <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:12px">
+    <span style="font-size:10px;font-weight:600;color:var(--tx3);margin-right:2px">MÊS:</span>
+    <div id="inadMonthChips" style="display:flex;gap:5px;flex-wrap:wrap"></div>
+  </div>
+</div>
+</div>
+
 <div class="footer-bar">
   <span>ID Corretora de Títulos e Valores Mobiliários — 16.695.922/0001-09</span>
   <span id="footerUpdate"></span>
@@ -269,6 +328,116 @@ function parseFirestore(fields){
   return out;
 }
 
+let inadMode=false,inadEvoChart=null,inadClassChart=null;
+
+window.toggleInad=()=>{
+  inadMode=!inadMode;
+  const btn=el('btnInad');
+  if(btn)btn.className='btn'+(inadMode?' btn-p':'');
+  el('dash').style.display=inadMode?'none':'block';
+  el('inadPanel').style.display=inadMode?'block':'none';
+  if(inadMode)renderInad();
+};
+
+function renderInad(){
+  if(!DATA)return;
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  const mode=el('filtMode').value||'all';
+  const allRows=DATA.parsed.filter(r=>!(mode==='mes'&&r.mesRef!==selMes));
+  const rows=allRows.filter(r=>r.status==='PENDENTE');
+  const totalPer=allRows.reduce((a,r)=>a+r.val,0);
+  const totalInad=rows.reduce((a,r)=>a+r.val,0);
+  const pctInad=totalPer>0?(totalInad/totalPer*100):0;
+
+  set('inadPeriodo',mode==='mes'?selMes:'Período Filtrado');
+  set('inadTotalVal',full(totalInad));
+  set('inadTotalSub',pctInad.toFixed(1)+'% do total cobrado no período');
+
+  // Fundos
+  const fMap={};
+  rows.forEach(r=>{
+    if(!fMap[r.fundo])fMap[r.fundo]={pend:0,gestor:r.gestor,classif:r.classif,count:0};
+    fMap[r.fundo].pend+=r.val;fMap[r.fundo].count++;
+  });
+  const fList=Object.entries(fMap).map(([name,d])=>({name,...d})).sort((a,b)=>b.pend-a.pend);
+  const fundosTot=new Set(allRows.map(r=>r.fundo)).size;
+  set('inadFundosNum',fList.length);
+  set('inadFundosPct',fundosTot>0?((fList.length/fundosTot*100).toFixed(0)+'% do total de fundos'):'—');
+  set('inadFundoCount',fList.length+' fundos');
+  html('inadFundoList',fList.length?fList.map(f=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 4px;border-bottom:0.5px solid var(--bdr)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:500;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.name}">${f.name}</div>
+        <div style="font-size:10px;color:var(--tx3)">${f.gestor||'—'} · ${f.classif||'—'} · ${f.count}x pendente</div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--red);font-family:monospace;flex-shrink:0;margin-left:8px">${fmt(f.pend)}</div>
+    </div>`).join(''):'<div style="font-size:12px;color:var(--green);padding:8px">✅ Nenhum fundo inadimplente</div>');
+
+  // Gestores
+  const gMap={};
+  rows.forEach(r=>{
+    if(!r.gestor||r.gestor==='0')return;
+    if(!gMap[r.gestor])gMap[r.gestor]={pend:0,fundos:new Set(),count:0};
+    gMap[r.gestor].pend+=r.val;gMap[r.gestor].fundos.add(r.fundo);gMap[r.gestor].count++;
+  });
+  const gList=Object.entries(gMap).map(([name,d])=>({name,pend:d.pend,fundosN:d.fundos.size,count:d.count})).sort((a,b)=>b.pend-a.pend);
+  const gestTot=new Set(allRows.map(r=>r.gestor).filter(g=>g&&g!=='0')).size;
+  set('inadGestNum',gList.length);
+  set('inadGestPct',gestTot>0?((gList.length/gestTot*100).toFixed(0)+'% do total de gestores'):'—');
+  set('inadGestCount',gList.length+' gestores');
+  html('inadGestList',gList.length?gList.map(g=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 4px;border-bottom:0.5px solid var(--bdr)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:500;color:var(--tx)">${g.name}</div>
+        <div style="font-size:10px;color:var(--tx3)">${g.fundosN} fundo${g.fundosN>1?'s':''} · ${g.count} pendência${g.count>1?'s':''}</div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--red);font-family:monospace;flex-shrink:0;margin-left:8px">${fmt(g.pend)}</div>
+    </div>`).join(''):'<div style="font-size:12px;color:var(--green);padding:8px">✅ Nenhum gestor com inadimplência</div>');
+
+  // Chips de mês no painel inad
+  const months=[...DATA.months].reverse().slice(0,18);
+  el('inadMonthChips').innerHTML=months.map(m=>
+    `<span class="chip${selMes===m?' active':''}" onclick="setMes('${m}')">${m}</span>`
+  ).join('');
+
+  const gc=isDark?'rgba(255,255,255,.05)':'rgba(0,0,0,.05)';
+  const tc=isDark?'#555':'#999';
+  const tto={backgroundColor:isDark?'#1e2028':'#fff',titleColor:isDark?'#e8eaf0':'#1a1d23',bodyColor:isDark?'#9ba3b8':'#5a6072',borderColor:isDark?'#35394a':'#e0e2e6',borderWidth:1};
+  const C=['#2e7d32','#1565c0','#6a1b9a','#e65100','#00695c','#c62828','#0277bd','#558b2f'];
+
+  // Evolução
+  const mo=DATA.monthly||[];
+  const evoPend=mo.slice(-12).map(m=>m.pend);
+  const evoPct=mo.slice(-12).map(m=>m.total>0?(m.pend/m.total*100):0);
+  if(inadEvoChart)inadEvoChart.destroy();
+  inadEvoChart=new Chart(el('inadEvoChart'),{type:'bar',
+    data:{labels:mo.slice(-12).map(m=>m.mes),datasets:[
+      {type:'bar',label:'Valor Pendente',data:evoPend,backgroundColor:'rgba(198,40,40,0.65)',borderRadius:4,yAxisID:'y'},
+      {type:'line',label:'% Inadimplência',data:evoPct,borderColor:'#e65100',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#e65100',yAxisID:'y1',tension:0.3}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{color:tc,font:{size:10},boxWidth:10}},tooltip:{...tto,callbacks:{label:c=>c.dataset.yAxisID==='y1'?` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}%`:` ${c.dataset.label}: ${full(c.parsed.y)}`}}},
+      scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:45},grid:{display:false},border:{display:false}},
+              y:{position:'left',ticks:{color:tc,font:{size:9},callback:v=>fmt(v)},grid:{color:gc},border:{display:false}},
+              y1:{position:'right',ticks:{color:tc,font:{size:9},callback:v=>v+'%'},grid:{display:false},border:{display:false},min:0}}}
+  });
+
+  // Donut por classificação
+  const clsMap={};
+  rows.forEach(r=>{if(!r.classif||r.classif==='0')return;clsMap[r.classif]=(clsMap[r.classif]||0)+r.val;});
+  const clsList=Object.entries(clsMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
+  const clsTotal=clsList.reduce((a,c)=>a+c[1],0);
+  html('inadClassLeg',clsList.map(([name,val],i)=>`
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;font-size:10px;color:var(--tx2)">
+      <div style="width:6px;height:6px;border-radius:2px;background:${C[i%C.length]};flex-shrink:0"></div>
+      ${name}<span style="margin-left:auto;font-family:monospace;color:var(--tx3)">${(val/clsTotal*100).toFixed(0)}%</span>
+    </div>`).join(''));
+  if(inadClassChart)inadClassChart.destroy();
+  inadClassChart=new Chart(el('inadClassChart'),{type:'doughnut',
+    data:{labels:clsList.map(c=>c[0]),datasets:[{data:clsList.map(c=>c[1]),backgroundColor:['#c62828','#e65100','#ad1457','#6a1b9a','#558b2f','#0277bd','#f57f17'],borderWidth:0,hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tto,callbacks:{label:c=>` ${c.label}: ${full(c.parsed)} (${(c.parsed/clsTotal*100).toFixed(1)}%)`}}},cutout:'65%'}
+  });
+}
+
 async function load(){
   try{
     const projectId=cfg.projectId;
@@ -318,7 +487,7 @@ function buildChips(){
   ).join('');
 }
 
-window.setMes=m=>{selMes=m;el('filtMode').value='mes';el('activeMesChip').textContent=m;buildChips();applyFilters();};
+window.setMes=m=>{selMes=m;el('filtMode').value='mes';el('activeMesChip').textContent=m;buildChips();applyFilters();if(inadMode)renderInad();};
 window.resetFilters=()=>{
   ['filtGestor','filtClass','filtStatus'].forEach(id=>{const e=el(id);if(e)e.value='';});
   const f=el('filtFundo');if(f)f.value='';
