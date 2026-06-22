@@ -89,7 +89,29 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
 </head>
 <body>
 
-<nav class="topnav">
+<!-- TELA DE ACESSO -->
+<div id="accessScreen" style="position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center">
+  <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:16px;padding:36px 40px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.12);text-align:center">
+    <div style="width:52px;height:52px;background:#e8f5e9;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:24px">📊</div>
+    <div style="font-size:18px;font-weight:700;color:var(--tx);margin-bottom:4px">Taxa de Administração</div>
+    <div style="font-size:12px;color:var(--tx3);margin-bottom:24px">ID Corretora de Títulos e Valores Mobiliários</div>
+    <div style="text-align:left;margin-bottom:6px">
+      <label style="font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.06em">Senha de acesso</label>
+    </div>
+    <input type="password" id="accessPwd" placeholder="Digite a senha..." 
+      style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-size:14px;font-family:inherit;outline:none;margin-bottom:12px;transition:border-color .15s"
+      onkeydown="if(event.key==='Enter')checkAccess()"
+      onfocus="this.style.borderColor='var(--blue)'"
+      onblur="this.style.borderColor='var(--bdr)'">
+    <div id="accessErr" style="font-size:12px;color:var(--red);margin-bottom:10px;display:none">Senha incorreta. Tente novamente.</div>
+    <button onclick="checkAccess()" 
+      style="width:100%;padding:11px;border-radius:8px;background:var(--blue);color:#fff;border:none;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s"
+      onmouseenter="this.style.opacity='.85'" onmouseleave="this.style.opacity='1'">Entrar</button>
+    <div style="font-size:10px;color:var(--tx3);margin-top:16px">Acesso restrito — uso interno</div>
+  </div>
+</div>
+
+<nav class="topnav" style="display:none" id="mainNav">
   <div class="nav-logo">
     <div class="nav-logo-sq">ID</div>
     <div>
@@ -105,7 +127,7 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--tx);background:
   </div>
 </nav>
 
-<div id="loader" class="loader">
+<div id="loader" style="display:none" class="loader">
   <div class="spin"></div>
   <div style="font-size:13px;color:var(--tx3)">Carregando dados…</div>
 </div>
@@ -327,6 +349,42 @@ function parseFirestore(fields){
   for(const[k,v]of Object.entries(fields))out[k]=parseValue(v);
   return out;
 }
+
+
+  // ── PROTEÇÃO POR SENHA ──────────────────────────────────
+  const PWD_HASH='eaf493e8af54e4fb893988a51b83b390a725e24bbe1575a50625c811c08ecb6f'; // SHA-256 de "0305"
+  const SESSION_KEY='ta_pub_auth';
+
+  async function hashStr(str){
+    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+
+  window.checkAccess=async function(){
+    const pwd=document.getElementById('accessPwd').value;
+    if(!pwd)return;
+    const h=await hashStr(pwd);
+    if(h===PWD_HASH){
+      sessionStorage.setItem(SESSION_KEY,'1');
+      document.getElementById('accessScreen').style.display='none';
+      document.getElementById('mainNav').style.display='flex';
+      document.getElementById('loader').style.display='flex';
+      load();
+    }else{
+      document.getElementById('accessErr').style.display='block';
+      document.getElementById('accessPwd').value='';
+      document.getElementById('accessPwd').style.borderColor='var(--red)';
+      setTimeout(()=>{document.getElementById('accessPwd').style.borderColor='var(--bdr)';},1500);
+    }
+  };
+
+  // Verifica se já autenticou nessa sessão
+  if(sessionStorage.getItem(SESSION_KEY)==='1'){
+    document.getElementById('accessScreen').style.display='none';
+    document.getElementById('mainNav').style.display='flex';
+    document.getElementById('loader').style.display='flex';
+    load();
+  }
 
 let inadMode=false,inadEvoChart=null,inadClassChart=null;
 
