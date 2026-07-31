@@ -1820,11 +1820,12 @@ tr:hover .ho-collab-del{opacity:1}
 
 <script>
 // ─── USERS & AUTH VARS (declared first to avoid reference errors) ──────
-let USERS = {
-  'admin':   {pass:'admin123',  name:'Administrador', role:'admin'},
-  'equipe':  {pass:'equipe2024',name:'Equipe',         role:'user'},
-  'consulta':{pass:'consulta123',name:'Consulta',      role:'consulta'},
-};
+// SEGURANÇA: nenhuma credencial padrão fica no código-fonte.
+// Os usuários reais vêm do Firestore ('controle/users') ou do cache local
+// (localStorage 'ctrl_users'). Se nenhum dos dois existir ainda (primeira
+// instalação), configure ao menos um administrador diretamente no Firestore
+// antes de publicar este arquivo — do contrário ninguém conseguirá logar.
+let USERS = {};
 let currentUser = null;
 let agendaItems = [];
 let PENDING_REQUESTS = [];
@@ -1839,7 +1840,7 @@ const CW={text:160,status:140,date:130,flag:80,number:100,obs:220};
 const CT=[{t:'text',i:'T',l:'Texto'},{t:'status',i:'●',l:'Status'},{t:'date',i:'📅',l:'Data'},{t:'flag',i:'⚑',l:'Flag'},{t:'number',i:'#',l:'Número'},{t:'obs',i:'✎',l:'Observação'}];
 
 // ─── STATE ───────────────────────────────────────────────────
-let S={tabs:[],activeTab:'',_cid:6,_rid:10,_gid:1,_tid:1,_caid:0};
+let S={tabs:[],activeTab:'',_cid:6,_rid:10,_gid:1,_tid:1,_caid:0,multasJuros:null};
 let cid=6,rid=10,gid=1,tid=1,caid=0;
 let pendingSub=false,pgc=GC[0],ptc=GC[0];
 let saveTO=null,rzState=null,flagCtx=null,dragCI=null,dragGI=null;
@@ -1851,6 +1852,9 @@ function defCols(){return[{id:'c0',label:'Título',type:'text',w:200},{id:'c1',l
 function defGrp(id,label,color){return{id,label,color,collapsed:false,columns:defCols(),rows:[{id:'r'+(rid++),cells:{c0:'',c1:'',c2:'',c3:'',c4:false,c5:''},sub:false}]}}
 function defTabTable(id,label,color){return{id,label,color,type:'table',groups:[defGrp('g'+(gid++),label,color)]}}
 function defTabCanvas(id,label,color){return{id,label,color,type:'canvas',cards:[],connections:[]}}
+function defMultasJuros(){return{params:{taxaMultaDia:0.0033,tetoMulta:0.20,jurosFixo:0.01,convencao:'seguinte'},selic:{'2026-07':0.0112},guias:[
+  {id:'mj_exemplo',fundo:'Exemplo FIDC',cnpj:'',tributo:'DARF - Multa CVM',processo:'',venc:'2026-06-03',pgto:'2026-07-31',valor:1526795.97,status:'Pendente'}
+]}}
 
 // ─── UTILS ───────────────────────────────────────────────────
 function curTab(){return S.tabs.find(t=>t.id===S.activeTab)||S.tabs[0]}
@@ -1886,6 +1890,7 @@ function migrate(d){
       });
       S=d;
     }
+    if(!S.multasJuros) S.multasJuros=defMultasJuros();
     // Restore this user's local navigation — never take activeTab from Firebase
     try{
       const navKey='ctrl_nav_'+(currentUser&&currentUser.username||'anon');
@@ -2006,8 +2011,11 @@ async function fbInit(){
   try{
     const {initializeApp,getApps}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
     const {getFirestore,doc,collection,getDoc,getDocs,setDoc,deleteDoc,onSnapshot}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const {getAuth,signInAnonymously}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     const cfg={apiKey:'AIzaSyAUcVEYwdeq1sfo6P8q8JIodgu0J-akJgI',authDomain:'id-liquidacao.firebaseapp.com',projectId:'id-liquidacao',storageBucket:'id-liquidacao.firebasestorage.app',messagingSenderId:'254207803173',appId:'1:254207803173:web:70dc87e9cdf67682b424cc'};
     const app=getApps().length?getApps()[0]:initializeApp(cfg);
+    const auth=getAuth(app);
+    await signInAnonymously(auth); // required so Firestore rules can check request.auth != null
     const db=getFirestore(app);
     fbDb=db; fbDocFn=doc;
     fbRef=doc(db,'controle','board');
@@ -2022,6 +2030,7 @@ async function fbInit(){
     initPresence(db, doc, collection, getDocs, setDoc, deleteDoc);
     // Start real-time listeners
     loadUsersFromFirebase();
+    loadAdminTabPassFromFirebase();
     if(currentUser&&currentUser.role==='admin') loadPendingFromFirebase();
     // load from firebase and update UI
     const snap=await fbGet(fbRef);
@@ -2130,7 +2139,7 @@ function toggleDark(){
 // Single source of truth for every top-level view container.
 // Any new view must be added here ONCE; every switch point below
 // (and any future one) automatically hides all the others.
-const ALL_VIEWS=['tableView','canvasView','dashView','agendaView','adminView','iofView','hoView','saldosView','portalSaldosView','taxaAdmView'];
+const ALL_VIEWS=['tableView','canvasView','dashView','agendaView','adminView','iofView','hoView','saldosView','portalSaldosView','taxaAdmView','multasJurosView'];
 function hideAllViews(){
   ALL_VIEWS.forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
   const agBtn=document.getElementById('agendaHdrBtn');
@@ -2258,6 +2267,14 @@ function renderTabs(){
     admEl.innerHTML='<span style="font-size:13px">📈</span><span>Taxa ADM</span>';
     admEl.onclick=()=>switchToTaxaAdm();
     rightArea.appendChild(admEl);
+    // Multas e Juros tab
+    const mjBtnEl=document.createElement('div');
+    const mjBtnActive=document.getElementById('multasJurosView')&&document.getElementById('multasJurosView').style.display!=='none';
+    mjBtnEl.className='tab-admin'+(mjBtnActive?' active':'');
+    mjBtnEl.style.color='var(--red)';
+    mjBtnEl.innerHTML='<span style="font-size:13px">⚖️</span><span>Multas e Juros</span>';
+    mjBtnEl.onclick=()=>switchToMultasJuros();
+    rightArea.appendChild(mjBtnEl);
   }
   // Home Office tab - visible for all users
   if(currentUser&&currentUser.role!=='consulta'){
@@ -3623,7 +3640,7 @@ async function showCryptoProof(){
   const el = document.getElementById('auditProofText');
   if(!el) return;
   try{
-    const example = 'admin123';
+    const example = 'exemplo123';
     const hash = await sha256(example);
     el.innerHTML = `As senhas são convertidas com <strong>SHA-256</strong> (Web Crypto API — nativa do navegador, sem biblioteca externa).\n\nExemplo de prova:\n  Senha:  "${example}"\n  SHA-256: ${hash}\n\nO hash armazenado é irreversível. Nem administradores podem ver a senha original.`;
   }catch(e){
@@ -4268,18 +4285,13 @@ loadHoCollabs();
 // ─────────────────────────────────────────────────────────────
 async function checkAdminPass(){
   const val = document.getElementById('adminPassInp').value;
-  const valHash = await hashPass(val);
-  // Support both: compare with hash OR raw (for first run before migration)
-  const adminMatch = isHashed(ADMIN_TAB_PASS_HASH)
-    ? valHash===ADMIN_TAB_PASS_HASH
-    : val===ADMIN_TAB_PASS_RAW;
-  // Also try reveal pin (admin tab shares same PIN for simplicity)
+  if(!ADMIN_TAB_PASS_HASH){
+    document.getElementById('adminLockErr').textContent='Senha ainda não configurada. Peça a um administrador para rodar setupAdminTabPassword("nova-senha") no console.';
+    return;
+  }
+  const valHash = await hashPass(val, ADMIN_TAB_SALT);
+  const adminMatch = valHash===ADMIN_TAB_PASS_HASH;
   if(adminMatch){
-    // Store hash for future
-    if(!isHashed(ADMIN_TAB_PASS_HASH)){
-      ADMIN_TAB_PASS_HASH=valHash;
-      localStorage.setItem('ctrl_admin_pass_hash',valHash);
-    }
     adminUnlocked = true;
     addAuditEntry('admin_access',{username:currentUser?currentUser.username:'?'});
     document.getElementById('adminLock').style.display='none';
@@ -4381,8 +4393,9 @@ async function addUser(){
   const role=document.getElementById('nuRole').value;
   if(!user||!name||!pass){toast('⚠️ Preencha todos os campos');return}
   if(USERS[user]){toast('⚠️ Usuário já existe');return}
-  const passHash=await hashPass(pass);
-  USERS[user]={pass:passHash,name,email,role};
+  const salt=genSalt();
+  const passHash=await hashPass(pass,salt);
+  USERS[user]={pass:passHash,salt,name,email,role};
   saveUsers();
   ['nuUser','nuName','nuEmail','nuPass'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('nuRole').value='user';
@@ -4445,8 +4458,10 @@ async function changeMyPass(){
   if(!p1){toast('⚠️ Digite a nova senha');return}
   if(p1!==p2){toast('⚠️ Senhas não conferem');return}
   if(p1.length<4){toast('⚠️ Senha muito curta (mín. 4 caracteres)');return}
-  const p1hash=await hashPass(p1);
+  const p1salt=genSalt();
+  const p1hash=await hashPass(p1,p1salt);
   USERS[currentUser.username].pass=p1hash;
+  USERS[currentUser.username].salt=p1salt;
   currentUser.pass=p1hash;
   saveUsers();
   addAuditEntry('pass_change',{username:currentUser.username,email:currentUser.email||'',passHash:p1hash});
@@ -4602,8 +4617,20 @@ async function sha256(str){
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-// Hash a password (returns promise)
-async function hashPass(pass){ return await sha256(pass) }
+// Hash a password (returns promise). If a salt is given, uses salted hashing
+// (preferred for anything created/changed from now on). If no salt is given,
+// falls back to the legacy unsalted scheme — kept ONLY so existing stored
+// hashes (created before this fix) still validate; they get upgraded to a
+// salted hash automatically on next successful login (see _doLoginValidate).
+async function hashPass(pass, salt){
+  if(salt) return await sha256(salt+':'+pass);
+  return await sha256(pass);
+}
+function genSalt(){
+  const arr=new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
 
 // Migrate plain-text passwords to hashed on first login
 // If pass doesn't look like a sha256 hash (64 hex chars), it's plain text
@@ -4616,23 +4643,58 @@ function migratePasswords(){
       let changed=false;
       for(const [key,u] of Object.entries(USERS)){
         if(u.pass && !isHashed(u.pass)){
-          u.pass = await hashPass(u.pass);
+          const salt=genSalt();
+          u.pass = await hashPass(u.pass, salt);
+          u.salt = salt;
           changed=true;
         }
-      }
-      if(ADMIN_TAB_PASS_RAW && !isHashed(ADMIN_TAB_PASS_HASH)){
-        ADMIN_TAB_PASS_HASH = await hashPass(ADMIN_TAB_PASS_RAW);
-        localStorage.setItem('ctrl_admin_pass_hash', ADMIN_TAB_PASS_HASH);
-        changed=true;
       }
       if(changed) saveUsers();
     }catch(e){}
   }, 2000);
 }
 
-// Admin tab password hashing
-let ADMIN_TAB_PASS_RAW = '99212136';
+// Admin tab password: hash + salt only, sourced from Firestore/localStorage —
+// NEVER from a hardcoded value in this file. Use setupAdminTabPassword('nova senha')
+// once (in the browser console, logged in as admin) to configure or rotate it;
+// it syncs to Firestore so every device picks it up.
 let ADMIN_TAB_PASS_HASH = localStorage.getItem('ctrl_admin_pass_hash')||'';
+let ADMIN_TAB_SALT = localStorage.getItem('ctrl_admin_pass_salt')||'';
+
+async function setupAdminTabPassword(newPass){
+  if(!newPass||newPass.length<8){toast('⚠️ Use uma senha com pelo menos 8 caracteres');return}
+  const salt=genSalt();
+  const hash=await hashPass(newPass,salt);
+  ADMIN_TAB_PASS_HASH=hash; ADMIN_TAB_SALT=salt;
+  try{
+    localStorage.setItem('ctrl_admin_pass_hash',hash);
+    localStorage.setItem('ctrl_admin_pass_salt',salt);
+  }catch(e){}
+  try{
+    if(fbReady&&fbDb&&fbDocFn&&fbSet){
+      await fbSet(fbDocFn(fbDb,'controle','config'),{adminTabPassHash:hash,adminTabSalt:salt,updatedAt:Date.now()},{merge:true});
+    }
+  }catch(e){console.warn('setupAdminTabPassword sync err',e);}
+  toast('✅ Senha da aba admin configurada e sincronizada!');
+}
+window.setupAdminTabPassword = setupAdminTabPassword;
+
+function loadAdminTabPassFromFirebase(){
+  try{
+    if(!fbReady||!fbDb||!fbDocFn||!fbSnap) return;
+    fbSnap(fbDocFn(fbDb,'controle','config'), snap=>{
+      if(!snap.exists()) return;
+      const d=snap.data();
+      if(!d||!d.adminTabPassHash) return;
+      ADMIN_TAB_PASS_HASH=d.adminTabPassHash;
+      ADMIN_TAB_SALT=d.adminTabSalt||'';
+      try{
+        localStorage.setItem('ctrl_admin_pass_hash',ADMIN_TAB_PASS_HASH);
+        localStorage.setItem('ctrl_admin_pass_salt',ADMIN_TAB_SALT);
+      }catch(e){}
+    }, e=>console.warn('admin config listener err',e));
+  }catch(e){console.warn('loadAdminTabPassFromFirebase err',e);}
+}
 
 // ─── SECURITY HARDENING ───────────────────────────────────────
 
@@ -4862,8 +4924,9 @@ async function doRegister(){
   if(PENDING_REQUESTS.find(r=>r.email===email)){err.textContent='Já existe uma solicitação com este e-mail aguardando aprovação.';return}
 
   // Add to pending
-  const passHash = await hashPass(pass);
-  const req={id:'req_'+Date.now(),username,name,email,pass:passHash,requestedAt:new Date().toISOString()};
+  const regSalt=genSalt();
+  const passHash = await hashPass(pass,regSalt);
+  const req={id:'req_'+Date.now(),username,name,email,pass:passHash,salt:regSalt,requestedAt:new Date().toISOString()};
   loadPending();
   PENDING_REQUESTS.push(req);
   addAuditEntry('register',{username:req.username,email:req.email,passHash:req.pass});
@@ -4976,7 +5039,7 @@ function approveUser(reqId){
   if(!req){toast('Solicitação não encontrada');return}
   const role=document.getElementById('role_'+reqId)?.value||'user';
   // Add to USERS
-  USERS[req.username]={pass:req.pass,name:req.name,email:req.email,role,createdAt:req.requestedAt};
+  USERS[req.username]={pass:req.pass,salt:req.salt||'',name:req.name,email:req.email,role,createdAt:req.requestedAt};
   saveUsers();
   // Remove from pending
   PENDING_REQUESTS=PENDING_REQUESTS.filter(r=>r.id!==reqId);
@@ -5046,7 +5109,7 @@ function approveFromAdmin(reqId){
   const req=PENDING_REQUESTS.find(r=>r.id===reqId);
   if(!req)return;
   const role=document.getElementById('arole_'+reqId)?.value||'user';
-  USERS[req.username]={pass:req.pass,name:req.name,email:req.email,role,createdAt:req.requestedAt};
+  USERS[req.username]={pass:req.pass,salt:req.salt||'',name:req.name,email:req.email,role,createdAt:req.requestedAt};
   saveUsers();
   PENDING_REQUESTS=PENDING_REQUESTS.filter(r=>r.id!==reqId);
   savePending();
@@ -5094,13 +5157,21 @@ function _doLoginValidate(input, pass, err){
   if(!foundUser){err.textContent='Usuário/e-mail ou senha incorretos.';addAuditEntry('login_fail',{username:input,reason:'Usuário não encontrado'});return}
 
   const storedPass = foundUser.pass||'';
+  const storedSalt = foundUser.salt||'';
   const plainMatch = storedPass === pass;
 
   if(isHashed(storedPass)){
-    hashPass(pass).then(passHash=>{
+    hashPass(pass, storedSalt).then(passHash=>{
       if(passHash!==storedPass){
         document.getElementById('loginErr').textContent='Usuário/e-mail ou senha incorretos.';
         return;
+      }
+      // Upgrade legacy unsalted hash to a salted one now that we have the plaintext
+      if(!storedSalt){
+        const newSalt=genSalt();
+        hashPass(pass,newSalt).then(h2=>{
+          foundUser.pass=h2; foundUser.salt=newSalt; saveUsers();
+        }).catch(()=>{});
       }
       _completeLogin(foundKey, foundUser);
     }).catch(()=>{
@@ -5114,7 +5185,8 @@ function _doLoginValidate(input, pass, err){
   }
 
   if(!plainMatch){err.textContent='Usuário/e-mail ou senha incorretos.';return}
-  hashPass(pass).then(h=>{foundUser.pass=h;saveUsers();}).catch(()=>{});
+  const newSalt=genSalt();
+  hashPass(pass,newSalt).then(h=>{foundUser.pass=h;foundUser.salt=newSalt;saveUsers();}).catch(()=>{});
   _completeLogin(foundKey, foundUser);
 }
 
@@ -8512,8 +8584,11 @@ async function fbInitEarly(){
   try{
     const {initializeApp,getApps}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
     const {getFirestore,doc,setDoc,onSnapshot}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const {getAuth,signInAnonymously}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     const cfg={apiKey:'AIzaSyAUcVEYwdeq1sfo6P8q8JIodgu0J-akJgI',authDomain:'id-liquidacao.firebaseapp.com',projectId:'id-liquidacao',storageBucket:'id-liquidacao.firebasestorage.app',messagingSenderId:'254207803173',appId:'1:254207803173:web:70dc87e9cdf67682b424cc'};
     const app=getApps().length?getApps()[0]:initializeApp(cfg);
+    const auth=getAuth(app);
+    await signInAnonymously(auth); // required so Firestore rules can check request.auth != null
     const db=getFirestore(app);
     fbDb=db; fbDocFn=doc; fbSet=setDoc; fbSnap=onSnapshot; fbReady=true;
     fbRef=doc(db,'controle','board');
@@ -8521,6 +8596,7 @@ async function fbInitEarly(){
     setTimeout(()=>{ pendingSyncFirebase(); hoSyncFirebase(); },300);
     // Load latest users so login validation uses up-to-date passwords/roles
     loadUsersFromFirebase();
+    loadAdminTabPassFromFirebase();
     console.log('Firebase early init OK');
   }catch(e){ console.warn('fbInitEarly err',e); }
 }
@@ -8530,7 +8606,291 @@ if(document.readyState==='loading'){
 } else {
   _boot();
 }
+
+// ═══════════════ MULTAS E JUROS (CVM/RFB) ═══════════════
+// Regras: multa de mora 0,33% ao dia, limitada a 20%; juros de mora = soma da
+// taxa Selic mensal do mês seguinte ao vencimento até o mês anterior ao
+// pagamento, + 1% no mês de quitação; sem juros se vencimento e pagamento
+// caírem no mesmo mês/ano (apenas multa incide nesse caso).
+function mjFmtBRL(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function mjFmtPct(v){return (Number(v||0)*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'}
+function mjParseDate(s){if(!s)return null;const p=s.split('-').map(Number);if(p.length!==3)return null;return new Date(p[0],p[1]-1,p[2])}
+function mjDiffDays(a,b){return Math.round((a-b)/86400000)}
+function mjMonthKey(dt){return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')}
+function mjAddMonths(dt,n){return new Date(dt.getFullYear(),dt.getMonth()+n,1)}
+function mjMonthLabel(key){const[y,m]=key.split('-');return['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][parseInt(m)-1]+'/'+y}
+
+function mjCalcGuia(g){
+  const mj=S.multasJuros;
+  const venc=mjParseDate(g.venc), pgto=mjParseDate(g.pgto);
+  if(!venc||!pgto||!g.valor) return null;
+  const ajuste = mj.params.convencao==='vencimento'?1:0;
+  const dias = mjDiffDays(pgto,venc)+ajuste;
+  const taxaMultaDia = Number(mj.params.taxaMultaDia)||0;
+  const teto = Number(mj.params.tetoMulta)||0;
+  const multaCalc = dias*taxaMultaDia;
+  const multaAplicada = Math.min(Math.max(multaCalc,0),teto);
+  const valorMulta = g.valor*multaAplicada;
+  const mesSeg = mjAddMonths(venc,1), mesAnt = mjAddMonths(pgto,-1);
+  let selicAcum=0;
+  if(mesSeg<=mesAnt){
+    let cursor=new Date(mesSeg);
+    let guard=0;
+    while(cursor<=mesAnt && guard<600){
+      selicAcum += Number(mj.selic[mjMonthKey(cursor)])||0;
+      cursor=mjAddMonths(cursor,1); guard++;
+    }
+  }
+  const sameMonth = venc.getFullYear()===pgto.getFullYear() && venc.getMonth()===pgto.getMonth();
+  const jurosPct = sameMonth?0:(selicAcum+(Number(mj.params.jurosFixo)||0));
+  const valorJuros = g.valor*jurosPct;
+  const total = Number(g.valor)+valorMulta+valorJuros;
+  return {dias,multaCalc,multaAplicada,valorMulta,selicAcum,jurosPct,valorJuros,total};
+}
+
+function switchToMultasJuros(){
+  if(!S.multasJuros) S.multasJuros=defMultasJuros();
+  showView('multasJurosView','block');
+  S.activeTab=''; renderTabs();
+  mjRender();
+}
+window.switchToMultasJuros=switchToMultasJuros;
+
+function mjAddRow(){
+  const mj=S.multasJuros;
+  const id='mj'+Date.now()+Math.floor(Math.random()*1000);
+  mj.guias.push({id,fundo:'',cnpj:'',tributo:'',processo:'',venc:'',pgto:'',valor:0,status:'Pendente'});
+  save(); mjRender();
+}
+window.mjAddRow=mjAddRow;
+
+function mjDeleteRow(id){
+  if(!confirm('Excluir esta guia?'))return;
+  const mj=S.multasJuros;
+  mj.guias=mj.guias.filter(g=>g.id!==id);
+  save(); mjRender();
+}
+window.mjDeleteRow=mjDeleteRow;
+
+function mjEditField(id,field,value){
+  const mj=S.multasJuros;
+  const g=mj.guias.find(x=>x.id===id); if(!g)return;
+  g[field] = (field==='valor') ? (parseFloat(String(value).replace(/\./g,'').replace(',','.'))||0) : value;
+  save(); mjRender();
+}
+window.mjEditField=mjEditField;
+
+function mjEditParam(field,value){
+  const mj=S.multasJuros;
+  if(field==='convencao'){ mj.params.convencao=value; }
+  else { mj.params[field]=(parseFloat(String(value).replace(',','.'))||0)/100; }
+  save(); mjRender();
+}
+window.mjEditParam=mjEditParam;
+
+function mjAddSelic(){
+  const mEl=document.getElementById('mjSelicMonthInp'), rEl=document.getElementById('mjSelicRateInp');
+  const key=mEl.value; const rate=parseFloat(String(rEl.value).replace(',','.'));
+  if(!key||isNaN(rate)){toast('Informe mês e taxa válidos');return}
+  S.multasJuros.selic[key]=rate/100;
+  mEl.value=''; rEl.value='';
+  save(); mjRender();
+}
+window.mjAddSelic=mjAddSelic;
+
+function mjDeleteSelic(key){
+  delete S.multasJuros.selic[key];
+  save(); mjRender();
+}
+window.mjDeleteSelic=mjDeleteSelic;
+
+function mjExportCSV(){
+  const mj=S.multasJuros;
+  let csv='\uFEFFNº;Fundo;CNPJ;Tributo;Processo;Vencimento;Pagamento;Valor Imposto;Status;Dias Atraso;Multa %;Valor Multa;Selic Acum %;Juros %;Valor Juros;Total a Pagar\n';
+  mj.guias.forEach((g,i)=>{
+    const c=mjCalcGuia(g)||{};
+    const row=[i+1,g.fundo,g.cnpj,g.tributo,g.processo,g.venc,g.pgto,
+      String(g.valor).replace('.',','),g.status,
+      c.dias??'', c.multaAplicada!=null?mjFmtPct(c.multaAplicada):'', c.valorMulta!=null?c.valorMulta.toFixed(2).replace('.',','):'',
+      c.selicAcum!=null?mjFmtPct(c.selicAcum):'', c.jurosPct!=null?mjFmtPct(c.jurosPct):'', c.valorJuros!=null?c.valorJuros.toFixed(2).replace('.',','):'',
+      c.total!=null?c.total.toFixed(2).replace('.',','):''];
+    csv+=row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')+'\n';
+  });
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='multas_juros_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  toast('✅ CSV exportado!');
+}
+window.mjExportCSV=mjExportCSV;
+
+function mjEscHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function mjEscAttr(s){return mjEscHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+
+function mjRender(){
+  const mj=S.multasJuros; if(!mj)return;
+  const p=mj.params;
+  // Parâmetros
+  const tm=document.getElementById('mjTaxaMulta'); if(tm) tm.value=(p.taxaMultaDia*100).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const tt=document.getElementById('mjTetoMulta'); if(tt) tt.value=(p.tetoMulta*100).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const jf=document.getElementById('mjJurosFixo'); if(jf) jf.value=(p.jurosFixo*100).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const cv=document.getElementById('mjConvencao'); if(cv) cv.value=p.convencao;
+
+  // Selic mensal
+  const selBody=document.getElementById('mjSelicBody');
+  if(selBody){
+    const keys=Object.keys(mj.selic).sort();
+    selBody.innerHTML = keys.length? keys.map(k=>
+      `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--bdr)">
+        <span style="width:70px;font-family:monospace;font-size:11.5px;color:var(--tx2)">${mjMonthLabel(k)}</span>
+        <span style="flex:1;font-family:monospace;font-size:11.5px">${mjFmtPct(mj.selic[k])}</span>
+        <button class="btn btn-sm btn-d" style="font-size:10px;padding:2px 8px" onclick="mjDeleteSelic('${k}')">🗑</button>
+      </div>`).join('') : '<div style="font-size:11.5px;color:var(--tx3);padding:6px 0">Nenhuma taxa cadastrada ainda.</div>';
+  }
+
+  // Guias — tabela
+  const tbody=document.getElementById('mjGuiasBody');
+  if(tbody){
+    let totImp=0, totMulta=0, totJuros=0, totGeral=0;
+    tbody.innerHTML = mj.guias.map((g,i)=>{
+      const c=mjCalcGuia(g);
+      if(c){totImp+=Number(g.valor)||0; totMulta+=c.valorMulta; totJuros+=c.valorJuros; totGeral+=c.total;}
+      const cell=(html)=>`<td style="padding:5px 6px;border-bottom:1px solid var(--bdr)">${html}</td>`;
+      const inp=(field,val,type,extra)=>`<input type="${type||'text'}" value="${mjEscAttr(val)}" style="width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:11.5px;color:var(--tx)" ${extra||''} onchange="mjEditField('${g.id}','${field}',this.value)">`;
+      return '<tr>'+
+        cell(i+1)+
+        cell(inp('fundo',g.fundo))+
+        cell(inp('cnpj',g.cnpj))+
+        cell(inp('tributo',g.tributo))+
+        cell(inp('processo',g.processo))+
+        cell(inp('venc',g.venc,'date'))+
+        cell(inp('pgto',g.pgto,'date'))+
+        cell(inp('valor',g.valor,'number','step="0.01"'))+
+        cell(`<select onchange="mjEditField('${g.id}','status',this.value)" style="width:100%;background:transparent;border:none;font-size:11.5px;color:var(--tx)"><option ${g.status==='Pendente'?'selected':''}>Pendente</option><option ${g.status==='Pago'?'selected':''}>Pago</option></select>`)+
+        cell(c?c.dias:'—')+
+        cell(c?mjFmtPct(c.multaAplicada):'—')+
+        cell(c?mjFmtBRL(c.valorMulta):'—')+
+        cell(c?mjFmtPct(c.selicAcum):'—')+
+        cell(c?mjFmtPct(c.jurosPct):'—')+
+        cell(c?mjFmtBRL(c.valorJuros):'—')+
+        cell(`<b>${c?mjFmtBRL(c.total):'—'}</b>`)+
+        cell(`<button class="btn btn-sm btn-d" style="font-size:10px;padding:2px 8px" onclick="mjDeleteRow('${g.id}')">🗑</button>`)+
+      '</tr>';
+    }).join('') || '<tr><td colspan="16" style="padding:16px;text-align:center;color:var(--tx3);font-size:12px">Nenhuma guia cadastrada — clique em "+ Nova guia".</td></tr>';
+
+    const tot=(v)=>document.getElementById(v);
+    if(tot('mjTotImp')) tot('mjTotImp').textContent=mjFmtBRL(totImp);
+    if(tot('mjTotMulta')) tot('mjTotMulta').textContent=mjFmtBRL(totMulta);
+    if(tot('mjTotJuros')) tot('mjTotJuros').textContent=mjFmtBRL(totJuros);
+    if(tot('mjTotGeral')) tot('mjTotGeral').textContent=mjFmtBRL(totGeral);
+  }
+}
 </script>
+
+<!-- ═══════════════ MULTAS E JUROS VIEW ═══════════════ -->
+<div id="multasJurosView" style="display:none;width:100%;overflow-y:auto;background:var(--bg)">
+<div style="max-width:1400px;margin:0 auto;padding:18px">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div>
+      <div style="font-size:9.5px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em">ID Serviços Financeiros</div>
+      <div style="font-size:18px;font-weight:700;color:var(--tx)">⚖️ Multas e Juros de Mora — CVM/RFB</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="mjAddRow()">+ Nova guia</button>
+      <button class="btn btn-g" onclick="mjExportCSV()">⬇ Exportar CSV</button>
+    </div>
+  </div>
+
+  <!-- Totais -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:12px">
+      <div style="font-size:9.5px;font-weight:700;color:var(--tx3);text-transform:uppercase">Valor dos impostos</div>
+      <div id="mjTotImp" style="font-size:16px;font-weight:700;color:var(--tx);font-family:monospace">R$ 0,00</div>
+    </div>
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:12px">
+      <div style="font-size:9.5px;font-weight:700;color:var(--tx3);text-transform:uppercase">Total de multas</div>
+      <div id="mjTotMulta" style="font-size:16px;font-weight:700;color:var(--warn-d);font-family:monospace">R$ 0,00</div>
+    </div>
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:12px">
+      <div style="font-size:9.5px;font-weight:700;color:var(--tx3);text-transform:uppercase">Total de juros</div>
+      <div id="mjTotJuros" style="font-size:16px;font-weight:700;color:var(--info);font-family:monospace">R$ 0,00</div>
+    </div>
+    <div style="background:#44723e;border-radius:12px;padding:12px">
+      <div style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase">Total geral a pagar</div>
+      <div id="mjTotGeral" style="font-size:16px;font-weight:700;color:#fff;font-family:monospace">R$ 0,00</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin-bottom:16px">
+    <!-- Parâmetros -->
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:14px">
+      <div style="font-size:9.5px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:10px">Parâmetros gerais</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <label style="font-size:11px;color:var(--tx2)">Multa por dia (%)
+          <input id="mjTaxaMulta" type="text" onchange="mjEditParam('taxaMultaDia',this.value)" style="width:100%;margin-top:3px;padding:6px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-family:inherit">
+        </label>
+        <label style="font-size:11px;color:var(--tx2)">Teto da multa (%)
+          <input id="mjTetoMulta" type="text" onchange="mjEditParam('tetoMulta',this.value)" style="width:100%;margin-top:3px;padding:6px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-family:inherit">
+        </label>
+        <label style="font-size:11px;color:var(--tx2)">Acréscimo fixo mês quitação (%)
+          <input id="mjJurosFixo" type="text" onchange="mjEditParam('jurosFixo',this.value)" style="width:100%;margin-top:3px;padding:6px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-family:inherit">
+        </label>
+        <label style="font-size:11px;color:var(--tx2)">Contagem de dias
+          <select id="mjConvencao" onchange="mjEditParam('convencao',this.value)" style="width:100%;margin-top:3px;padding:6px 8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-family:inherit">
+            <option value="seguinte">Dia seguinte ao vencimento</option>
+            <option value="vencimento">Dia do vencimento</option>
+          </select>
+        </label>
+      </div>
+      <div style="font-size:10.5px;color:var(--tx3);margin-top:10px;line-height:1.5">
+        Multa de mora 0,33%/dia (teto 20%). Juros = Selic acumulada dos meses intermediários + 1% no mês de quitação.
+        Sem juros se vencimento e pagamento caírem no mesmo mês.
+      </div>
+    </div>
+
+    <!-- Selic mensal -->
+    <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:14px">
+      <div style="font-size:9.5px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:10px">Tabela Selic mensal (RFB/SICALC)</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <input id="mjSelicMonthInp" type="month" style="flex:1;padding:5px 7px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-family:inherit;font-size:11.5px">
+        <input id="mjSelicRateInp" type="text" placeholder="Taxa %" style="width:80px;padding:5px 7px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--tx);font-family:inherit;font-size:11.5px">
+        <button class="btn btn-sm" style="font-size:11px" onclick="mjAddSelic()">Adicionar</button>
+      </div>
+      <div id="mjSelicBody" style="max-height:140px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- Guias -->
+  <div style="background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:0;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap">
+      <thead>
+        <tr style="background:var(--sur2)">
+          <th style="padding:7px 6px;text-align:left">Nº</th>
+          <th style="padding:7px 6px;text-align:left">Fundo</th>
+          <th style="padding:7px 6px;text-align:left">CNPJ</th>
+          <th style="padding:7px 6px;text-align:left">Tributo</th>
+          <th style="padding:7px 6px;text-align:left">Processo</th>
+          <th style="padding:7px 6px;text-align:left">Vencimento</th>
+          <th style="padding:7px 6px;text-align:left">Pagamento</th>
+          <th style="padding:7px 6px;text-align:left">Valor imposto</th>
+          <th style="padding:7px 6px;text-align:left">Status</th>
+          <th style="padding:7px 6px;text-align:left">Dias</th>
+          <th style="padding:7px 6px;text-align:left">Multa %</th>
+          <th style="padding:7px 6px;text-align:left">Valor multa</th>
+          <th style="padding:7px 6px;text-align:left">Selic acum.</th>
+          <th style="padding:7px 6px;text-align:left">Juros %</th>
+          <th style="padding:7px 6px;text-align:left">Valor juros</th>
+          <th style="padding:7px 6px;text-align:left">Total a pagar</th>
+          <th style="padding:7px 6px"></th>
+        </tr>
+      </thead>
+      <tbody id="mjGuiasBody"></tbody>
+    </table>
+  </div>
+
+</div>
+</div>
 
 <!-- ═══════════════ IOF VIEW ═══════════════ -->
 <!-- SALDOS VIEW -->
