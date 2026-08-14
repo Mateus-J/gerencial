@@ -16,7 +16,7 @@ export function PageHeader({ eyebrow, title, actions }) {
 
 export function Card({ children, className = '' }) {
   return (
-    <div className={`bg-bg-panel border border-bg-border rounded-xl shadow-card ${className}`}>
+    <div className={`bg-[var(--sur)] border border-[var(--bdr)] rounded-xl shadow-card ${className}`}>
       {children}
     </div>
   )
@@ -27,9 +27,9 @@ export function Card({ children, className = '' }) {
 export function EmptyState({ icon: Icon, title, description }) {
   return (
     <Card className="p-10 flex flex-col items-center text-center gap-2">
-      {Icon && <Icon size={26} className="text-slate-600 mb-1" />}
-      <div className="font-medium text-slate-300">{title}</div>
-      <p className="text-[12px] text-slate-500 max-w-[360px]">{description}</p>
+      {Icon && <Icon size={26} className="text-[var(--tx4)] mb-1" />}
+      <div className="font-medium text-[var(--tx2)]">{title}</div>
+      <p className="text-[12px] text-[var(--tx3)] max-w-[360px]">{description}</p>
     </Card>
   )
 }

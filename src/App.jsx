@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import Dashboard from './pages/Dashboard'
 import Saldos from './pages/Saldos'
+import Fundos from './pages/Fundos'
 import TaxaAdministracao from './pages/TaxaAdministracao'
 import PortalSaldos from './pages/PortalSaldos'
 import MultasJuros from './pages/MultasJuros'
@@ -10,26 +11,33 @@ import HomeOffice from './pages/HomeOffice'
 import Agenda from './pages/Agenda'
 import Usuarios from './pages/Usuarios'
 import Auditoria from './pages/Auditoria'
+import Historico from './pages/Historico'
 import Configuracoes from './pages/Configuracoes'
+import Login from './pages/Login'
+import PendingApproval from './pages/PendingApproval'
 import { useFirebaseStatus } from './hooks/useFirebaseStatus'
+import { AuthProvider, useAuth } from './context/AuthContext'
 
 const PAGES = {
-  dashboard: { component: Dashboard, title: 'Dashboard', subtitle: 'Visão geral dos processos' },
+  dashboard: { component: Dashboard, title: 'Pendências', subtitle: 'Área Liquidação' },
   saldos: { component: Saldos, title: 'Saldos', subtitle: 'Conta lastros' },
+  fundos: { component: Fundos, title: 'Fundos', subtitle: 'Base de referência' },
   'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração' },
   'portal-saldos': { component: PortalSaldos, title: 'Portal Saldos' },
   'multas-juros': { component: MultasJuros, title: 'Multas e Juros', subtitle: 'Cálculo base Selic' },
   'home-office': { component: HomeOffice, title: 'Home Office', subtitle: 'Escala da equipe' },
   agenda: { component: Agenda, title: 'Agenda' },
-  usuarios: { component: Usuarios, title: 'Usuários' },
-  auditoria: { component: Auditoria, title: 'Auditoria' },
-  configuracoes: { component: Configuracoes, title: 'Configurações' },
+  usuarios: { component: Usuarios, title: 'Usuários', adminOnly: true },
+  auditoria: { component: Auditoria, title: 'Auditoria', adminOnly: true },
+  historico: { component: Historico, title: 'Histórico', subtitle: 'Pendências concluídas' },
+  configuracoes: { component: Configuracoes, title: 'Configurações', adminOnly: true },
 }
 
-export default function App() {
+function AppShell() {
+  const { currentUser, loading, logout } = useAuth()
   const [active, setActive] = useState('dashboard')
   const [collapsed, setCollapsed] = useState(false)
-  const [dark, setDark] = useState(true)
+  const [dark, setDark] = useState(false)
   const [search, setSearch] = useState('')
   const status = useFirebaseStatus()
 
@@ -37,18 +45,37 @@ export default function App() {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
 
+  if (loading) {
+    return <div className="h-screen w-screen flex items-center justify-center bg-[var(--bg)] text-[var(--tx3)] text-[13px]">Carregando…</div>
+  }
+  if (!currentUser) return <Login />
+  if (currentUser.role === 'pending') return <PendingApproval />
+
+  const isAdmin = currentUser.role === 'admin'
+  const page = PAGES[active] ?? PAGES.dashboard
+  if (page.adminOnly && !isAdmin) {
+    return <AppShellInner {...{ active: 'dashboard', setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+  }
+
+  return <AppShellInner {...{ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+}
+
+function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }) {
   const page = PAGES[active] ?? PAGES.dashboard
   const Page = page.component
+  const initials = (currentUser.name || currentUser.username || '?').split(' ').slice(0, 2).map((w) => w[0] || '').join('').toUpperCase()
+  const roleLabel = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }[currentUser.role] || currentUser.role
 
   return (
-    <div className="h-screen w-screen flex bg-bg overflow-hidden">
+    <div className="h-screen w-screen flex bg-[var(--bg)] overflow-hidden">
       <Sidebar
         active={active}
         onNavigate={setActive}
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
-        counts={{ 'multas-juros': 3 }}
-        user={{ name: 'Mateus Jesus', role: 'Coordenador', initials: 'MJ' }}
+        isAdmin={isAdmin}
+        user={{ name: currentUser.name || currentUser.username, role: roleLabel, initials }}
+        onLogout={logout}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar
@@ -65,5 +92,13 @@ export default function App() {
         </main>
       </div>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   )
 }

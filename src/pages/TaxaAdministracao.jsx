@@ -195,7 +195,7 @@ export default function TaxaAdministracao() {
     return (
       <div>
         <PageHeader eyebrow="Operacional" title="Taxa de Administração" />
-        <Card className="p-10 text-center text-slate-500">Carregando…</Card>
+        <Card className="p-10 text-center text-[var(--tx3)]">Carregando…</Card>
       </div>
     )
   }
@@ -215,7 +215,7 @@ export default function TaxaAdministracao() {
             </>
           }
         />
-        <Card className="p-10 text-center text-slate-500">Nenhum dado importado ainda. Importe a planilha de cobranças (.xlsx) para começar.</Card>
+        <Card className="p-10 text-center text-[var(--tx3)]">Nenhum dado importado ainda. Importe a planilha de cobranças (.xlsx) para começar.</Card>
       </div>
     )
   }
@@ -249,7 +249,7 @@ export default function TaxaAdministracao() {
         actions={
           <>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleImport(e.target.files[0])} />
-            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-bg-border rounded-lg px-3 py-1.5 text-slate-300 hover:bg-bg-panel2">
+            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
               <Upload size={13} /> Importar planilha
             </button>
             <button onClick={exportCSV} className="flex items-center gap-1.5 text-[12px] bg-id-dark hover:bg-id-mid rounded-lg px-3 py-1.5 font-medium">
@@ -261,63 +261,63 @@ export default function TaxaAdministracao() {
 
       {/* Filtro modo + meses */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <button onClick={() => setMode('all')} className={`text-[11px] px-3 py-1 rounded-full border ${mode === 'all' ? 'bg-id-dark border-id-dark' : 'border-bg-border text-slate-400'}`}>Período completo</button>
-        <button onClick={() => setMode('mes')} className={`text-[11px] px-3 py-1 rounded-full border ${mode === 'mes' ? 'bg-id-dark border-id-dark' : 'border-bg-border text-slate-400'}`}>Só um mês</button>
+        <button onClick={() => setMode('all')} className={`text-[11px] px-3 py-1 rounded-full border ${mode === 'all' ? 'bg-id-dark border-id-dark' : 'border-[var(--bdr)] text-[var(--tx3)]'}`}>Período completo</button>
+        <button onClick={() => setMode('mes')} className={`text-[11px] px-3 py-1 rounded-full border ${mode === 'mes' ? 'bg-id-dark border-id-dark' : 'border-[var(--bdr)] text-[var(--tx3)]'}`}>Só um mês</button>
         <div className="flex gap-1 flex-wrap">
           {[...data.months].reverse().slice(0, 18).map((m) => (
-            <button key={m} onClick={() => { setSelMes(m); setMode('mes') }} className={`text-[10.5px] font-mono px-2 py-0.5 rounded-full border ${selMes === m && mode === 'mes' ? 'bg-sky-500 border-sky-500' : 'border-bg-border text-slate-400'}`}>{m}</button>
+            <button key={m} onClick={() => { setSelMes(m); setMode('mes') }} className={`text-[10.5px] font-mono px-2 py-0.5 rounded-full border ${selMes === m && mode === 'mes' ? 'bg-sky-500 border-sky-500' : 'border-[var(--bdr)] text-[var(--tx3)]'}`}>{m}</button>
           ))}
         </div>
       </div>
 
       {/* Filtros */}
       <div className="flex gap-2 mb-4 flex-wrap">
-        <select value={fGestor} onChange={(e) => setFGestor(e.target.value)} className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]">
+        <select value={fGestor} onChange={(e) => setFGestor(e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]">
           <option value="">Todos gestores</option>{gestores.map((g) => <option key={g}>{g}</option>)}
         </select>
-        <select value={fClassif} onChange={(e) => setFClassif(e.target.value)} className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]">
+        <select value={fClassif} onChange={(e) => setFClassif(e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]">
           <option value="">Todas classif.</option>{classes.map((c) => <option key={c}>{c}</option>)}
         </select>
-        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]">
+        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]">
           <option value="">Todos status</option><option>PAGO</option><option>PENDENTE</option>
         </select>
-        <input value={fFundo} onChange={(e) => setFFundo(e.target.value)} placeholder="Buscar fundo…" className="flex-1 min-w-[160px] bg-bg-panel2 border border-bg-border rounded-lg px-3 py-1.5 text-[12px]" />
+        <input value={fFundo} onChange={(e) => setFFundo(e.target.value)} placeholder="Buscar fundo…" className="flex-1 min-w-[160px] bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[12px]" />
       </div>
 
       {/* Hero + KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <Card className="p-4 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-[3px] bg-id-mid" />
-          <div className="text-[10.5px] uppercase text-slate-500">Total Cobrado · {mode === 'mes' ? selMes : 'Período Filtrado'}</div>
+          <div className="text-[10.5px] uppercase text-[var(--tx3)]">Total Cobrado · {mode === 'mes' ? selMes : 'Período Filtrado'}</div>
           <div className="font-display text-[32px] font-semibold mt-1">{taFull(total)}</div>
           <div className="flex gap-3 mt-2 items-baseline text-[12px]">
             <span className={parseFloat(growth) >= 0 ? 'text-id-light' : 'text-red-400'}>{parseFloat(growth) >= 0 ? '↑' : '↓'} {Math.abs(growth)}%</span>
-            <span className="text-slate-500">vs. {prev ? prev.mes : 'mês anterior'}</span>
+            <span className="text-[var(--tx3)]">vs. {prev ? prev.mes : 'mês anterior'}</span>
           </div>
         </Card>
         <Card className="p-4">
           <div className="text-[10.5px] uppercase text-id-light">✓ Recebido</div>
           <div className="font-display text-2xl font-semibold text-id-light mt-1">{taFmt(pago)}</div>
-          <div className="text-[11px] text-slate-500 mt-1">{pct}% do total cobrado</div>
+          <div className="text-[11px] text-[var(--tx3)] mt-1">{pct}% do total cobrado</div>
         </Card>
         <Card className="p-4">
-          <div className={`text-[10.5px] uppercase ${pend > 0 ? 'text-red-400' : 'text-slate-500'}`}>Em Aberto</div>
-          <div className={`font-display text-2xl font-semibold mt-1 ${pend > 0 ? 'text-red-400' : 'text-slate-500'}`}>{taFmt(pend)}</div>
-          <div className="text-[11px] text-slate-500 mt-1">{(100 - pct).toFixed(1)}% pendente</div>
+          <div className={`text-[10.5px] uppercase ${pend > 0 ? 'text-red-400' : 'text-[var(--tx3)]'}`}>Em Aberto</div>
+          <div className={`font-display text-2xl font-semibold mt-1 ${pend > 0 ? 'text-red-400' : 'text-[var(--tx3)]'}`}>{taFmt(pend)}</div>
+          <div className="text-[11px] text-[var(--tx3)] mt-1">{(100 - pct).toFixed(1)}% pendente</div>
         </Card>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Card className="p-3"><div className="text-[10px] text-slate-500 uppercase">Fundos no período</div><div className="font-display text-lg font-semibold">{fundosU}</div></Card>
-        <Card className="p-3"><div className="text-[10px] text-slate-500 uppercase">Gestores ativos</div><div className="font-display text-lg font-semibold">{gestU}</div></Card>
-        <Card className="p-3"><div className="text-[10px] text-slate-500 uppercase">% Recebido</div><div className={`font-display text-lg font-semibold ${pct >= 90 ? 'text-id-light' : pct >= 75 ? 'text-amber-400' : 'text-red-400'}`}>{pct}%</div></Card>
-        <Card className="p-3"><div className="text-[10px] text-slate-500 uppercase">Ticket médio/fundo</div><div className="font-display text-lg font-semibold">{fundosU > 0 ? taFmt(total / fundosU) : '—'}</div></Card>
+        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Fundos no período</div><div className="font-display text-lg font-semibold">{fundosU}</div></Card>
+        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Gestores ativos</div><div className="font-display text-lg font-semibold">{gestU}</div></Card>
+        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">% Recebido</div><div className={`font-display text-lg font-semibold ${pct >= 90 ? 'text-id-light' : pct >= 75 ? 'text-amber-400' : 'text-red-400'}`}>{pct}%</div></Card>
+        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Ticket médio/fundo</div><div className="font-display text-lg font-semibold">{fundosU > 0 ? taFmt(total / fundosU) : '—'}</div></Card>
       </div>
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
         <Card className="p-4 lg:col-span-2 h-[280px]">
-          <div className="text-[11px] font-medium text-slate-400 mb-2">Evolução mensal</div>
+          <div className="text-[11px] font-medium text-[var(--tx3)] mb-2">Evolução mensal</div>
           <ResponsiveContainer width="100%" height="90%">
             <LineChart data={mo}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2e38" />
@@ -330,7 +330,7 @@ export default function TaxaAdministracao() {
           </ResponsiveContainer>
         </Card>
         <Card className="p-4 h-[280px]">
-          <div className="text-[11px] font-medium text-slate-400 mb-2">Por classificação</div>
+          <div className="text-[11px] font-medium text-[var(--tx3)] mb-2">Por classificação</div>
           <ResponsiveContainer width="100%" height="90%">
             <PieChart>
               <Pie data={clsDist} dataKey="value" nameKey="name" innerRadius={45} outerRadius={70}>
@@ -371,19 +371,19 @@ export default function TaxaAdministracao() {
 
       {/* Tabela editável */}
       <Card>
-        <div className="p-3 border-b border-bg-border flex items-center justify-between">
+        <div className="p-3 border-b border-[var(--bdr)] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button onClick={addRow} className="flex items-center gap-1 text-[11px] border border-bg-border rounded-lg px-2.5 py-1 text-slate-300 hover:bg-bg-panel2"><Plus size={12} /> Nova linha</button>
+            <button onClick={addRow} className="flex items-center gap-1 text-[11px] border border-[var(--bdr)] rounded-lg px-2.5 py-1 text-[var(--tx2)] hover:bg-[var(--sur2)]"><Plus size={12} /> Nova linha</button>
             {selected.size > 0 && (
               <button onClick={bulkDelete} className="flex items-center gap-1 text-[11px] border border-red-500/40 text-red-400 rounded-lg px-2.5 py-1"><Trash2 size={12} /> Excluir {selected.size}</button>
             )}
           </div>
-          <span className="text-[11px] text-slate-500">{Math.min(150, filtered.length)} de {filtered.length} registros</span>
+          <span className="text-[11px] text-[var(--tx3)]">{Math.min(150, filtered.length)} de {filtered.length} registros</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-wider text-slate-500 border-b border-bg-border">
+              <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
                 <th className="px-2 py-2 w-8"></th>
                 {[['fundo', 'Fundo'], ['gestor', 'Gestor'], ['classif', 'Classif.'], ['mesRef', 'Mês'], ['val', 'Valor'], ['status', 'Status']].map(([c, l]) => (
                   <th key={c} className="px-2 py-2 font-medium cursor-pointer" onClick={() => { sortCol === c ? setSortAsc(!sortAsc) : (setSortCol(c), setSortAsc(c !== 'val')) }}>
@@ -395,7 +395,7 @@ export default function TaxaAdministracao() {
             </thead>
             <tbody>
               {sortedRows.map((r) => (
-                <tr key={r._ri} className="border-b border-bg-border/60 text-[12px] hover:bg-bg-panel2/60">
+                <tr key={r._ri} className="border-b border-[var(--bdr)]/60 text-[12px] hover:bg-[var(--sur2)]/60">
                   <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={selected.has(r._ri)} onChange={() => toggleSelect(r._ri)} /></td>
                   <td className="px-2 py-1.5"><input defaultValue={r.fundo} onBlur={(e) => editRow(r._ri, 'fundo', e.target.value)} className="bg-transparent w-full outline-none" /></td>
                   <td className="px-2 py-1.5"><input defaultValue={r.gestor} onBlur={(e) => editRow(r._ri, 'gestor', e.target.value)} className="bg-transparent w-full outline-none" /></td>
@@ -407,7 +407,7 @@ export default function TaxaAdministracao() {
                       <option>PAGO</option><option>PENDENTE</option>
                     </select>
                   </td>
-                  <td className="px-2 py-1.5 text-center"><button onClick={() => deleteRow(r._ri)} className="text-slate-500 hover:text-red-400">✕</button></td>
+                  <td className="px-2 py-1.5 text-center"><button onClick={() => deleteRow(r._ri)} className="text-[var(--tx3)] hover:text-red-400">✕</button></td>
                 </tr>
               ))}
             </tbody>

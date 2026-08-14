@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { Plus, X, Check } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
+import { useAuth } from '../context/AuthContext'
 
 const DOC_REF = () => doc(db, 'controle', 'home_office')
 const DOWS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -19,12 +20,10 @@ function getWeekDates(offset) {
 function ptShortDate(d) { return d.getDate().toString().padStart(2, '0') + '/' + (d.getMonth() + 1).toString().padStart(2, '0') }
 function strToColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h); return `hsl(${h % 360},55%,45%)` }
 
-// NOTA: o sistema de login/roles (admin vs colaborador) do app antigo ainda
-// não foi portado — por ora todo mundo tem controle de admin aqui. Quando a
-// aba Usuários/Auth for portada, isso pode ser restringido por role.
-const CURRENT_USER = { username: 'mateus.jesus', name: 'Mateus Jesus' }
-
 export default function HomeOffice() {
+  const { currentUser } = useAuth()
+  const CURRENT_USER = { username: currentUser.username, name: currentUser.name || currentUser.username }
+  const isAdmin = currentUser.role === 'admin'
   const [requests, setRequests] = useState([])
   const [collabs, setCollabs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -121,7 +120,7 @@ export default function HomeOffice() {
     return (
       <div>
         <PageHeader eyebrow="Equipe" title="Home Office" />
-        <Card className="p-10 text-center text-slate-500">Carregando…</Card>
+        <Card className="p-10 text-center text-[var(--tx3)]">Carregando…</Card>
       </div>
     )
   }
@@ -131,28 +130,28 @@ export default function HomeOffice() {
       <PageHeader eyebrow="Equipe" title="Home Office" subtitle="Escala da equipe" />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        <Card className="p-3"><div className="text-[10px] uppercase text-slate-500">Total geral</div><div className="font-display text-lg font-semibold">{requests.length}</div></Card>
-        <Card className="p-3"><div className="text-[10px] uppercase text-slate-500">HO esta semana</div><div className="font-display text-lg font-semibold text-id-light">{thisWeekApproved}</div></Card>
-        <Card className="p-3"><div className="text-[10px] uppercase text-slate-500">Pendentes</div><div className="font-display text-lg font-semibold text-amber-400">{pending.length}</div></Card>
-        <Card className="p-3"><div className="text-[10px] uppercase text-slate-500">Aprovados</div><div className="font-display text-lg font-semibold text-id-light">{approved}</div></Card>
-        <Card className="p-3"><div className="text-[10px] uppercase text-slate-500">Reprovados</div><div className="font-display text-lg font-semibold text-red-400">{rejected}</div></Card>
+        <Card className="p-3"><div className="text-[10px] uppercase text-[var(--tx3)]">Total geral</div><div className="font-display text-lg font-semibold">{requests.length}</div></Card>
+        <Card className="p-3"><div className="text-[10px] uppercase text-[var(--tx3)]">HO esta semana</div><div className="font-display text-lg font-semibold text-id-light">{thisWeekApproved}</div></Card>
+        <Card className="p-3"><div className="text-[10px] uppercase text-[var(--tx3)]">Pendentes</div><div className="font-display text-lg font-semibold text-amber-400">{pending.length}</div></Card>
+        <Card className="p-3"><div className="text-[10px] uppercase text-[var(--tx3)]">Aprovados</div><div className="font-display text-lg font-semibold text-id-light">{approved}</div></Card>
+        <Card className="p-3"><div className="text-[10px] uppercase text-[var(--tx3)]">Reprovados</div><div className="font-display text-lg font-semibold text-red-400">{rejected}</div></Card>
       </div>
 
       {/* Escala semanal */}
       <Card className="mb-4">
-        <div className="p-3 border-b border-bg-border flex items-center justify-between">
+        <div className="p-3 border-b border-[var(--bdr)] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button onClick={() => setWeekOffset((w) => w - 1)} className="text-[12px] border border-bg-border rounded-lg px-2 py-1 hover:bg-bg-panel2">←</button>
+            <button onClick={() => setWeekOffset((w) => w - 1)} className="text-[12px] border border-[var(--bdr)] rounded-lg px-2 py-1 hover:bg-[var(--sur2)]">←</button>
             <span className="text-[12px] font-medium">{ptShortDate(days[0])} – {ptShortDate(days[4])}</span>
-            <button onClick={() => setWeekOffset((w) => w + 1)} className="text-[12px] border border-bg-border rounded-lg px-2 py-1 hover:bg-bg-panel2">→</button>
+            <button onClick={() => setWeekOffset((w) => w + 1)} className="text-[12px] border border-[var(--bdr)] rounded-lg px-2 py-1 hover:bg-[var(--sur2)]">→</button>
             {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-[11px] text-id-light">Hoje</button>}
           </div>
-          <button onClick={() => setShowAddCollab(true)} className="flex items-center gap-1 text-[11px] border border-bg-border rounded-lg px-2.5 py-1 text-slate-300 hover:bg-bg-panel2"><Plus size={12} /> Adicionar</button>
+          {isAdmin && <button onClick={() => setShowAddCollab(true)} className="flex items-center gap-1 text-[11px] border border-[var(--bdr)] rounded-lg px-2.5 py-1 text-[var(--tx2)] hover:bg-[var(--sur2)]"><Plus size={12} /> Adicionar</button>}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-bg-border">
+              <tr className="text-[10px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
                 <th className="px-3 py-2 font-medium">Colaborador</th>
                 {days.map((d) => {
                   const iso = toISO(d)
@@ -162,19 +161,19 @@ export default function HomeOffice() {
             </thead>
             <tbody>
               {!collabs.length ? (
-                <tr><td colSpan={6} className="text-center py-8 text-slate-500">Nenhum colaborador cadastrado. Clique em "Adicionar" para incluir na escala.</td></tr>
+                <tr><td colSpan={6} className="text-center py-8 text-[var(--tx3)]">Nenhum colaborador cadastrado. Clique em "Adicionar" para incluir na escala.</td></tr>
               ) : collabs.map((collab) => {
                 const initials = (collab.name || '?').split(' ').slice(0, 2).map((w) => w[0] || '').join('').toUpperCase()
                 return (
-                  <tr key={collab.id} className="border-b border-bg-border/60">
+                  <tr key={collab.id} className="border-b border-[var(--bdr)]/60">
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-semibold shrink-0" style={{ background: collab.color || strToColor(collab.name) }}>{initials}</div>
                         <div className="min-w-0">
                           <div className="text-[12px] font-medium truncate">{collab.name}</div>
-                          {collab.role && <div className="text-[10px] text-slate-500">{collab.role}</div>}
+                          {collab.role && <div className="text-[10px] text-[var(--tx3)]">{collab.role}</div>}
                         </div>
-                        <button onClick={() => removeCollab(collab.id)} className="text-slate-600 hover:text-red-400 text-[11px] ml-1">✕</button>
+                        {isAdmin && <button onClick={() => removeCollab(collab.id)} className="text-[var(--tx4)] hover:text-red-400 text-[11px] ml-1">✕</button>}
                       </div>
                     </td>
                     {days.map((d) => {
@@ -185,13 +184,13 @@ export default function HomeOffice() {
                         : requests.find((r) => r.collabId === collab.id && r.date === iso)
                       const status = req?.status
                       return (
-                        <td key={iso} className={`px-3 py-2 text-center cursor-pointer ${iso === todayISO ? 'bg-id-dark/5' : ''}`} onClick={() => toggleCell(collab, iso)}>
+                        <td key={iso} className={`px-3 py-2 text-center ${isAdmin ? 'cursor-pointer' : ''} ${iso === todayISO ? 'bg-id-dark/5' : ''}`} onClick={() => isAdmin && toggleCell(collab, iso)}>
                           {status === 'approved' ? (
                             <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-id-mid/15 text-id-light">🏠 Home</span>
                           ) : status === 'pending' ? (
                             <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">⏳ Pendente</span>
                           ) : (
-                            <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-bg-panel2 text-slate-500">🏢 Escritório</span>
+                            <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-[var(--sur2)] text-[var(--tx3)]">🏢 Escritório</span>
                           )}
                         </td>
                       )
@@ -204,61 +203,63 @@ export default function HomeOffice() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 ${isAdmin ? 'lg:grid-cols-2' : ''} gap-4`}>
         {/* Formulário + minhas solicitações */}
         <Card className="p-4">
-          <div className="text-[11px] font-semibold uppercase text-slate-500 mb-3">Solicitar Home Office</div>
+          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-3">Solicitar Home Office</div>
           <div className="flex flex-wrap gap-2 mb-4">
-            <input type="date" value={reqDate} onChange={(e) => setReqDate(e.target.value)} className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
-            <select value={reqType} onChange={(e) => setReqType(e.target.value)} className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]">
+            <input type="date" value={reqDate} onChange={(e) => setReqDate(e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
+            <select value={reqType} onChange={(e) => setReqType(e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]">
               <option value="dia_completo">Dia completo</option>
               <option value="meio_periodo">Meio período</option>
             </select>
-            <input value={reqObs} onChange={(e) => setReqObs(e.target.value)} placeholder="Observação (opcional)" className="flex-1 min-w-[140px] bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
+            <input value={reqObs} onChange={(e) => setReqObs(e.target.value)} placeholder="Observação (opcional)" className="flex-1 min-w-[140px] bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
             <button onClick={submitRequest} className="bg-id-dark hover:bg-id-mid rounded-lg px-3 text-[12px]">Enviar</button>
           </div>
           <div className="space-y-2 max-h-[320px] overflow-y-auto">
             {!mine.length ? (
-              <div className="text-[12px] text-slate-500 text-center py-6">Nenhuma solicitação ainda.</div>
+              <div className="text-[12px] text-[var(--tx3)] text-center py-6">Nenhuma solicitação ainda.</div>
             ) : mine.map((r) => (
-              <div key={r.id} className="flex items-start gap-2 bg-bg-panel2 border border-bg-border rounded-lg px-3 py-2">
+              <div key={r.id} className="flex items-start gap-2 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2">
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] font-medium flex items-center gap-1.5">
                     {r.date}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${r.status === 'approved' ? 'bg-id-mid/15 text-id-light' : r.status === 'rejected' ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'}`}>{r.status}</span>
                   </div>
-                  <div className="text-[11px] text-slate-500">{TYPE_LABEL[r.type] || r.type}</div>
-                  {r.obs && <div className="text-[11px] text-slate-400 mt-0.5">💬 {r.obs}</div>}
+                  <div className="text-[11px] text-[var(--tx3)]">{TYPE_LABEL[r.type] || r.type}</div>
+                  {r.obs && <div className="text-[11px] text-[var(--tx3)] mt-0.5">💬 {r.obs}</div>}
                   {r.adminNote && <div className={`text-[11px] mt-0.5 ${r.status === 'rejected' ? 'text-red-400' : 'text-id-light'}`}>👤 Admin: {r.adminNote}</div>}
                 </div>
-                {r.status === 'pending' && <button onClick={() => cancelRequest(r.id)} className="text-[11px] text-slate-500 hover:text-red-400">🗑</button>}
+                {r.status === 'pending' && <button onClick={() => cancelRequest(r.id)} className="text-[11px] text-[var(--tx3)] hover:text-red-400">🗑</button>}
               </div>
             ))}
           </div>
         </Card>
 
         {/* Pendências admin */}
-        <Card className="p-4">
-          <div className="text-[11px] font-semibold uppercase text-slate-500 mb-3">Aprovações pendentes {pending.length > 0 && `(${pending.length})`}</div>
-          <div className="space-y-2 max-h-[400px] overflow-y-auto">
-            {!pending.length ? (
-              <div className="text-[12px] text-id-light text-center py-6">🎉 Nenhuma solicitação pendente!</div>
-            ) : pending.map((r) => (
-              <PendingCard key={r.id} r={r} onApprove={approveRequest} onReject={rejectRequest} />
-            ))}
-          </div>
-        </Card>
+        {isAdmin && (
+          <Card className="p-4">
+            <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-3">Aprovações pendentes {pending.length > 0 && `(${pending.length})`}</div>
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {!pending.length ? (
+                <div className="text-[12px] text-id-light text-center py-6">🎉 Nenhuma solicitação pendente!</div>
+              ) : pending.map((r) => (
+                <PendingCard key={r.id} r={r} onApprove={approveRequest} onReject={rejectRequest} />
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
 
       {showAddCollab && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setShowAddCollab(false)}>
-          <div className="bg-bg-panel border border-bg-border rounded-xl w-full max-w-[340px] p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[340px] p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <div className="font-medium text-[13px]">Adicionar colaborador</div>
-              <button onClick={() => setShowAddCollab(false)} className="text-slate-500 hover:text-white"><X size={16} /></button>
+              <button onClick={() => setShowAddCollab(false)} className="text-[var(--tx3)] hover:text-white"><X size={16} /></button>
             </div>
-            <input value={newCollabName} onChange={(e) => setNewCollabName(e.target.value)} placeholder="Nome" className="w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] mb-2" />
-            <input value={newCollabRole} onChange={(e) => setNewCollabRole(e.target.value)} placeholder="Cargo (opcional)" className="w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] mb-3" />
+            <input value={newCollabName} onChange={(e) => setNewCollabName(e.target.value)} placeholder="Nome" className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] mb-2" />
+            <input value={newCollabRole} onChange={(e) => setNewCollabRole(e.target.value)} placeholder="Cargo (opcional)" className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] mb-3" />
             <button onClick={addCollab} className="w-full bg-id-dark hover:bg-id-mid rounded-lg py-2 text-[12px] font-medium">Adicionar</button>
           </div>
         </div>
@@ -270,11 +271,11 @@ export default function HomeOffice() {
 function PendingCard({ r, onApprove, onReject }) {
   const [note, setNote] = useState('')
   return (
-    <div className="bg-bg-panel2 border border-bg-border rounded-lg px-3 py-2.5">
-      <div className="text-[12px] font-medium">{r.name} <span className="text-[10.5px] text-slate-500">@{r.username}</span></div>
-      <div className="text-[11px] text-slate-500 mt-0.5">📅 {r.date} · 📋 {TYPE_LABEL[r.type] || r.type}</div>
-      {r.obs && <div className="text-[11px] text-slate-400 mt-1">💬 {r.obs}</div>}
-      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Nota para o colaborador (opcional)" className="w-full bg-bg-panel border border-bg-border rounded-lg px-2 py-1 text-[11px] mt-2" />
+    <div className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2.5">
+      <div className="text-[12px] font-medium">{r.name} <span className="text-[10.5px] text-[var(--tx3)]">@{r.username}</span></div>
+      <div className="text-[11px] text-[var(--tx3)] mt-0.5">📅 {r.date} · 📋 {TYPE_LABEL[r.type] || r.type}</div>
+      {r.obs && <div className="text-[11px] text-[var(--tx3)] mt-1">💬 {r.obs}</div>}
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Nota para o colaborador (opcional)" className="w-full bg-[var(--sur)] border border-[var(--bdr)] rounded-lg px-2 py-1 text-[11px] mt-2" />
       <div className="flex gap-2 mt-2">
         <button onClick={() => onApprove(r.id, note)} className="flex items-center gap-1 text-[11px] bg-id-dark hover:bg-id-mid rounded-lg px-2.5 py-1"><Check size={11} /> Aprovar</button>
         <button onClick={() => onReject(r.id, note)} className="flex items-center gap-1 text-[11px] border border-red-500/40 text-red-400 rounded-lg px-2.5 py-1"><X size={11} /> Reprovar</button>

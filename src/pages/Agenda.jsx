@@ -124,7 +124,7 @@ export default function Agenda() {
     return (
       <div>
         <PageHeader eyebrow="Equipe" title="Agenda" />
-        <Card className="p-10 text-center text-slate-500">Carregando…</Card>
+        <Card className="p-10 text-center text-[var(--tx3)]">Carregando…</Card>
       </div>
     )
   }
@@ -136,11 +136,11 @@ export default function Agenda() {
         {/* Calendário */}
         <Card className="p-4 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
-            <button onClick={() => calNav(-1)} className="text-[13px] px-2 py-1 border border-bg-border rounded-lg hover:bg-bg-panel2">←</button>
+            <button onClick={() => calNav(-1)} className="text-[13px] px-2 py-1 border border-[var(--bdr)] rounded-lg hover:bg-[var(--sur2)]">←</button>
             <span className="font-display font-medium text-[14px]">{MONTHS[calMonth]} {calYear}</span>
-            <button onClick={() => calNav(1)} className="text-[13px] px-2 py-1 border border-bg-border rounded-lg hover:bg-bg-panel2">→</button>
+            <button onClick={() => calNav(1)} className="text-[13px] px-2 py-1 border border-[var(--bdr)] rounded-lg hover:bg-[var(--sur2)]">→</button>
           </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-slate-500 mb-1">
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-[var(--tx3)] mb-1">
             {DOWS.map((d) => <div key={d}>{d}</div>)}
           </div>
           <div className="grid grid-cols-7 gap-1">
@@ -148,14 +148,14 @@ export default function Agenda() {
               <div
                 key={i}
                 onClick={() => c.dateStr && setSelectedDate(selectedDate === c.dateStr ? null : c.dateStr)}
-                className={`min-h-[64px] rounded-lg p-1 text-[11px] cursor-pointer border ${c.other ? 'text-slate-700 border-transparent' : c.dateStr === todayISO ? 'border-id-mid bg-id-dark/10' : selectedDate === c.dateStr ? 'border-sky-500 bg-sky-500/5' : 'border-bg-border/60 hover:bg-bg-panel2'}`}
+                className={`min-h-[64px] rounded-lg p-1 text-[11px] cursor-pointer border ${c.other ? 'text-[var(--tx4)] border-transparent' : c.dateStr === todayISO ? 'border-id-mid bg-id-dark/10' : selectedDate === c.dateStr ? 'border-sky-500 bg-sky-500/5' : 'border-[var(--bdr)]/60 hover:bg-[var(--sur2)]'}`}
               >
                 <div className={c.other ? '' : 'font-medium'}>{c.label}</div>
                 {(c.evts || []).slice(0, 2).map((e) => {
                   const t = EVT_TYPES.find((x) => x.id === e.type) || EVT_TYPES[0]
                   return <div key={e.id} className="text-[9.5px] px-1 rounded mt-0.5 truncate" style={{ background: t.bg, color: t.color }}>{e.time ? e.time + ' ' : ''}{e.title}</div>
                 })}
-                {c.evts?.length > 2 && <div className="text-[9px] text-slate-500 mt-0.5">+{c.evts.length - 2} mais</div>}
+                {c.evts?.length > 2 && <div className="text-[9px] text-[var(--tx3)] mt-0.5">+{c.evts.length - 2} mais</div>}
               </div>
             ))}
           </div>
@@ -164,19 +164,19 @@ export default function Agenda() {
         {/* Formulário + lista */}
         <div className="space-y-4">
           <Card className="p-4">
-            <div className="text-[11px] font-semibold uppercase text-slate-500 mb-2">Novo item</div>
+            <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-2">Novo item</div>
             <div className="flex flex-wrap gap-1 mb-2">
               {EVT_TYPES.map((t) => (
                 <button key={t.id} onClick={() => setType(t.id)} className="text-[10.5px] px-2 py-1 rounded-full border" style={{ background: type === t.id ? t.bg : 'transparent', color: t.color, borderColor: type === t.id ? t.color : '#2a2e38' }}>{t.label}</button>
               ))}
             </div>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título" className="w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] mb-2" />
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título" className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] mb-2" />
             <div className="flex gap-2 mb-2">
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="flex-1 bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
-              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-[100px] bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-[100px] bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
             </div>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Nota (opcional)" rows={2} className="w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] mb-2 resize-none" />
-            <select value={recurrence} onChange={(e) => setRecurrence(e.target.value)} className="w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] mb-2">
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Nota (opcional)" rows={2} className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] mb-2 resize-none" />
+            <select value={recurrence} onChange={(e) => setRecurrence(e.target.value)} className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] mb-2">
               <option value="none">Não repetir</option>
               <option value="daily">Diariamente</option>
               <option value="weekdays">Dias úteis</option>
@@ -184,32 +184,32 @@ export default function Agenda() {
               <option value="monthly">Mensalmente</option>
             </select>
             {recurrence !== 'none' && (
-              <input type="date" value={recurrEnd} onChange={(e) => setRecurrEnd(e.target.value)} placeholder="Repetir até" className="w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] mb-2" />
+              <input type="date" value={recurrEnd} onChange={(e) => setRecurrEnd(e.target.value)} placeholder="Repetir até" className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] mb-2" />
             )}
             <button onClick={addItem} className="w-full bg-id-dark hover:bg-id-mid rounded-lg py-2 text-[12px] font-medium">Adicionar</button>
           </Card>
 
           <Card className="p-4">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-[11px] font-semibold uppercase text-slate-500">
+              <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">
                 {selectedDate ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Todos os eventos'}
               </div>
-              {selectedDate && <button onClick={() => setSelectedDate(null)} className="text-[10.5px] text-slate-500">Limpar</button>}
+              {selectedDate && <button onClick={() => setSelectedDate(null)} className="text-[10.5px] text-[var(--tx3)]">Limpar</button>}
             </div>
             <div className="space-y-1.5 max-h-[280px] overflow-y-auto">
               {!listItems.length ? (
-                <div className="text-[12px] text-slate-500 text-center py-4">Nenhum item{selectedDate ? ' neste dia' : ''}.</div>
+                <div className="text-[12px] text-[var(--tx3)] text-center py-4">Nenhum item{selectedDate ? ' neste dia' : ''}.</div>
               ) : listItems.map((item) => {
                 const t = EVT_TYPES.find((x) => x.id === item.type) || EVT_TYPES[0]
                 return (
-                  <div key={item.id} className={`flex items-start gap-2 rounded-lg px-2.5 py-2 border ${item.done ? 'opacity-50 border-transparent' : 'border-bg-border'}`} style={{ background: item.done ? 'transparent' : t.bg }}>
+                  <div key={item.id} className={`flex items-start gap-2 rounded-lg px-2.5 py-2 border ${item.done ? 'opacity-50 border-transparent' : 'border-[var(--bdr)]'}`} style={{ background: item.done ? 'transparent' : t.bg }}>
                     <input type="checkbox" checked={item.done} onChange={() => toggleDone(item.id)} className="mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <div className="text-[12px] font-medium truncate" style={{ color: item.done ? undefined : t.color }}>{item.title}</div>
-                      <div className="text-[10.5px] text-slate-500">{new Date(item.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}{item.time ? ' · ' + item.time : ''}</div>
-                      {item.note && <div className="text-[10.5px] text-slate-400 mt-0.5">{item.note}</div>}
+                      <div className="text-[10.5px] text-[var(--tx3)]">{new Date(item.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}{item.time ? ' · ' + item.time : ''}</div>
+                      {item.note && <div className="text-[10.5px] text-[var(--tx3)] mt-0.5">{item.note}</div>}
                     </div>
-                    <button onClick={() => deleteItem(item.id)} className="text-slate-500 hover:text-red-400 text-[11px]">✕</button>
+                    <button onClick={() => deleteItem(item.id)} className="text-[var(--tx3)] hover:text-red-400 text-[11px]">✕</button>
                   </div>
                 )
               })}

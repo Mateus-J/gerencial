@@ -17,7 +17,7 @@ const META = {
   pass_fail: { icon: '🔒', label: 'Senha incorreta', color: 'text-red-400' },
   admin_access: { icon: '⚙️', label: 'Acesso ao Admin', color: 'text-sky-400' },
 }
-const getMeta = (type) => META[type] || { icon: 'ℹ️', label: type, color: 'text-slate-400' }
+const getMeta = (type) => META[type] || { icon: 'ℹ️', label: type, color: 'text-[var(--tx3)]' }
 
 async function sha256(str) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
@@ -61,7 +61,7 @@ export default function Auditoria() {
     return (
       <div>
         <PageHeader eyebrow="Sistema" title="Auditoria" />
-        <Card className="p-10 text-center text-slate-500">Carregando…</Card>
+        <Card className="p-10 text-center text-[var(--tx3)]">Carregando…</Card>
       </div>
     )
   }
@@ -73,45 +73,45 @@ export default function Auditoria() {
         title="Auditoria"
         actions={
           <>
-            <button onClick={exportCSV} className="flex items-center gap-1.5 text-[12px] border border-bg-border rounded-lg px-3 py-1.5 text-slate-300 hover:bg-bg-panel2"><Download size={13} /> Exportar CSV</button>
+            <button onClick={exportCSV} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]"><Download size={13} /> Exportar CSV</button>
             <button onClick={clearLog} className="flex items-center gap-1.5 text-[12px] border border-red-500/40 text-red-400 rounded-lg px-3 py-1.5"><Trash2 size={13} /> Limpar log</button>
           </>
         }
       />
 
       <Card className="p-4 mb-4">
-        <div className="text-[11px] font-semibold uppercase text-slate-500 mb-2">Prova de integridade</div>
-        <p className="text-[12px] text-slate-400 leading-relaxed">
-          As senhas são convertidas com <strong className="text-slate-200">SHA-256</strong> (Web Crypto API — nativa do navegador, sem biblioteca externa).
+        <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-2">Prova de integridade</div>
+        <p className="text-[12px] text-[var(--tx3)] leading-relaxed">
+          As senhas são convertidas com <strong className="text-[var(--tx)]">SHA-256</strong> (Web Crypto API — nativa do navegador, sem biblioteca externa).
         </p>
-        <div className="mt-2 font-mono text-[11px] bg-bg-panel2 border border-bg-border rounded-lg p-2.5 break-all">
+        <div className="mt-2 font-mono text-[11px] bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg p-2.5 break-all">
           Senha: "exemplo123"<br />SHA-256: {proof}
         </div>
-        <p className="text-[11px] text-slate-500 mt-2">O hash armazenado é irreversível. Nem administradores podem ver a senha original.</p>
+        <p className="text-[11px] text-[var(--tx3)] mt-2">O hash armazenado é irreversível. Nem administradores podem ver a senha original.</p>
       </Card>
 
       <Card>
         {!log.length ? (
-          <div className="text-center py-10 text-slate-500 text-[12px]">Nenhum registro ainda. As ações de autenticação aparecerão aqui.</div>
+          <div className="text-center py-10 text-[var(--tx3)] text-[12px]">Nenhum registro ainda. As ações de autenticação aparecerão aqui.</div>
         ) : (
-          <div className="divide-y divide-bg-border/60">
+          <div className="divide-y divide-[var(--bdr)]/60">
             {log.map((entry, i) => {
               const m = getMeta(entry.type)
               const d = new Date(entry.ts)
               return (
                 <div key={i} className="flex items-start gap-3 px-4 py-3">
-                  <div className="w-8 h-8 rounded-lg bg-bg-panel2 flex items-center justify-center text-[14px] shrink-0">{m.icon}</div>
+                  <div className="w-8 h-8 rounded-lg bg-[var(--sur2)] flex items-center justify-center text-[14px] shrink-0">{m.icon}</div>
                   <div className="min-w-0 flex-1">
                     <div className="text-[12.5px]">
                       {m.label} — <strong>@{entry.user}</strong>
-                      <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-bg-panel2 ${m.color}`}>{m.label}</span>
+                      <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--sur2)] ${m.color}`}>{m.label}</span>
                     </div>
-                    <div className="flex gap-3 text-[11px] text-slate-500 mt-0.5">
+                    <div className="flex gap-3 text-[11px] text-[var(--tx3)] mt-0.5">
                       <span>📅 {d.toLocaleDateString('pt-BR')} {d.toLocaleTimeString('pt-BR')}</span>
                       {entry.details?.role && <span>👤 Perfil: {entry.details.role}</span>}
                       {entry.details?.email && <span>📧 {entry.details.email}</span>}
                     </div>
-                    {entry.details?.passHash && <div className="text-[10.5px] font-mono text-slate-600 mt-1 break-all">SHA-256: {entry.details.passHash}</div>}
+                    {entry.details?.passHash && <div className="text-[10.5px] font-mono text-[var(--tx4)] mt-1 break-all">SHA-256: {entry.details.passHash}</div>}
                     {entry.details?.reason && <div className="text-[11px] text-red-400 mt-1">⚠ {entry.details.reason}</div>}
                   </div>
                 </div>

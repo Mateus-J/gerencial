@@ -1,20 +1,20 @@
 import {
   LayoutDashboard, Wallet, Percent, Landmark, AlertTriangle,
-  Home, CalendarDays, Users, ShieldCheck, Settings, ChevronDown,
+  Home, CalendarDays, Users, ShieldCheck, Settings, ChevronDown, LogOut, History, Building2,
 } from 'lucide-react'
-import { useState } from 'react'
 
 const NAV = [
   {
     group: 'Visão geral',
     items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { id: 'dashboard', label: 'Pendências', icon: LayoutDashboard },
     ],
   },
   {
     group: 'Operacional',
     items: [
       { id: 'saldos', label: 'Saldos', icon: Wallet },
+      { id: 'fundos', label: 'Fundos', icon: Building2 },
       { id: 'taxa-administracao', label: 'Taxa de Administração', icon: Percent },
       { id: 'portal-saldos', label: 'Portal Saldos', icon: Landmark },
       { id: 'multas-juros', label: 'Multas e Juros', icon: AlertTriangle, badge: true },
@@ -25,26 +25,27 @@ const NAV = [
     items: [
       { id: 'home-office', label: 'Home Office', icon: Home },
       { id: 'agenda', label: 'Agenda', icon: CalendarDays },
-      { id: 'usuarios', label: 'Usuários', icon: Users },
+      { id: 'usuarios', label: 'Usuários', icon: Users, adminOnly: true },
     ],
   },
   {
     group: 'Sistema',
     items: [
-      { id: 'auditoria', label: 'Auditoria', icon: ShieldCheck },
-      { id: 'configuracoes', label: 'Configurações', icon: Settings },
+      { id: 'auditoria', label: 'Auditoria', icon: ShieldCheck, adminOnly: true },
+      { id: 'historico', label: 'Histórico', icon: History },
+      { id: 'configuracoes', label: 'Configurações', icon: Settings, adminOnly: true },
     ],
   },
 ]
 
-export default function Sidebar({ active, onNavigate, counts = {}, user, collapsed, onToggleCollapsed }) {
+export default function Sidebar({ active, onNavigate, counts = {}, user, collapsed, onToggleCollapsed, isAdmin, onLogout }) {
   return (
     <aside
-      className={`h-full shrink-0 bg-bg-panel border-r border-bg-border flex flex-col transition-all duration-150 ${
+      className={`h-full shrink-0 bg-[var(--sur)] border-r border-[var(--bdr)] flex flex-col transition-all duration-150 ${
         collapsed ? 'w-[64px]' : 'w-[220px]'
       }`}
     >
-      <div className="h-[50px] flex items-center gap-2 px-4 border-b border-bg-border shrink-0">
+      <div className="h-[50px] flex items-center gap-2 px-4 border-b border-[var(--bdr)] shrink-0">
         <div className="w-6 h-6 rounded-md bg-id-dark flex items-center justify-center text-white text-[11px] font-bold shrink-0">
           ID
         </div>
@@ -56,15 +57,18 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-        {NAV.map((group) => (
+        {NAV.map((group) => {
+          const visibleItems = group.items.filter((item) => !item.adminOnly || isAdmin)
+          if (!visibleItems.length) return null
+          return (
           <div key={group.group}>
             {!collapsed && (
-              <div className="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-slate-500">
+              <div className="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--tx3)]">
                 {group.group}
               </div>
             )}
             <div className="space-y-0.5">
-              {group.items.map((item) => {
+              {visibleItems.map((item) => {
                 const Icon = item.icon
                 const isActive = active === item.id
                 const count = counts[item.id]
@@ -76,7 +80,7 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
                     className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12.5px] transition-colors
                       ${isActive
                         ? 'bg-id-dark/20 text-id-light border border-id-dark/40'
-                        : 'text-slate-300 hover:bg-bg-panel2 hover:text-white border border-transparent'}`}
+                        : 'text-[var(--tx2)] hover:bg-[var(--sur2)] hover:text-white border border-transparent'}`}
                   >
                     <Icon size={15} className="shrink-0" />
                     {!collapsed && <span className="truncate flex-1 text-left">{item.label}</span>}
@@ -90,27 +94,33 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
               })}
             </div>
           </div>
-        ))}
+          )
+        })}
       </nav>
 
       <button
         onClick={onToggleCollapsed}
-        className="h-10 border-t border-bg-border text-slate-500 hover:text-slate-300 text-[11px] flex items-center justify-center gap-1"
+        className="h-10 border-t border-[var(--bdr)] text-[var(--tx3)] hover:text-[var(--tx2)] text-[11px] flex items-center justify-center gap-1"
       >
         <ChevronDown size={13} className={`transition-transform ${collapsed ? '-rotate-90' : 'rotate-90'}`} />
         {!collapsed && 'Recolher'}
       </button>
 
       {user && (
-        <div className="border-t border-bg-border p-2.5 flex items-center gap-2">
+        <div className="border-t border-[var(--bdr)] p-2.5 flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-id-mid/30 text-id-light flex items-center justify-center text-[11px] font-semibold shrink-0">
             {user.initials}
           </div>
           {!collapsed && (
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-[12px] font-medium truncate">{user.name}</div>
-              <div className="text-[10.5px] text-slate-500 truncate">{user.role}</div>
+              <div className="text-[10.5px] text-[var(--tx3)] truncate">{user.role}</div>
             </div>
+          )}
+          {onLogout && (
+            <button onClick={onLogout} title="Sair" className="text-[var(--tx3)] hover:text-red-400 shrink-0">
+              <LogOut size={14} />
+            </button>
           )}
         </div>
       )}

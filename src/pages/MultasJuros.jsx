@@ -130,7 +130,7 @@ export default function MultasJuros() {
     return (
       <div>
         <PageHeader eyebrow="Operacional" title="Multas e Juros" />
-        <Card className="p-10 text-center text-slate-500">Carregando…</Card>
+        <Card className="p-10 text-center text-[var(--tx3)]">Carregando…</Card>
       </div>
     )
   }
@@ -142,15 +142,15 @@ export default function MultasJuros() {
         title="Multas e Juros"
         actions={
           <>
-            <button onClick={addRow} className="flex items-center gap-1.5 text-[12px] border border-bg-border rounded-lg px-3 py-1.5 text-slate-300 hover:bg-bg-panel2"><Plus size={13} /> Nova guia</button>
+            <button onClick={addRow} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]"><Plus size={13} /> Nova guia</button>
             <button onClick={exportCSV} className="flex items-center gap-1.5 text-[12px] bg-id-dark hover:bg-id-mid rounded-lg px-3 py-1.5 font-medium"><Download size={13} /> Exportar CSV</button>
           </>
         }
       />
-      <p className="text-[11px] text-slate-500 -mt-3 mb-4">Multa de mora 0,33%/dia (teto 20%). Juros = Selic acumulada dos meses intermediários + taxa fixa no mês de quitação.</p>
+      <p className="text-[11px] text-[var(--tx3)] -mt-3 mb-4">Multa de mora 0,33%/dia (teto 20%). Juros = Selic acumulada dos meses intermediários + taxa fixa no mês de quitação.</p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Card className="p-3"><div className="text-[10px] uppercase text-slate-500">Total Imposto</div><div className="font-display text-lg font-semibold">{fmtBRL(totais.imposto)}</div></Card>
+        <Card className="p-3"><div className="text-[10px] uppercase text-[var(--tx3)]">Total Imposto</div><div className="font-display text-lg font-semibold">{fmtBRL(totais.imposto)}</div></Card>
         <Card className="p-3"><div className="text-[10px] uppercase text-red-400/80">Total Multa</div><div className="font-display text-lg font-semibold text-red-400">{fmtBRL(totais.multa)}</div></Card>
         <Card className="p-3"><div className="text-[10px] uppercase text-amber-400/80">Total Juros</div><div className="font-display text-lg font-semibold text-amber-400">{fmtBRL(totais.juros)}</div></Card>
         <Card className="p-3"><div className="text-[10px] uppercase text-id-light">Total a Pagar</div><div className="font-display text-lg font-semibold text-id-light">{fmtBRL(totais.total)}</div></Card>
@@ -159,19 +159,19 @@ export default function MultasJuros() {
       {/* Parâmetros + Selic */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <Card className="p-4">
-          <div className="text-[10.5px] font-semibold uppercase text-slate-500 mb-3">Parâmetros</div>
+          <div className="text-[10.5px] font-semibold uppercase text-[var(--tx3)] mb-3">Parâmetros</div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-[11px] text-slate-400">Multa/dia (%)
-              <input defaultValue={(mj.params.taxaMultaDia * 100).toString()} onBlur={(e) => editParam('taxaMultaDia', e.target.value)} className="mt-1 w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
+            <label className="text-[11px] text-[var(--tx3)]">Multa/dia (%)
+              <input defaultValue={(mj.params.taxaMultaDia * 100).toString()} onBlur={(e) => editParam('taxaMultaDia', e.target.value)} className="mt-1 w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
             </label>
-            <label className="text-[11px] text-slate-400">Teto multa (%)
-              <input defaultValue={(mj.params.tetoMulta * 100).toString()} onBlur={(e) => editParam('tetoMulta', e.target.value)} className="mt-1 w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
+            <label className="text-[11px] text-[var(--tx3)]">Teto multa (%)
+              <input defaultValue={(mj.params.tetoMulta * 100).toString()} onBlur={(e) => editParam('tetoMulta', e.target.value)} className="mt-1 w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
             </label>
-            <label className="text-[11px] text-slate-400">Juros fixo mês quitação (%)
-              <input defaultValue={(mj.params.jurosFixo * 100).toString()} onBlur={(e) => editParam('jurosFixo', e.target.value)} className="mt-1 w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
+            <label className="text-[11px] text-[var(--tx3)]">Juros fixo mês quitação (%)
+              <input defaultValue={(mj.params.jurosFixo * 100).toString()} onBlur={(e) => editParam('jurosFixo', e.target.value)} className="mt-1 w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
             </label>
-            <label className="text-[11px] text-slate-400">Convenção contagem
-              <select defaultValue={mj.params.convencao} onChange={(e) => editParam('convencao', e.target.value)} className="mt-1 w-full bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]">
+            <label className="text-[11px] text-[var(--tx3)]">Convenção contagem
+              <select defaultValue={mj.params.convencao} onChange={(e) => editParam('convencao', e.target.value)} className="mt-1 w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]">
                 <option value="seguinte">Dia seguinte ao vencimento</option>
                 <option value="vencimento">Incluir dia do vencimento</option>
               </select>
@@ -179,15 +179,15 @@ export default function MultasJuros() {
           </div>
         </Card>
         <Card className="p-4">
-          <div className="text-[10.5px] font-semibold uppercase text-slate-500 mb-3">Tabela Selic mensal (RFB/SICALC)</div>
+          <div className="text-[10.5px] font-semibold uppercase text-[var(--tx3)] mb-3">Tabela Selic mensal (RFB/SICALC)</div>
           <div className="flex gap-2 mb-2">
-            <input type="month" value={selicMonth} onChange={(e) => setSelicMonth(e.target.value)} className="flex-1 bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
-            <input placeholder="Taxa %" value={selicRate} onChange={(e) => setSelicRate(e.target.value)} className="w-20 bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
+            <input type="month" value={selicMonth} onChange={(e) => setSelicMonth(e.target.value)} className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
+            <input placeholder="Taxa %" value={selicRate} onChange={(e) => setSelicRate(e.target.value)} className="w-20 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
             <button onClick={addSelic} className="bg-id-dark hover:bg-id-mid rounded-lg px-3 text-[12px]">+</button>
           </div>
           <div className="max-h-[140px] overflow-y-auto space-y-1">
             {Object.entries(mj.selic).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
-              <div key={k} className="flex items-center justify-between text-[11.5px] bg-bg-panel2 rounded-md px-2 py-1">
+              <div key={k} className="flex items-center justify-between text-[11.5px] bg-[var(--sur2)] rounded-md px-2 py-1">
                 <span>{monthLabel(k)}</span>
                 <span className="font-mono">{fmtPct(v)}</span>
                 <button onClick={() => deleteSelic(k)} className="text-red-400 text-[11px]">🗑</button>
@@ -202,7 +202,7 @@ export default function MultasJuros() {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-wider text-slate-500 border-b border-bg-border">
+              <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
                 <th className="px-2 py-2 font-medium">Fundo</th>
                 <th className="px-2 py-2 font-medium">Tributo</th>
                 <th className="px-2 py-2 font-medium">Vencimento</th>
@@ -217,17 +217,17 @@ export default function MultasJuros() {
             </thead>
             <tbody>
               {computed.map(({ guia: g, calc }) => (
-                <tr key={g.id} className="border-b border-bg-border/60 text-[12px] hover:bg-bg-panel2/60">
+                <tr key={g.id} className="border-b border-[var(--bdr)]/60 text-[12px] hover:bg-[var(--sur2)]/60">
                   <td className="px-2 py-1.5"><input defaultValue={g.fundo} onBlur={(e) => editField(g.id, 'fundo', e.target.value)} className="bg-transparent w-full outline-none" /></td>
                   <td className="px-2 py-1.5"><input defaultValue={g.tributo} onBlur={(e) => editField(g.id, 'tributo', e.target.value)} className="bg-transparent w-full outline-none" /></td>
                   <td className="px-2 py-1.5"><input type="date" defaultValue={g.venc} onBlur={(e) => editField(g.id, 'venc', e.target.value)} className="bg-transparent outline-none font-mono" /></td>
                   <td className="px-2 py-1.5"><input type="date" defaultValue={g.pgto} onBlur={(e) => editField(g.id, 'pgto', e.target.value)} className="bg-transparent outline-none font-mono" /></td>
                   <td className="px-2 py-1.5 text-right"><input defaultValue={g.valor} onBlur={(e) => editField(g.id, 'valor', e.target.value)} className="bg-transparent w-24 text-right font-mono outline-none" /></td>
-                  <td className="px-2 py-1.5 text-right font-mono text-slate-400">{calc?.dias ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-[var(--tx3)]">{calc?.dias ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right font-mono text-red-400">{calc ? fmtBRL(calc.valorMulta) : '—'}</td>
                   <td className="px-2 py-1.5 text-right font-mono text-amber-400">{calc ? fmtBRL(calc.valorJuros) : '—'}</td>
                   <td className="px-2 py-1.5 text-right font-mono font-semibold text-id-light">{calc ? fmtBRL(calc.total) : '—'}</td>
-                  <td className="px-2 py-1.5 text-center"><button onClick={() => deleteRow(g.id)} className="text-slate-500 hover:text-red-400"><Trash2 size={13} /></button></td>
+                  <td className="px-2 py-1.5 text-center"><button onClick={() => deleteRow(g.id)} className="text-[var(--tx3)] hover:text-red-400"><Trash2 size={13} /></button></td>
                 </tr>
               ))}
             </tbody>

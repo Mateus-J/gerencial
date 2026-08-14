@@ -77,23 +77,45 @@ export default function Usuarios() {
     return (
       <div>
         <PageHeader eyebrow="Equipe" title="Usuários" />
-        <Card className="p-10 text-center text-slate-500">Carregando…</Card>
+        <Card className="p-10 text-center text-[var(--tx3)]">Carregando…</Card>
       </div>
     )
   }
+
+  const pending = Object.entries(users).filter(([, u]) => u.role === 'pending')
 
   return (
     <div>
       <PageHeader eyebrow="Equipe" title="Usuários" />
 
+      {pending.length > 0 && (
+        <Card className="mb-4 border-amber-500/40">
+          <div className="p-3 border-b border-[var(--bdr)]">
+            <span className="text-[11px] font-semibold uppercase text-amber-400">Cadastros pendentes ({pending.length})</span>
+          </div>
+          <div className="divide-y divide-[var(--bdr)]/60">
+            {pending.map(([key, u]) => (
+              <div key={key} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12.5px] font-medium">{u.name} <span className="text-[10.5px] text-[var(--tx3)]">@{key}</span></div>
+                  <div className="text-[11px] text-[var(--tx3)]">{u.email || '—'}</div>
+                </div>
+                <button onClick={() => updateField(key, 'role', 'user')} className="text-[11px] bg-id-dark hover:bg-id-mid rounded-lg px-2.5 py-1">Aprovar como Equipe</button>
+                <button onClick={() => removeUser(key)} className="text-[11px] border border-red-500/40 text-red-400 rounded-lg px-2.5 py-1">Rejeitar</button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card className="mb-4">
-        <div className="p-3 border-b border-bg-border flex items-center justify-between">
-          <span className="text-[12px] text-slate-400">{Object.keys(users).length} usuários</span>
+        <div className="p-3 border-b border-[var(--bdr)] flex items-center justify-between">
+          <span className="text-[12px] text-[var(--tx3)]">{Object.keys(users).length} usuários</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-wider text-slate-500 border-b border-bg-border">
+              <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
                 <th className="px-3 py-2.5 font-medium">Usuário</th>
                 <th className="px-3 py-2.5 font-medium">Nome</th>
                 <th className="px-3 py-2.5 font-medium">E-mail</th>
@@ -104,32 +126,33 @@ export default function Usuarios() {
             </thead>
             <tbody>
               {!Object.keys(users).length ? (
-                <tr><td colSpan={6} className="text-center py-8 text-slate-500">Nenhum usuário cadastrado ainda.</td></tr>
+                <tr><td colSpan={6} className="text-center py-8 text-[var(--tx3)]">Nenhum usuário cadastrado ainda.</td></tr>
               ) : Object.entries(users).map(([key, u]) => (
-                <tr key={key} className="border-b border-bg-border/60 text-[12.5px]">
+                <tr key={key} className="border-b border-[var(--bdr)]/60 text-[12.5px]">
                   <td className="px-3 py-2 font-medium">@{key}</td>
-                  <td className="px-3 py-2"><input defaultValue={u.name} onBlur={(e) => updateField(key, 'name', e.target.value)} className="bg-transparent border-b border-transparent focus:border-bg-border outline-none w-[130px]" /></td>
-                  <td className="px-3 py-2"><input defaultValue={u.email || ''} onBlur={(e) => updateField(key, 'email', e.target.value)} placeholder="email@…" className="bg-transparent border-b border-transparent focus:border-bg-border outline-none w-[160px]" /></td>
+                  <td className="px-3 py-2"><input defaultValue={u.name} onBlur={(e) => updateField(key, 'name', e.target.value)} className="bg-transparent border-b border-transparent focus:border-[var(--bdr)] outline-none w-[130px]" /></td>
+                  <td className="px-3 py-2"><input defaultValue={u.email || ''} onBlur={(e) => updateField(key, 'email', e.target.value)} placeholder="email@…" className="bg-transparent border-b border-transparent focus:border-[var(--bdr)] outline-none w-[160px]" /></td>
                   <td className="px-3 py-2">
-                    <select defaultValue={u.role} onChange={(e) => updateField(key, 'role', e.target.value)} className="bg-bg-panel2 border border-bg-border rounded-md px-1.5 py-1 text-[11px]">
+                    <select defaultValue={u.role} onChange={(e) => updateField(key, 'role', e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px]">
+                      {u.role === 'pending' && <option value="pending">Pendente</option>}
                       <option value="admin">Administrador</option>
                       <option value="user">Equipe</option>
                       <option value="consulta">Consulta</option>
                     </select>
                   </td>
-                  <td className="px-3 py-2"><input type="password" placeholder="Nova senha…" onBlur={(e) => e.target.value && updatePass(key, e.target.value)} className="bg-bg-panel2 border border-bg-border rounded-md px-1.5 py-1 text-[11px] w-[110px]" /></td>
+                  <td className="px-3 py-2"><input type="password" placeholder="Nova senha…" onBlur={(e) => e.target.value && updatePass(key, e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px] w-[110px]" /></td>
                   <td className="px-3 py-2"><button onClick={() => removeUser(key)} className="text-[11px] text-red-400 border border-red-500/30 rounded-md px-2 py-0.5">Remover</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="p-3 border-t border-bg-border flex flex-wrap gap-2 items-center">
-          <input value={nu.user} onChange={(e) => setNu({ ...nu, user: e.target.value.toLowerCase() })} placeholder="usuário" className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] w-[110px]" />
-          <input value={nu.name} onChange={(e) => setNu({ ...nu, name: e.target.value })} placeholder="nome" className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] w-[140px]" />
-          <input value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} placeholder="email" className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] w-[160px]" />
-          <input type="password" value={nu.pass} onChange={(e) => setNu({ ...nu, pass: e.target.value })} placeholder="senha" className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px] w-[110px]" />
-          <select value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })} className="bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]">
+        <div className="p-3 border-t border-[var(--bdr)] flex flex-wrap gap-2 items-center">
+          <input value={nu.user} onChange={(e) => setNu({ ...nu, user: e.target.value.toLowerCase() })} placeholder="usuário" className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] w-[110px]" />
+          <input value={nu.name} onChange={(e) => setNu({ ...nu, name: e.target.value })} placeholder="nome" className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] w-[140px]" />
+          <input value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} placeholder="email" className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] w-[160px]" />
+          <input type="password" value={nu.pass} onChange={(e) => setNu({ ...nu, pass: e.target.value })} placeholder="senha" className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px] w-[110px]" />
+          <select value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]">
             <option value="admin">Administrador</option>
             <option value="user">Equipe</option>
             <option value="consulta">Consulta</option>
@@ -139,17 +162,17 @@ export default function Usuarios() {
       </Card>
 
       <Card className="p-4">
-        <div className="text-[11px] font-semibold uppercase text-slate-500 mb-3">Permissões por perfil</div>
-        <div className="grid grid-cols-[1fr_1fr_60px_60px_60px] gap-2 text-[10px] uppercase text-slate-500 mb-1 px-1">
+        <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-3">Permissões por perfil</div>
+        <div className="grid grid-cols-[1fr_1fr_60px_60px_60px] gap-2 text-[10px] uppercase text-[var(--tx3)] mb-1 px-1">
           <div>Ação</div><div>Descrição</div><div className="text-center">Admin</div><div className="text-center">Equipe</div><div className="text-center">Consulta</div>
         </div>
         {PERMS.map((p) => (
-          <div key={p.action} className="grid grid-cols-[1fr_1fr_60px_60px_60px] gap-2 text-[12px] py-1.5 border-t border-bg-border/60 items-center px-1">
+          <div key={p.action} className="grid grid-cols-[1fr_1fr_60px_60px_60px] gap-2 text-[12px] py-1.5 border-t border-[var(--bdr)]/60 items-center px-1">
             <div>{p.action}</div>
-            <div className="text-slate-500 text-[11px]">{p.desc}</div>
-            <div className="text-center">{p.admin ? <span className="text-id-light">✓</span> : <span className="text-slate-600">—</span>}</div>
-            <div className="text-center">{p.user ? <span className="text-id-light">✓</span> : <span className="text-slate-600">—</span>}</div>
-            <div className="text-center">{p.consulta ? <span className="text-id-light">✓</span> : <span className="text-slate-600">—</span>}</div>
+            <div className="text-[var(--tx3)] text-[11px]">{p.desc}</div>
+            <div className="text-center">{p.admin ? <span className="text-id-light">✓</span> : <span className="text-[var(--tx4)]">—</span>}</div>
+            <div className="text-center">{p.user ? <span className="text-id-light">✓</span> : <span className="text-[var(--tx4)]">—</span>}</div>
+            <div className="text-center">{p.consulta ? <span className="text-id-light">✓</span> : <span className="text-[var(--tx4)]">—</span>}</div>
           </div>
         ))}
       </Card>

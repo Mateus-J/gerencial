@@ -338,11 +338,11 @@ export default function Saldos() {
         actions={
           <>
             <input ref={liqInputRef} type="file" accept=".xls,.html,.htm" className="hidden" onChange={(e) => importLiquidez(e.target.files[0])} />
-            <button onClick={() => liqInputRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-bg-border rounded-lg px-3 py-1.5 text-slate-300 hover:bg-bg-panel2">
+            <button onClick={() => liqInputRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
               <FileSpreadsheet size={13} /> Importar Liquidez
             </button>
             <input ref={extInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => importExtrato(e.target.files[0])} />
-            <button onClick={() => extInputRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-bg-border rounded-lg px-3 py-1.5 text-slate-300 hover:bg-bg-panel2">
+            <button onClick={() => extInputRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
               <Upload size={13} /> Importar Extrato
             </button>
             <button onClick={exportCSV} className="flex items-center gap-1.5 text-[12px] bg-id-dark hover:bg-id-mid rounded-lg px-3 py-1.5 font-medium">
@@ -351,44 +351,44 @@ export default function Saldos() {
           </>
         }
       />
-      <p className="text-[11px] text-slate-500 -mt-3 mb-4">Data de referência: {SD.dataRef || '—'}</p>
+      <p className="text-[11px] text-[var(--tx3)] -mt-3 mb-4">Data de referência: {SD.dataRef || '—'}</p>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
         <Card className="p-3">
-          <div className="text-[10px] uppercase text-slate-500">ID RF · Inicial</div>
+          <div className="text-[10px] uppercase text-[var(--tx3)]">ID RF · Inicial</div>
           <div className="font-display text-lg font-semibold text-sky-400">{sdFmt(SD.rfSaldoInicial)}</div>
         </Card>
         <Card className="p-3">
-          <div className="text-[10px] uppercase text-slate-500">ID RF · Atual</div>
+          <div className="text-[10px] uppercase text-[var(--tx3)]">ID RF · Atual</div>
           <div className="font-display text-lg font-semibold text-id-light">{SD.rfSaldoAtual ? sdFmt(SD.rfSaldoAtual) : 'Aguardando extrato'}</div>
         </Card>
         <Card className="p-3">
-          <div className="text-[10px] uppercase text-slate-500">ID Soberano · Inicial</div>
+          <div className="text-[10px] uppercase text-[var(--tx3)]">ID Soberano · Inicial</div>
           <div className="font-display text-lg font-semibold text-purple-400">{sdFmt(SD.sobSaldoInicial)}</div>
         </Card>
         <Card className="p-3">
-          <div className="text-[10px] uppercase text-slate-500">ID Soberano · Atual</div>
+          <div className="text-[10px] uppercase text-[var(--tx3)]">ID Soberano · Atual</div>
           <div className="font-display text-lg font-semibold text-id-light">{SD.sobSaldoAtual ? sdFmt(SD.sobSaldoAtual) : 'Aguardando extrato'}</div>
         </Card>
         <Card className={`p-3 cursor-pointer ${alertas > 0 ? 'border-red-500/40' : ''}`} onClick={() => setFiltro((f) => (f === 'alerta' ? 'todos' : 'alerta'))}>
-          <div className="text-[10px] uppercase text-slate-500">Alertas</div>
+          <div className="text-[10px] uppercase text-[var(--tx3)]">Alertas</div>
           <div className={`font-display text-lg font-semibold ${alertas > 0 ? 'text-red-400' : 'text-id-light'}`}>{alertas > 0 ? `⚠ ${alertas}` : '✅ Todos OK'}</div>
         </Card>
         <Card className={`p-3 cursor-pointer ${semSaldo > 0 ? 'border-amber-500/40' : ''}`} onClick={() => setFiltro((f) => (f === 'semsaldo' ? 'todos' : 'semsaldo'))}>
-          <div className="text-[10px] uppercase text-slate-500">Sem saldo</div>
-          <div className={`font-display text-lg font-semibold ${semSaldo > 0 ? 'text-amber-400' : 'text-slate-500'}`}>{semSaldo > 0 ? `⚪ ${semSaldo}` : '—'}</div>
+          <div className="text-[10px] uppercase text-[var(--tx3)]">Sem saldo</div>
+          <div className={`font-display text-lg font-semibold ${semSaldo > 0 ? 'text-amber-400' : 'text-[var(--tx3)]'}`}>{semSaldo > 0 ? `⚪ ${semSaldo}` : '—'}</div>
         </Card>
       </div>
 
       <Card>
-        <div className="p-3 border-b border-bg-border flex gap-2">
+        <div className="p-3 border-b border-[var(--bdr)] flex gap-2">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar cotista…"
-            className="flex-1 bg-bg-panel2 border border-bg-border rounded-lg px-3 py-2 text-[12px] outline-none focus:border-id-mid placeholder:text-slate-500"
+            className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[12px] outline-none focus:border-id-mid placeholder:text-[var(--tx3)]"
           />
-          <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className="bg-bg-panel2 border border-bg-border rounded-lg px-2 text-[12px]">
+          <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 text-[12px]">
             <option value="todos">Todos</option>
             <option value="rf">ID RF</option>
             <option value="sob">ID Soberano</option>
@@ -401,7 +401,7 @@ export default function Saldos() {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-wider text-slate-500 border-b border-bg-border">
+              <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
                 {[['nome', 'Cotista'], ['fundo', 'Fundo'], ['saldoInicial', 'Saldo inicial'], ['saldoAtualizado', 'Saldo atualizado']].map(([col, label]) => (
                   <th key={col} className="px-3 py-2.5 font-medium cursor-pointer select-none" onClick={() => toggleSort(col)}>
                     {label}{sort.col === col ? (sort.asc ? ' ↑' : ' ↓') : ''}
@@ -414,9 +414,9 @@ export default function Saldos() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-10 text-slate-500">Carregando…</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
               ) : !rows.length ? (
-                <tr><td colSpan={7} className="text-center py-10 text-slate-500">{SD.cotistas.length ? 'Nenhum resultado para o filtro.' : 'Nenhum cotista. Clique em Importar Liquidez para começar.'}</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">{SD.cotistas.length ? 'Nenhum resultado para o filtro.' : 'Nenhum cotista. Clique em Importar Liquidez para começar.'}</td></tr>
               ) : rows.map((r) => {
                 const idx = SD.cotistas.indexOf(r)
                 const sat = r.saldoAtualizado != null ? r.saldoAtualizado : r.saldoInicial
@@ -424,15 +424,15 @@ export default function Saldos() {
                 const alerta = saldoDisp < -1
                 const semPosicao = !!(r._fundoIncorreto?.length)
                 return (
-                  <tr key={idx} className="border-b border-bg-border/60 hover:bg-bg-panel2/60 text-[12.5px]">
+                  <tr key={idx} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
                     <td className="px-3 py-2.5 font-medium max-w-[240px] truncate" title={r.nome}>{r.nome}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${r.fundo === 'ID RF' ? 'bg-sky-500/15 text-sky-300' : r.fundo === 'ID Soberano' ? 'bg-purple-500/15 text-purple-300' : 'bg-bg-panel2 text-slate-500'}`}>{r.fundo || '—'}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${r.fundo === 'ID RF' ? 'bg-sky-500/15 text-sky-300' : r.fundo === 'ID Soberano' ? 'bg-purple-500/15 text-purple-300' : 'bg-[var(--sur2)] text-[var(--tx3)]'}`}>{r.fundo || '—'}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{sdFmt(r.saldoInicial)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{sdFmt(sat)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums cursor-pointer text-id-light" onClick={() => openBloq(idx)}>
-                      {r.bloqueios?.length ? sdFmt(r.saldoBloqueado) : <span className="text-slate-500 text-[11px]">+ Adicionar</span>}
+                      {r.bloqueios?.length ? sdFmt(r.saldoBloqueado) : <span className="text-[var(--tx3)] text-[11px]">+ Adicionar</span>}
                     </td>
                     <td className="px-3 py-2.5">
                       {semPosicao ? (
@@ -457,32 +457,32 @@ export default function Saldos() {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-2.5 text-[11px] text-slate-500 border-t border-bg-border">{rows.length} de {SD.cotistas.length} cotistas</div>
+        <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)]">{rows.length} de {SD.cotistas.length} cotistas</div>
       </Card>
 
       {bloqCotista && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setBloqIdx(null)}>
-          <div className="bg-bg-panel border border-bg-border rounded-xl w-full max-w-[380px] p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[380px] p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="font-medium text-[13px]">{bloqCotista.nome}</div>
-                <div className="text-[11px] text-slate-500">{bloqCotista.fundo}</div>
+                <div className="text-[11px] text-[var(--tx3)]">{bloqCotista.fundo}</div>
               </div>
-              <button onClick={() => setBloqIdx(null)} className="text-slate-500 hover:text-white"><X size={16} /></button>
+              <button onClick={() => setBloqIdx(null)} className="text-[var(--tx3)] hover:text-white"><X size={16} /></button>
             </div>
             <div className="flex gap-2 mb-2">
-              <input value={bloqVal} onChange={(e) => setBloqVal(e.target.value)} placeholder="Valor" className="w-[110px] bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
-              <input value={bloqDesc} onChange={(e) => setBloqDesc(e.target.value)} placeholder="Descrição" className="flex-1 bg-bg-panel2 border border-bg-border rounded-lg px-2 py-1.5 text-[12px]" />
+              <input value={bloqVal} onChange={(e) => setBloqVal(e.target.value)} placeholder="Valor" className="w-[110px] bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
+              <input value={bloqDesc} onChange={(e) => setBloqDesc(e.target.value)} placeholder="Descrição" className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 py-1.5 text-[12px]" />
               <button onClick={addBloqueio} className="bg-id-dark hover:bg-id-mid rounded-lg px-3 text-[12px]">+</button>
             </div>
             <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
               {!bloqCotista.bloqueios?.length ? (
-                <div className="text-[12px] text-slate-500 text-center py-3">Nenhum bloqueio cadastrado</div>
+                <div className="text-[12px] text-[var(--tx3)] text-center py-3">Nenhum bloqueio cadastrado</div>
               ) : bloqCotista.bloqueios.map((b, i) => (
-                <div key={i} className="flex items-center gap-2 bg-bg-panel2 border border-bg-border rounded-lg px-2.5 py-2">
+                <div key={i} className="flex items-center gap-2 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2.5 py-2">
                   <div className="flex-1 min-w-0">
                     <div className="text-[12px] font-medium tabular-nums">{sdFmt(b.valor)}</div>
-                    <div className="text-[11px] text-slate-500 truncate">{b.desc || 'Sem descrição'} · {b.data}</div>
+                    <div className="text-[11px] text-[var(--tx3)] truncate">{b.desc || 'Sem descrição'} · {b.data}</div>
                   </div>
                   <button onClick={() => removeBloqueio(i)} className="text-red-400 text-[13px]">✕</button>
                 </div>
