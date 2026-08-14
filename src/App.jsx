@@ -15,7 +15,9 @@ import Historico from './pages/Historico'
 import Configuracoes from './pages/Configuracoes'
 import Login from './pages/Login'
 import PendingApproval from './pages/PendingApproval'
+import Quadro from './pages/Quadro'
 import { useFirebaseStatus } from './hooks/useFirebaseStatus'
+import { COLABORADORES } from './hooks/useBoard'
 import { AuthProvider, useAuth } from './context/AuthContext'
 
 const PAGES = {
@@ -52,19 +54,53 @@ function AppShell() {
   if (currentUser.role === 'pending') return <PendingApproval />
 
   const isAdmin = currentUser.role === 'admin'
-  const page = PAGES[active] ?? PAGES.dashboard
-  if (page.adminOnly && !isAdmin) {
-    return <AppShellInner {...{ active: 'dashboard', setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+  const isBoard = active.startsWith('board:')
+
+  // Quadros (Controle): cada um só acessa o próprio, admin acessa qualquer um
+  if (isBoard) {
+    const slug = active.slice('board:'.length)
+    const isOwn = slug === currentUser.username
+    if (!isOwn && !isAdmin) {
+      return <Redirect to="board:" username={currentUser.username} setActive={setActive} {...{ collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+    }
+  } else {
+    const page = PAGES[active] ?? PAGES.dashboard
+    if (page.adminOnly && !isAdmin) {
+      return <AppShellInner {...{ active: 'dashboard', setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+    }
   }
 
   return <AppShellInner {...{ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
 }
 
+// Pequeno helper: se um não-admin tentar abrir o quadro de outra pessoa via URL/estado direto, manda pro próprio
+function Redirect({ username, setActive, ...rest }) {
+  useEffect(() => { setActive('board:' + username) }, [])
+  return <AppShellInner active={'board:' + username} setActive={setActive} {...rest} />
+}
+
 function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }) {
-  const page = PAGES[active] ?? PAGES.dashboard
-  const Page = page.component
   const initials = (currentUser.name || currentUser.username || '?').split(' ').slice(0, 2).map((w) => w[0] || '').join('').toUpperCase()
   const roleLabel = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }[currentUser.role] || currentUser.role
+
+  const isBoard = active.startsWith('board:')
+  let Page, title, subtitle, boardSlug, boardOwnerName
+
+  if (isBoard) {
+    boardSlug = active.slice('board:'.length)
+    if (boardSlug === currentUser.username) {
+      boardOwnerName = currentUser.name || currentUser.username
+    } else {
+      boardOwnerName = COLABORADORES.find((c) => c.slug === boardSlug)?.name || boardSlug
+    }
+    title = boardOwnerName
+    subtitle = 'Controle'
+  } else {
+    const page = PAGES[active] ?? PAGES.dashboard
+    Page = page.component
+    title = page.title
+    subtitle = page.subtitle
+  }
 
   return (
     <div className="h-screen w-screen flex bg-[var(--bg)] overflow-hidden">
@@ -74,13 +110,15 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         isAdmin={isAdmin}
+        ownSlug={currentUser.username}
+        ownName={currentUser.name || currentUser.username}
         user={{ name: currentUser.name || currentUser.username, role: roleLabel, initials }}
         onLogout={logout}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar
-          title={page.title}
-          subtitle={page.subtitle}
+          title={title}
+          subtitle={subtitle}
           status={status}
           dark={dark}
           onToggleDark={() => setDark((d) => !d)}
@@ -88,7 +126,7 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
           onSearch={setSearch}
         />
         <main className="flex-1 overflow-y-auto p-5">
-          <Page />
+          {isBoard ? <Quadro slug={boardSlug} ownerName={boardOwnerName} /> : <Page />}
         </main>
       </div>
     </div>

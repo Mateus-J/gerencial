@@ -1,7 +1,9 @@
 import {
   LayoutDashboard, Wallet, Percent, Landmark, AlertTriangle,
   Home, CalendarDays, Users, ShieldCheck, Settings, ChevronDown, LogOut, History, Building2,
+  LayoutGrid, User,
 } from 'lucide-react'
+import { COLABORADORES } from '../hooks/useBoard'
 
 const NAV = [
   {
@@ -38,7 +40,16 @@ const NAV = [
   },
 ]
 
-export default function Sidebar({ active, onNavigate, counts = {}, user, collapsed, onToggleCollapsed, isAdmin, onLogout }) {
+export default function Sidebar({ active, onNavigate, counts = {}, user, collapsed, onToggleCollapsed, isAdmin, onLogout, ownSlug, ownName }) {
+  const controleGroup = {
+    group: 'Controle',
+    items: [
+      { id: 'board:' + ownSlug, label: 'Meu Quadro', icon: User },
+      ...(isAdmin ? COLABORADORES.map((c) => ({ id: 'board:' + c.slug, label: c.name, icon: LayoutGrid })) : []),
+    ],
+  }
+  const navGroups = [...NAV.slice(0, 3), controleGroup, ...NAV.slice(3)]
+
   return (
     <aside
       className={`h-full shrink-0 bg-[var(--sur)] border-r border-[var(--bdr)] flex flex-col transition-all duration-150 ${
@@ -57,7 +68,7 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-        {NAV.map((group) => {
+        {navGroups.map((group) => {
           const visibleItems = group.items.filter((item) => !item.adminOnly || isAdmin)
           if (!visibleItems.length) return null
           return (
@@ -80,7 +91,7 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
                     className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12.5px] transition-colors
                       ${isActive
                         ? 'bg-id-dark/20 text-id-light border border-id-dark/40'
-                        : 'text-[var(--tx2)] hover:bg-[var(--sur2)] hover:text-white border border-transparent'}`}
+                        : 'text-[var(--tx2)] hover:bg-[var(--sur2)] hover:text-[var(--tx)] border border-transparent'}`}
                   >
                     <Icon size={15} className="shrink-0" />
                     {!collapsed && <span className="truncate flex-1 text-left">{item.label}</span>}

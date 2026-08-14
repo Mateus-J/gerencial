@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { Download, Upload, Copy, Check } from 'lucide-react'
+import { Download, Upload, Copy, Check, Plus, X } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 
 // Todas as coleções 'controle/*' que este app usa — usado no backup completo
-const COLLECTIONS = ['saldos_v2', 'taxa_adm', 'portal_saldos', 'multas_juros', 'home_office', 'agenda', 'users', 'audit_log']
+const COLLECTIONS = ['saldos_v2', 'taxa_adm', 'portal_saldos', 'multas_juros', 'home_office', 'agenda', 'users', 'audit_log', 'pendencias', 'pendencias_historico', 'fundos_extra']
 
 const FIREBASE_RULES = `rules_version = '2';
 service cloud.firestore {
@@ -135,7 +135,79 @@ export default function Configuracoes() {
           <p className="text-[12px] text-[var(--tx3)] mb-2">Cole no console do Firebase em Firestore Database → Regras. Restringe o acesso ao domínio de produção.</p>
           <pre className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg p-3 text-[11px] font-mono overflow-x-auto whitespace-pre">{FIREBASE_RULES}</pre>
         </Card>
+
+        <ListManager
+          title="Responsáveis (Pendências)"
+          description="Lista de nomes disponível no campo Responsável ao criar uma pendência."
+          field="responsaveis"
+        />
+        <ListManager
+          title="Ocorrências (Pendências)"
+          description="Lista de opções disponível no campo Ocorrência ao criar uma pendência."
+          field="ocorrencias"
+        />
       </div>
     </div>
+  )
+}
+
+// Gerencia uma lista simples (array de strings) dentro do doc controle/pendencias,
+// sem mexer nos outros campos do documento (items, etc.)
+function ListManager({ title, description, field }) {
+  const [list, setList] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [novo, setNovo] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+    getDoc(doc(db, 'controle', 'pendencias'))
+      .then((snap) => { if (mounted && snap.exists()) setList(snap.data()[field] || []) })
+      .catch((e) => console.warn('listLoad err', e))
+      .finally(() => mounted && setLoading(false))
+    return () => { mounted = false }
+  }, [field])
+
+  async function persist(next) {
+    setList(next)
+    try {
+      const snap = await getDoc(doc(db, 'controle', 'pendencias'))
+      const current = snap.exists() ? snap.data() : {}
+      await setDoc(doc(db, 'controle', 'pendencias'), { ...current, [field]: next }, { merge: false })
+    } catch (e) { console.warn('listSave err', e) }
+  }
+
+  function add() {
+    const v = novo.trim()
+    if (!v || list.includes(v)) return
+    persist([...list, v])
+    setNovo('')
+  }
+  function remove(v) {
+    persist(list.filter((x) => x !== v))
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-1">{title}</div>
+      <p className="text-[12px] text-[var(--tx3)] mb-3">{description}</p>
+      <div className="flex gap-2 mb-3">
+        <input value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="Adicionar novo item…" className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2.5 py-1.5 text-[12px]" />
+        <button onClick={add} className="flex items-center gap-1 bg-id-dark hover:bg-id-mid rounded-lg px-3 text-[12px]"><Plus size={13} /></button>
+      </div>
+      {loading ? (
+        <p className="text-[11.5px] text-[var(--tx3)]">Carregando…</p>
+      ) : !list.length ? (
+        <p className="text-[11.5px] text-[var(--tx3)]">Nenhum item cadastrado ainda.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {list.map((v) => (
+            <span key={v} className="flex items-center gap-1 text-[11.5px] bg-[var(--sur2)] border border-[var(--bdr)] rounded-full pl-2.5 pr-1.5 py-1">
+              {v}
+              <button onClick={() => remove(v)} className="text-[var(--tx4)] hover:text-red-500"><X size={11} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }

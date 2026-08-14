@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { Plus, X, MessageCircle, Building2 } from 'lucide-react'
+import { Plus, X, Building2 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import KpiCard from '../components/KpiCard'
 import StatusBadge from '../components/StatusBadge'
+import SlackIcon from '../components/SlackIcon'
 import { useAuth } from '../context/AuthContext'
 import { useFundos } from '../hooks/useFundos'
 
 const PEND_DOC = () => doc(db, 'controle', 'pendencias')
 const HIST_DOC = () => doc(db, 'controle', 'pendencias_historico')
 
-const OCORRENCIAS_DEFAULT = ['Pagamento de Nota', 'Taxa de Administração', 'Movimentação', 'Documentação', 'Outro']
-const ALCADAS_DEFAULT = ['Liquidação', 'Backoffice', 'Custódia Lastro']
+const OCORRENCIAS_DEFAULT = [
+  'Pagamento de Nota', 'Devolução e Reembolso', 'Escrow', 'Operações', 'Ativos',
+  'Aportes', 'Resgates', 'Slack', 'Taxa de Administração', 'Comprovantes', 'Extratos',
+]
+const ALCADA_FIXA = 'Liquidação'
 
 function timeAgo(ts) {
   if (!ts) return '—'
@@ -33,6 +37,7 @@ export default function Dashboard() {
   const { all: fundosAll } = useFundos()
   const [items, setItems] = useState([])
   const [responsaveis, setResponsaveis] = useState([])
+  const [ocorrencias, setOcorrencias] = useState(OCORRENCIAS_DEFAULT)
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -45,6 +50,7 @@ export default function Dashboard() {
         if (!mounted || !snap.exists()) return
         setItems(snap.data().items || [])
         setResponsaveis(snap.data().responsaveis || [])
+        setOcorrencias(snap.data().ocorrencias?.length ? snap.data().ocorrencias : OCORRENCIAS_DEFAULT)
       })
       .catch((e) => console.warn('pendLoad err', e))
       .finally(() => mounted && setLoading(false))
@@ -56,7 +62,14 @@ export default function Dashboard() {
   function persist(nextItems, nextResp) {
     setItems(nextItems)
     if (nextResp) setResponsaveis(nextResp)
-    setDoc(PEND_DOC(), { items: nextItems, responsaveis: nextResp || responsaveis }, { merge: false }).catch((e) => console.warn('pendSave err', e))
+    // Lê o doc mais recente antes de gravar, pra não sobrescrever listas
+    // de ocorrências/responsáveis editadas em paralelo (ex: em Configurações)
+    getDoc(PEND_DOC()).then((snap) => {
+      const current = snap.exists() ? snap.data() : {}
+      setDoc(PEND_DOC(), { ...current, items: nextItems, responsaveis: nextResp || current.responsaveis || responsaveis }, { merge: false }).catch((e) => console.warn('pendSave err', e))
+    }).catch(() => {
+      setDoc(PEND_DOC(), { items: nextItems, responsaveis: nextResp || responsaveis, ocorrencias }, { merge: false }).catch((e) => console.warn('pendSave err', e))
+    })
   }
 
   async function addPendencia(data) {
@@ -141,8 +154,8 @@ export default function Dashboard() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center gap-1.5 justify-end">
                       {r.slackLink && (
-                        <a href={r.slackLink} target="_blank" rel="noreferrer" title="Abrir no Slack" className="text-[var(--tx3)] hover:text-[#4A154B] dark:hover:text-purple-300">
-                          <MessageCircle size={14} />
+                        <a href={r.slackLink} target="_blank" rel="noreferrer" title="Abrir no Slack" className="opacity-80 hover:opacity-100">
+                          <SlackIcon size={15} />
                         </a>
                       )}
                       <button onClick={() => concluir(r)} className="text-[11px] bg-id-mid/20 text-id-dark dark:text-id-light border border-id-mid/40 rounded-md px-2.5 py-1 hover:bg-id-mid/30">
@@ -164,6 +177,7 @@ export default function Dashboard() {
       {showModal && (
         <NovaPendenciaModal
           responsaveis={responsaveis}
+          ocorrencias={ocorrencias}
           fundos={fundosAll}
           onClose={() => setShowModal(false)}
           onSave={addPendencia}
@@ -173,16 +187,15 @@ export default function Dashboard() {
   )
 }
 
-function NovaPendenciaModal({ responsaveis, fundos, onClose, onSave }) {
+function NovaPendenciaModal({ responsaveis, ocorrencias, fundos, onClose, onSave }) {
   const [fundo, setFundo] = useState('')
   const [fundoMatch, setFundoMatch] = useState(null)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [cnpj, setCnpj] = useState('')
-  const [ocorrencia, setOcorrencia] = useState(OCORRENCIAS_DEFAULT[0])
+  const [ocorrencia, setOcorrencia] = useState((ocorrencias && ocorrencias[0]) || OCORRENCIAS_DEFAULT[0])
   const [responsavel, setResponsavel] = useState('')
   const [novoResp, setNovoResp] = useState('')
   const [showNovoResp, setShowNovoResp] = useState(false)
-  const [alcada, setAlcada] = useState(ALCADAS_DEFAULT[0])
   const [detalhamento, setDetalhamento] = useState('')
   const [slackLink, setSlackLink] = useState('')
   const [dataFinalizacao, setDataFinalizacao] = useState('')
@@ -210,7 +223,7 @@ function NovaPendenciaModal({ responsaveis, fundos, onClose, onSave }) {
     if (!fundo.trim()) { setError('Informe o fundo.'); return }
     if (!detalhamento.trim()) { setError('Descreva o detalhamento.'); return }
     const resp = showNovoResp && novoResp.trim() ? novoResp.trim() : responsavel
-    onSave({ fundo: fundo.trim(), cnpj: cnpj.trim(), ocorrencia, responsavel: resp, alcada, detalhamento: detalhamento.trim(), slackLink: slackLink.trim(), dataFinalizacao })
+    onSave({ fundo: fundo.trim(), cnpj: cnpj.trim(), ocorrencia, responsavel: resp, alcada: ALCADA_FIXA, detalhamento: detalhamento.trim(), slackLink: slackLink.trim(), dataFinalizacao })
   }
 
   return (
@@ -263,7 +276,7 @@ function NovaPendenciaModal({ responsaveis, fundos, onClose, onSave }) {
           <div>
             <label className="block text-[10.5px] uppercase text-[var(--tx3)] mb-1">Ocorrência</label>
             <select value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[12.5px]">
-              {OCORRENCIAS_DEFAULT.map((o) => <option key={o}>{o}</option>)}
+              {(ocorrencias?.length ? ocorrencias : OCORRENCIAS_DEFAULT).map((o) => <option key={o}>{o}</option>)}
             </select>
           </div>
         </div>
@@ -285,9 +298,7 @@ function NovaPendenciaModal({ responsaveis, fundos, onClose, onSave }) {
           </div>
           <div>
             <label className="block text-[10.5px] uppercase text-[var(--tx3)] mb-1">Alçada</label>
-            <select value={alcada} onChange={(e) => setAlcada(e.target.value)} className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[12.5px]">
-              {ALCADAS_DEFAULT.map((a) => <option key={a}>{a}</option>)}
-            </select>
+            <div className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[12.5px] text-[var(--tx2)]">{ALCADA_FIXA}</div>
           </div>
         </div>
 

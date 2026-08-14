@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, getDoc } from 'firebase/firestore'
-import { MessageCircle } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import StatusBadge from '../components/StatusBadge'
+import SlackIcon from '../components/SlackIcon'
 
 const HIST_DOC = () => doc(db, 'controle', 'pendencias_historico')
 
@@ -74,8 +74,8 @@ export default function Historico() {
                   <td className="px-4 py-3 text-[var(--tx3)]">{fmtDate(r.concluidoEm)}</td>
                   <td className="px-4 py-3">
                     {r.slackLink && (
-                      <a href={r.slackLink} target="_blank" rel="noreferrer" title="Abrir no Slack" className="text-[var(--tx3)] hover:text-[#4A154B] dark:hover:text-purple-300">
-                        <MessageCircle size={14} />
+                      <a href={r.slackLink} target="_blank" rel="noreferrer" title="Abrir no Slack" className="opacity-80 hover:opacity-100">
+                        <SlackIcon size={15} />
                       </a>
                     )}
                   </td>
