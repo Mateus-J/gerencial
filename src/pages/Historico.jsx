@@ -3,6 +3,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import StatusBadge from '../components/StatusBadge'
+import PriorityBadge from '../components/PriorityBadge'
 import SlackIcon from '../components/SlackIcon'
 
 const HIST_DOC = () => doc(db, 'controle', 'pendencias_historico')
@@ -51,6 +52,7 @@ export default function Historico() {
                 <th className="px-4 py-2.5 font-medium">Fundo</th>
                 <th className="px-4 py-2.5 font-medium">Ocorrência</th>
                 <th className="px-4 py-2.5 font-medium">Responsável</th>
+                <th className="px-4 py-2.5 font-medium">Prioridade</th>
                 <th className="px-4 py-2.5 font-medium">Status</th>
                 <th className="px-4 py-2.5 font-medium">Concluído por</th>
                 <th className="px-4 py-2.5 font-medium">Concluído em</th>
@@ -59,9 +61,9 @@ export default function Historico() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
               ) : !rows.length ? (
-                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">{items.length ? 'Nenhum resultado.' : 'Nenhuma pendência concluída ainda.'}</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-[var(--tx3)]">{items.length ? 'Nenhum resultado.' : 'Nenhuma pendência concluída ainda.'}</td></tr>
               ) : rows.map((r) => (
                 <tr key={r.id} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
                   <td className="px-4 py-3 font-medium max-w-[220px] truncate" title={r.fundo}>{r.fundo}</td>
@@ -69,6 +71,7 @@ export default function Historico() {
                     <span className="text-[10.5px] font-mono bg-sky-500/10 text-sky-600 dark:text-sky-300 px-1.5 py-0.5 rounded-md">{r.ocorrencia}</span>
                   </td>
                   <td className="px-4 py-3 text-[var(--tx2)]">{r.responsavel || '—'}</td>
+                  <td className="px-4 py-3"><PriorityBadge prioridade={r.prioridade} /></td>
                   <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                   <td className="px-4 py-3 text-[var(--tx2)] font-medium">{r.concluidoPor || '—'}</td>
                   <td className="px-4 py-3 text-[var(--tx3)]">{fmtDate(r.concluidoEm)}</td>

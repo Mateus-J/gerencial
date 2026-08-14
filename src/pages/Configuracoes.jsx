@@ -146,8 +146,48 @@ export default function Configuracoes() {
           description="Lista de opções disponível no campo Ocorrência ao criar uma pendência."
           field="ocorrencias"
         />
+        <AlertaAtrasoConfig />
       </div>
     </div>
+  )
+}
+
+// Configura a partir de quantos dias em aberto uma pendência é considerada
+// atrasada (destaque vermelho na tabela + KPI de atrasadas no Dashboard).
+function AlertaAtrasoConfig() {
+  const [dias, setDias] = useState(3)
+  const [loading, setLoading] = useState(true)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    getDoc(doc(db, 'controle', 'pendencias'))
+      .then((snap) => { if (mounted && snap.exists() && snap.data().alertaDias) setDias(snap.data().alertaDias) })
+      .catch((e) => console.warn('alertaLoad err', e))
+      .finally(() => mounted && setLoading(false))
+    return () => { mounted = false }
+  }, [])
+
+  async function salvar() {
+    try {
+      const snap = await getDoc(doc(db, 'controle', 'pendencias'))
+      const current = snap.exists() ? snap.data() : {}
+      await setDoc(doc(db, 'controle', 'pendencias'), { ...current, alertaDias: Number(dias) || 3 }, { merge: false })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } catch (e) { console.warn('alertaSave err', e) }
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-1">Alerta de pendência atrasada</div>
+      <p className="text-[12px] text-[var(--tx3)] mb-3">A partir de quantos dias em aberto uma pendência é destacada em vermelho na tabela e contada no KPI "Atrasadas".</p>
+      <div className="flex items-center gap-2">
+        <input type="number" min="1" disabled={loading} value={dias} onChange={(e) => setDias(e.target.value)} className="w-20 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2.5 py-1.5 text-[12px]" />
+        <span className="text-[12px] text-[var(--tx3)]">dias</span>
+        <button onClick={salvar} className="text-[12px] bg-id-dark hover:bg-id-mid text-white rounded-lg px-3 py-1.5 font-medium ml-2">{saved ? 'Salvo!' : 'Salvar'}</button>
+      </div>
+    </Card>
   )
 }
 

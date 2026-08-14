@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
+import * as XLSX from 'xlsx'
 import { Upload, FileSpreadsheet, Download, X } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
@@ -80,28 +81,32 @@ export default function Saldos() {
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
-        const parser = new DOMParser()
-        const doc_ = parser.parseFromString(e.target.result, 'text/html')
-        const rows = [...doc_.querySelectorAll('tr')]
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+
+        // A planilha "Zeragem Geral" da liquidez tem um cabeçalho institucional no
+        // topo (título, prestador, data-base) antes da tabela de verdade — acha a
+        // linha com "Fundo (Cotista)" pra saber onde os dados realmente começam.
+        const hdrIdx = raw.findIndex((r) => r.some((c) => String(c).trim() === 'Fundo (Cotista)'))
+        if (hdrIdx < 0) { alert('⚠ Não encontrei a coluna "Fundo (Cotista)" nesse arquivo. O layout pode ter mudado de novo.'); return }
+        const header = raw[hdrIdx].map((h) => String(h).trim())
+        const idxSeq = header.findIndex((h) => h === '#')
+        const idxNome = header.indexOf('Fundo (Cotista)')
+        const idxRF = header.indexOf('ID RF')
+        const idxSob = header.indexOf('ID Soberano')
+
         const cotistas = []
-        let headerFound = false
-        rows.forEach((tr) => {
-          const cells = [...tr.querySelectorAll('td,th')].map((c) => c.textContent.trim())
-          if (!headerFound) {
-            if (cells.some((c) => c.includes('Fundo (Cotista)'))) headerFound = true
-            return
+        raw.slice(hdrIdx + 1).forEach((r) => {
+          const seq = String(r[idxSeq] ?? '').trim()
+          const nome = String(r[idxNome] ?? '').trim()
+          if (!nome || nome.toUpperCase().includes('TOTAL') || seq.toUpperCase().includes('TOTAL')) return
+          const parseV = (v) => {
+            const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'))
+            return isNaN(n) || n < 0 ? 0 : n
           }
-          if (cells.length < 6) return
-          const seq = String(cells[0] || '').trim()
-          const nome = String(cells[1] || '').trim()
-          const nomeParecTotais = !isNaN(parseFloat(nome.replace(/\./g, '').replace(',', '.'))) && nome.replace(/[0-9.,]/g, '').trim() === ''
-          if (!nome || nome.toUpperCase().includes('TOTAL') || nome === 'nan' || nome === 'Fundo (Cotista)' || seq.toUpperCase().includes('TOTAL') || nomeParecTotais) return
-          const parseV = (s) => {
-            const v = parseFloat(String(s).replace(/[^0-9]/g, ''))
-            return isNaN(v) || v < 0 ? 0 : v / 100
-          }
-          const idRF = parseV(cells[4])
-          const idSob = parseV(cells[5])
+          const idRF = parseV(r[idxRF])
+          const idSob = parseV(r[idxSob])
           if (idRF > 0) cotistas.push({ nome: nome.substring(0, 120), fundo: 'ID RF', saldoInicial: idRF, saldoAtualizado: idRF, saldoBloqueado: 0 })
           if (idSob > 0) cotistas.push({ nome: nome.substring(0, 120), fundo: 'ID Soberano', saldoInicial: idSob, saldoAtualizado: idSob, saldoBloqueado: 0 })
           if (idRF === 0 && idSob === 0) cotistas.push({ nome: nome.substring(0, 120), fundo: '—', saldoInicial: 0, saldoAtualizado: 0, saldoBloqueado: 0, _semFundo: true })
@@ -131,7 +136,7 @@ export default function Saldos() {
         alert('⚠ Erro ao ler planilha: ' + err.message)
       }
     }
-    reader.readAsText(file, 'iso-8859-1')
+    reader.readAsArrayBuffer(file)
   }
 
   function importExtrato(file) {
@@ -337,7 +342,7 @@ export default function Saldos() {
         title="Saldos"
         actions={
           <>
-            <input ref={liqInputRef} type="file" accept=".xls,.html,.htm" className="hidden" onChange={(e) => importLiquidez(e.target.files[0])} />
+            <input ref={liqInputRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => importLiquidez(e.target.files[0])} />
             <button onClick={() => liqInputRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
               <FileSpreadsheet size={13} /> Importar Liquidez
             </button>
