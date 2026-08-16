@@ -57,8 +57,8 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
         collapsed ? 'w-[64px]' : 'w-[220px]'
       }`}
     >
-      <div className="h-[50px] flex items-center gap-2 px-4 border-b border-[var(--bdr)] shrink-0">
-        <img src={logoId} alt="ID" className="w-7 h-7 object-contain shrink-0" />
+      <div className="h-[50px] flex items-center gap-1.5 px-4 border-b border-[var(--bdr)] shrink-0">
+        <img src={logoId} alt="ID" className="w-9 h-9 object-contain shrink-0" />
         {!collapsed && (
           <span className="font-display font-semibold text-[13px] tracking-wide truncate">
             Gerencial Liquidação

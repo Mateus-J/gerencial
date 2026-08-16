@@ -83,8 +83,8 @@ export default function Login() {
   return (
     <div className="h-screen w-screen flex items-center justify-center bg-[var(--bg)]">
       <div className="w-full max-w-[380px] px-6">
-        <div className="flex items-center gap-2.5 justify-center mb-8">
-          <img src={logoId} alt="ID" className="w-9 h-9 object-contain" />
+        <div className="flex items-center gap-1.5 justify-center mb-8">
+          <img src={logoId} alt="ID" className="w-11 h-11 object-contain" />
           <span className="font-display font-semibold text-[17px]">Gerencial Liquidação</span>
         </div>
 
