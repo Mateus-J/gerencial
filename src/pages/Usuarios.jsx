@@ -160,11 +160,10 @@ export default function Usuarios() {
                   <td className="px-3 py-2"><input type="password" placeholder="Nova senha…" onBlur={(e) => e.target.value && updatePass(key, e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px] w-[110px]" /></td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
-                      <label className="inline-flex items-center cursor-pointer">
+                      <label className="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" checked={!!u.totpEnabled} onChange={(e) => toggle2FA(key, e.target.checked)} className="sr-only peer" />
-                        <span className="w-8 h-4 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors relative">
-                          <span className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
-                        </span>
+                        <span className="w-8 h-4 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors" />
+                        <span className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
                       </label>
                       {u.totpEnabled && (
                         <>
@@ -188,11 +187,10 @@ export default function Usuarios() {
                     </div>
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <label className="inline-flex items-center cursor-pointer">
+                    <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" checked={!!u.notifPendencias} onChange={(e) => updateField(key, 'notifPendencias', e.target.checked)} className="sr-only peer" />
-                      <span className="w-8 h-4 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors relative">
-                        <span className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
-                      </span>
+                      <span className="w-8 h-4 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors" />
+                      <span className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
                     </label>
                   </td>
                   <td className="px-3 py-2"><button onClick={() => removeUser(key)} className="text-[11px] text-red-400 border border-red-500/30 rounded-md px-2 py-0.5">Remover</button></td>

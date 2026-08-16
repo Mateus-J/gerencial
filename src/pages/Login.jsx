@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Eye, EyeOff, ShieldCheck, Clock } from 'lucide-react'
 import QRCode from 'qrcode'
-import { useAuth, withinAccessWindow, getLastUsername } from '../context/AuthContext'
+import { useAuth, withinAccessWindow, getLastUsername, consumeLogoutReason } from '../context/AuthContext'
 import { otpAuthUrl } from '../lib/totp'
 import logoId from '../assets/logo-id.png'
 
@@ -27,6 +27,12 @@ export default function Login() {
   const [code, setCode] = useState('')
   const [qrUrl, setQrUrl] = useState('')
   const [blockedWindow, setBlockedWindow] = useState(null)
+  const [logoutReason, setLogoutReason] = useState(null)
+
+  useEffect(() => {
+    const r = consumeLogoutReason()
+    if (r) setLogoutReason(r)
+  }, [])
 
   // Se este navegador já logou como alguém com horário de acesso restrito,
   // e o horário atual está fora da janela, nem mostra o formulário de login.
@@ -87,6 +93,10 @@ export default function Login() {
           <img src={logoId} alt="ID" className="w-11 h-11 object-contain" />
           <span className="font-display font-semibold text-[17px]">Gerencial Liquidação</span>
         </div>
+
+        {logoutReason && mode !== 'blocked' && (
+          <p className="text-[11.5px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3 text-center">{logoutReason}</p>
+        )}
 
         <div className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl p-6 shadow-card">
           {mode === 'blocked' ? (

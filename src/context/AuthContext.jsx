@@ -7,6 +7,7 @@ import { totpVerify } from '../lib/totp'
 const AuthContext = createContext(null)
 const SESSION_KEY = 'ctrl_session'
 const LAST_USER_KEY = 'ctrl_last_username'
+const LOGOUT_REASON_KEY = 'ctrl_logout_reason'
 const USERS_DOC = () => doc(db, 'controle', 'users')
 const AUDIT_DOC = () => doc(db, 'controle', 'audit_log')
 
@@ -32,6 +33,16 @@ export function withinAccessWindow(user) {
 
 export function getLastUsername() {
   try { return localStorage.getItem(LAST_USER_KEY) } catch (e) { return null }
+}
+
+// Lê o motivo do último logout automático (inatividade / fora do horário) e
+// já limpa, pra só aparecer uma vez na tela de login.
+export function consumeLogoutReason() {
+  try {
+    const r = localStorage.getItem(LOGOUT_REASON_KEY)
+    if (r) localStorage.removeItem(LOGOUT_REASON_KEY)
+    return r
+  } catch (e) { return null }
 }
 
 function todayStr() {
@@ -173,8 +184,9 @@ export function AuthProvider({ children }) {
     return { ok: true, user: session }
   }
 
-  function logout() {
-    if (currentUser) addAuditEntry('logout', { username: currentUser.username })
+  function logout(reason) {
+    if (currentUser) addAuditEntry(reason ? 'logout_auto' : 'logout', { username: currentUser.username, reason })
+    if (reason) { try { localStorage.setItem(LOGOUT_REASON_KEY, reason) } catch (e) {} }
     setCurrentUser(null)
     localStorage.removeItem(SESSION_KEY)
   }
@@ -197,6 +209,33 @@ export function AuthProvider({ children }) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session))
     return { ok: true }
   }
+
+  // Deslogamento automático: 1h sem interação com o sistema, ou o horário
+  // permitido do usuário (definido em Usuários) chegou ao fim.
+  useEffect(() => {
+    if (!currentUser) return
+    const IDLE_LIMIT_MS = 60 * 60 * 1000 // 1 hora
+    const CHECK_EVERY_MS = 30 * 1000
+    let lastActivity = Date.now()
+    const markActivity = () => { lastActivity = Date.now() }
+    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll']
+    events.forEach((ev) => window.addEventListener(ev, markActivity, { passive: true }))
+
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivity >= IDLE_LIMIT_MS) {
+        logout('Sessão encerrada por 1h sem interação com o sistema.')
+        return
+      }
+      if (!withinAccessWindow(currentUser)) {
+        logout(`Sessão encerrada: fora do horário permitido (${currentUser.acessoInicio}–${currentUser.acessoFim}).`)
+      }
+    }, CHECK_EVERY_MS)
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, markActivity))
+      clearInterval(interval)
+    }
+  }, [currentUser])
 
   return (
     <AuthContext.Provider value={{ currentUser, users, loading, login, logout, register, loadUsers, saveUsers, verifyTwoFactor }}>
