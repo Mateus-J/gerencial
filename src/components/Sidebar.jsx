@@ -124,7 +124,7 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <div className="text-[12px] font-medium truncate">{user.name}</div>
+              <div className="text-[12px] font-medium truncate">Olá, {user.name}</div>
               <div className="text-[10.5px] text-[var(--tx3)] truncate">{user.role}</div>
             </div>
           )}

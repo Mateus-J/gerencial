@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { UserPlus } from 'lucide-react'
+import { UserPlus, ShieldCheck, RotateCcw } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
+import { genSecret } from '../lib/totp'
 
 const DOC_REF = () => doc(db, 'controle', 'users')
 const ROLE_LABEL = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }
@@ -72,6 +73,18 @@ export default function Usuarios() {
     const passHash = await hashPass(newPass, salt)
     persist({ ...users, [key]: { ...users[key], pass: passHash, salt } })
   }
+  function toggle2FA(key, enabled) {
+    const u = users[key]
+    // Gera o segredo na primeira vez que ativa; ao desativar, mantém o
+    // segredo salvo (se reativar sem "resetar", não precisa escanear de novo).
+    const secret = u.totpSecret || genSecret()
+    persist({ ...users, [key]: { ...u, totpEnabled: enabled, totpSecret: secret } })
+  }
+  function reset2FA(key) {
+    if (!confirm('Resetar 2FA de @' + key + '? A pessoa vai precisar escanear um novo QR code no próximo login.')) return
+    const u = users[key]
+    persist({ ...users, [key]: { ...u, totpSecret: genSecret(), totpConfirmed: false } })
+  }
 
   if (loading) {
     return (
@@ -87,6 +100,7 @@ export default function Usuarios() {
   return (
     <div>
       <PageHeader eyebrow="Equipe" title="Usuários" />
+      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">2FA usa um app autenticador (Google Authenticator, Microsoft Authenticator, Authy…) — a pessoa configura escaneando um QR code no primeiro login e só precisa digitar o código de novo 1x por dia, no mesmo aparelho. Horário permitido em branco = sem restrição.</p>
 
       {pending.length > 0 && (
         <Card className="mb-4 border-amber-500/40">
@@ -121,13 +135,15 @@ export default function Usuarios() {
                 <th className="px-3 py-2.5 font-medium">E-mail</th>
                 <th className="px-3 py-2.5 font-medium">Perfil</th>
                 <th className="px-3 py-2.5 font-medium">Senha</th>
+                <th className="px-3 py-2.5 font-medium">2FA</th>
+                <th className="px-3 py-2.5 font-medium">Horário permitido</th>
                 <th className="px-3 py-2.5 font-medium">Lembrete pendências</th>
                 <th className="px-3 py-2.5 font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
               {!Object.keys(users).length ? (
-                <tr><td colSpan={7} className="text-center py-8 text-[var(--tx3)]">Nenhum usuário cadastrado ainda.</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-[var(--tx3)]">Nenhum usuário cadastrado ainda.</td></tr>
               ) : Object.entries(users).map(([key, u]) => (
                 <tr key={key} className="border-b border-[var(--bdr)]/60 text-[12.5px]">
                   <td className="px-3 py-2 font-medium">@{key}</td>
@@ -142,6 +158,35 @@ export default function Usuarios() {
                     </select>
                   </td>
                   <td className="px-3 py-2"><input type="password" placeholder="Nova senha…" onBlur={(e) => e.target.value && updatePass(key, e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px] w-[110px]" /></td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <label className="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" checked={!!u.totpEnabled} onChange={(e) => toggle2FA(key, e.target.checked)} className="sr-only peer" />
+                        <span className="w-8 h-4 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors relative">
+                          <span className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
+                        </span>
+                      </label>
+                      {u.totpEnabled && (
+                        <>
+                          {u.totpConfirmed ? (
+                            <ShieldCheck size={13} className="text-id-light" title="2FA configurado" />
+                          ) : (
+                            <span className="text-[9.5px] text-amber-400" title="Ainda não configurou no app autenticador">pendente</span>
+                          )}
+                          <button type="button" onClick={() => reset2FA(key)} title="Resetar 2FA (gera novo QR code)" className="text-[var(--tx4)] hover:text-red-400">
+                            <RotateCcw size={12} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1">
+                      <input type="time" defaultValue={u.acessoInicio || ''} onBlur={(e) => updateField(key, 'acessoInicio', e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1 py-1 text-[11px] w-[78px]" />
+                      <span className="text-[var(--tx4)] text-[11px]">–</span>
+                      <input type="time" defaultValue={u.acessoFim || ''} onBlur={(e) => updateField(key, 'acessoFim', e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1 py-1 text-[11px] w-[78px]" />
+                    </div>
+                  </td>
                   <td className="px-3 py-2 text-center">
                     <label className="inline-flex items-center cursor-pointer">
                       <input type="checkbox" checked={!!u.notifPendencias} onChange={(e) => updateField(key, 'notifPendencias', e.target.checked)} className="sr-only peer" />

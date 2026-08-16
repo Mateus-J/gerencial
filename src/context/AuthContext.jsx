@@ -2,11 +2,43 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { sha256, hashPass, genSalt, isHashed } from '../lib/authCrypto'
+import { totpVerify } from '../lib/totp'
 
 const AuthContext = createContext(null)
 const SESSION_KEY = 'ctrl_session'
+const LAST_USER_KEY = 'ctrl_last_username'
 const USERS_DOC = () => doc(db, 'controle', 'users')
 const AUDIT_DOC = () => doc(db, 'controle', 'audit_log')
+
+// "HH:MM" -> minutos desde 00:00, pra comparar horário de acesso
+function toMinutes(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '')
+  if (!m) return null
+  return Number(m[1]) * 60 + Number(m[2])
+}
+
+// Se o usuário tem janela de horário configurada, checa se agora está dentro dela.
+// Sem horário configurado (um ou os dois campos vazios) = sem restrição.
+export function withinAccessWindow(user) {
+  const start = toMinutes(user?.acessoInicio)
+  const end = toMinutes(user?.acessoFim)
+  if (start == null || end == null) return true
+  const now = new Date()
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  if (start <= end) return nowMin >= start && nowMin <= end
+  // janela que cruza a meia-noite (ex.: 22:00–06:00)
+  return nowMin >= start || nowMin <= end
+}
+
+export function getLastUsername() {
+  try { return localStorage.getItem(LAST_USER_KEY) } catch (e) { return null }
+}
+
+function todayStr() {
+  const d = new Date()
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+const twoFAFlagKey = (username) => `ctrl_2fa_ok_${username}_${todayStr()}`
 
 async function addAuditEntry(type, details) {
   try {
@@ -92,10 +124,52 @@ export function AuthProvider({ children }) {
       const next = { ...fresh, [foundKey]: { ...foundUser, pass: h, salt: newSalt } }
       await saveUsers(next)
     }
+
+    if (!withinAccessWindow(foundUser)) {
+      addAuditEntry('login_fail', { username: foundKey, reason: 'Fora do horário permitido' })
+      return { ok: false, error: `Acesso permitido apenas entre ${foundUser.acessoInicio} e ${foundUser.acessoFim}.` }
+    }
+
+    localStorage.setItem(LAST_USER_KEY, foundKey)
+
+    if (foundUser.totpEnabled) {
+      const already = localStorage.getItem(twoFAFlagKey(foundKey)) === '1'
+      if (!already) {
+        // Não abre sessão ainda — devolve o usuário pendente pro Login.jsx pedir o código
+        return { ok: true, needs2FA: true, setup: !foundUser.totpConfirmed, pending: { username: foundKey, user: foundUser } }
+      }
+    }
+
     const session = { username: foundKey, ...foundUser }
     setCurrentUser(session)
     localStorage.setItem(SESSION_KEY, JSON.stringify(session))
     addAuditEntry('login_ok', { username: foundKey, role: foundUser.role, email: foundUser.email || '', passHash: foundUser.pass })
+    return { ok: true, user: session }
+  }
+
+  // Confirma o código do app autenticador — usado tanto na primeira configuração
+  // (marca totpConfirmed) quanto na verificação diária normal.
+  async function verifyTwoFactor(username, code) {
+    const fresh = await loadUsers().catch(() => users)
+    const u = fresh[username]
+    if (!u || !u.totpSecret) return { ok: false, error: 'Configuração de 2FA não encontrada.' }
+    const valid = await totpVerify(u.totpSecret, code)
+    if (!valid) {
+      addAuditEntry('login_fail', { username, reason: '2FA inválido' })
+      return { ok: false, error: 'Código inválido ou expirado.' }
+    }
+    let userRecord = u
+    if (!u.totpConfirmed) {
+      const next = { ...fresh, [username]: { ...u, totpConfirmed: true } }
+      await saveUsers(next)
+      userRecord = next[username]
+    }
+    localStorage.setItem(twoFAFlagKey(username), '1')
+    const session = { username, ...userRecord }
+    setCurrentUser(session)
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    localStorage.setItem(LAST_USER_KEY, username)
+    addAuditEntry('login_ok', { username, role: userRecord.role, email: userRecord.email || '', twoFA: true })
     return { ok: true, user: session }
   }
 
@@ -125,7 +199,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ currentUser, users, loading, login, logout, register, loadUsers, saveUsers }}>
+    <AuthContext.Provider value={{ currentUser, users, loading, login, logout, register, loadUsers, saveUsers, verifyTwoFactor }}>
       {children}
     </AuthContext.Provider>
   )

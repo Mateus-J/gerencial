@@ -304,7 +304,10 @@ export default function Saldos() {
     if (search) list = list.filter((r) => r.nome.toLowerCase().includes(search.toLowerCase()))
     if (filtro === 'rf') list = list.filter((r) => r.fundo === 'ID RF')
     if (filtro === 'sob') list = list.filter((r) => r.fundo === 'ID Soberano')
-    if (filtro === 'alerta') list = list.filter((r) => (r.saldoAtualizado != null ? r.saldoAtualizado : r.saldoInicial) < -1)
+    if (filtro === 'alerta') list = list.filter((r) => {
+      const sat = r.saldoAtualizado != null ? r.saldoAtualizado : r.saldoInicial
+      return sat < -1 || (r._fundoIncorreto?.length && !r._regularizado)
+    })
     if (filtro === 'semsaldo') list = list.filter((r) => (r.saldoInicial || 0) <= 0.01 && !r._wrongFund)
     if (filtro === 'incorreto') list = list.filter((r) => r._fundoIncorreto?.length && !r._regularizado)
 
