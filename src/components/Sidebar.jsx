@@ -57,10 +57,10 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
         collapsed ? 'w-[64px]' : 'w-[220px]'
       }`}
     >
-      <div className="h-[50px] flex items-center gap-0.5 pl-1.5 pr-2.5 border-b border-[var(--bdr)] shrink-0">
-        <img src={logoId} alt="ID" className="w-8 h-8 object-contain shrink-0" />
+      <div className="h-[50px] flex items-center justify-center gap-1 px-2.5 border-b border-[var(--bdr)] shrink-0">
+        <img src={logoId} alt="ID" className="w-5 h-5 object-contain shrink-0 self-center" />
         {!collapsed && (
-          <span className="font-display font-semibold text-[12px] leading-tight truncate">
+          <span className="font-display font-semibold text-[12px] leading-none truncate self-center">
             Gerencial Liquidação
           </span>
         )}
