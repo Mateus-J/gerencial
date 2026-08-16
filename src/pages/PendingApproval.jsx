@@ -12,7 +12,7 @@ export default function PendingApproval() {
         <h1 className="font-display text-[16px] font-semibold mb-1">Cadastro em análise</h1>
         <p className="text-[12.5px] text-[var(--tx3)] mb-1">Olá, {currentUser?.name}. Sua solicitação de acesso foi enviada.</p>
         <p className="text-[12.5px] text-[var(--tx3)] mb-6">Assim que um administrador aprovar, você poderá entrar normalmente.</p>
-        <button onClick={logout} className="flex items-center gap-1.5 justify-center w-full border border-[var(--bdr)] rounded-lg py-2 text-[12.5px] text-[var(--tx2)] hover:bg-[var(--sur2)] mx-auto">
+        <button onClick={() => logout()} className="flex items-center gap-1.5 justify-center w-full border border-[var(--bdr)] rounded-lg py-2 text-[12.5px] text-[var(--tx2)] hover:bg-[var(--sur2)] mx-auto">
           <LogOut size={13} /> Sair
         </button>
       </div>

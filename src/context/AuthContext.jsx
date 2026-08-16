@@ -185,8 +185,9 @@ export function AuthProvider({ children }) {
   }
 
   function logout(reason) {
-    if (currentUser) addAuditEntry(reason ? 'logout_auto' : 'logout', { username: currentUser.username, reason })
-    if (reason) { try { localStorage.setItem(LOGOUT_REASON_KEY, reason) } catch (e) {} }
+    const safeReason = typeof reason === 'string' ? reason : null
+    if (currentUser) addAuditEntry(safeReason ? 'logout_auto' : 'logout', { username: currentUser.username, reason: safeReason })
+    if (safeReason) { try { localStorage.setItem(LOGOUT_REASON_KEY, safeReason) } catch (e) {} }
     setCurrentUser(null)
     localStorage.removeItem(SESSION_KEY)
   }

@@ -128,7 +128,7 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
             </div>
           )}
           {onLogout && (
-            <button onClick={onLogout} title="Sair" className="text-[var(--tx3)] hover:text-red-400 shrink-0">
+            <button onClick={() => onLogout()} title="Sair" className="text-[var(--tx3)] hover:text-red-400 shrink-0">
               <LogOut size={14} />
             </button>
           )}
