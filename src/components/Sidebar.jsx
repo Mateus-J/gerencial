@@ -27,12 +27,12 @@ const NAV = [
     items: [
       { id: 'home-office', label: 'Home Office', icon: Home },
       { id: 'agenda', label: 'Agenda', icon: CalendarDays },
-      { id: 'usuarios', label: 'Usuários', icon: Users, adminOnly: true },
     ],
   },
   {
     group: 'Sistema',
     items: [
+      { id: 'usuarios', label: 'Usuários', icon: Users, adminOnly: true },
       { id: 'auditoria', label: 'Auditoria', icon: ShieldCheck, adminOnly: true },
       { id: 'historico', label: 'Histórico', icon: History },
       { id: 'configuracoes', label: 'Configurações', icon: Settings, adminOnly: true },

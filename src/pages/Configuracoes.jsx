@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { Download, Upload, Copy, Check, Plus, X } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
+import { COLABORADORES } from '../hooks/useBoard'
 
 // Todas as coleções 'controle/*' que este app usa — usado no backup completo
 const COLLECTIONS = ['saldos_v2', 'taxa_adm', 'portal_saldos', 'multas_juros', 'home_office', 'agenda', 'users', 'audit_log', 'pendencias', 'pendencias_historico', 'fundos_extra']
@@ -147,8 +148,75 @@ export default function Configuracoes() {
           field="ocorrencias"
         />
         <AlertaAtrasoConfig />
+        <TarefasColaboradorConfig />
       </div>
     </div>
+  )
+}
+
+// Cadastra as atividades fixas de cada colaborador — elas viram o checklist
+// diário na aba Controle daquela pessoa (marcação reinicia à meia-noite).
+function TarefasColaboradorConfig() {
+  const [slug, setSlug] = useState(COLABORADORES[0].slug)
+  const [tasks, setTasks] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [novo, setNovo] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+    setLoading(true)
+    getDoc(doc(db, 'controle', 'board_' + slug))
+      .then((snap) => { if (mounted) setTasks(snap.exists() ? (snap.data().tasks || []) : []) })
+      .catch((e) => console.warn('tasksLoad err', e))
+      .finally(() => mounted && setLoading(false))
+    return () => { mounted = false }
+  }, [slug])
+
+  async function persist(next) {
+    setTasks(next)
+    try {
+      const snap = await getDoc(doc(db, 'controle', 'board_' + slug))
+      const current = snap.exists() ? snap.data() : {}
+      await setDoc(doc(db, 'controle', 'board_' + slug), { ...current, tasks: next }, { merge: false })
+    } catch (e) { console.warn('tasksSave err', e) }
+  }
+
+  function add() {
+    const v = novo.trim()
+    if (!v) return
+    persist([...tasks, { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: v }])
+    setNovo('')
+  }
+  function remove(id) {
+    persist(tasks.filter((t) => t.id !== id))
+  }
+
+  return (
+    <Card className="p-4 lg:col-span-2">
+      <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-1">Tarefas por colaborador</div>
+      <p className="text-[12px] text-[var(--tx3)] mb-3">Cadastra as atividades fixas de cada pessoa. Elas aparecem como checklist na aba Controle dela, com marcação diária que reinicia à meia-noite.</p>
+      <select value={slug} onChange={(e) => setSlug(e.target.value)} className="w-full sm:w-64 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2.5 py-1.5 text-[12px] mb-3">
+        {COLABORADORES.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+      </select>
+      <div className="flex gap-2 mb-3">
+        <input value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="Adicionar atividade…" className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2.5 py-1.5 text-[12px]" />
+        <button onClick={add} className="flex items-center gap-1 bg-id-dark hover:bg-id-mid rounded-lg px-3 text-[12px]"><Plus size={13} /></button>
+      </div>
+      {loading ? (
+        <p className="text-[11.5px] text-[var(--tx3)]">Carregando…</p>
+      ) : !tasks.length ? (
+        <p className="text-[11.5px] text-[var(--tx3)]">Nenhuma atividade cadastrada ainda.</p>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {tasks.map((t) => (
+            <div key={t.id} className="flex items-center justify-between text-[12px] bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-1.5">
+              {t.text}
+              <button onClick={() => remove(t.id)} className="text-[var(--tx4)] hover:text-red-500"><X size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }
 

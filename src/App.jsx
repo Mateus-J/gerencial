@@ -41,12 +41,13 @@ function AppShell() {
   const { currentUser, loading, logout } = useAuth()
   const [active, setActive] = useState('dashboard')
   const [collapsed, setCollapsed] = useState(false)
-  const [dark, setDark] = useState(false)
+  const [dark, setDark] = useState(() => localStorage.getItem('gerencial_theme') === 'dark')
   const [search, setSearch] = useState('')
   const status = useFirebaseStatus()
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
+    localStorage.setItem('gerencial_theme', dark ? 'dark' : 'light')
   }, [dark])
 
   if (loading) {
