@@ -3,6 +3,7 @@ import { Eye, EyeOff, ShieldCheck, Clock } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useAuth, withinAccessWindow, getLastUsername } from '../context/AuthContext'
 import { otpAuthUrl } from '../lib/totp'
+import logoId from '../assets/logo-id.png'
 
 export default function Login() {
   const { login, register, verifyTwoFactor, users } = useAuth()
@@ -83,8 +84,8 @@ export default function Login() {
     <div className="h-screen w-screen flex items-center justify-center bg-[var(--bg)]">
       <div className="w-full max-w-[380px] px-6">
         <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-9 h-9 rounded-lg bg-id-dark flex items-center justify-center text-white text-[13px] font-bold">ID</div>
-          <span className="font-display font-semibold text-[17px]">Gerencial</span>
+          <img src={logoId} alt="ID" className="w-9 h-9 object-contain" />
+          <span className="font-display font-semibold text-[17px]">Gerencial Liquidação</span>
         </div>
 
         <div className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl p-6 shadow-card">

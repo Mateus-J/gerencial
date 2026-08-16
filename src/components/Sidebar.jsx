@@ -4,6 +4,7 @@ import {
   LayoutGrid, User,
 } from 'lucide-react'
 import { COLABORADORES } from '../hooks/useBoard'
+import logoId from '../assets/logo-id.png'
 
 const NAV = [
   {
@@ -57,12 +58,10 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
       }`}
     >
       <div className="h-[50px] flex items-center gap-2 px-4 border-b border-[var(--bdr)] shrink-0">
-        <div className="w-6 h-6 rounded-md bg-id-dark flex items-center justify-center text-white text-[11px] font-bold shrink-0">
-          ID
-        </div>
+        <img src={logoId} alt="ID" className="w-7 h-7 object-contain shrink-0" />
         {!collapsed && (
           <span className="font-display font-semibold text-[13px] tracking-wide truncate">
-            Gerencial
+            Gerencial Liquidação
           </span>
         )}
       </div>

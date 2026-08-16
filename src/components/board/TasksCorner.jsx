@@ -41,7 +41,7 @@ export default function TasksCorner({ board, onSave }) {
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 text-[11px] border border-[var(--bdr)] rounded-lg px-2.5 py-1 text-[var(--tx2)] hover:bg-[var(--sur2)]"
       >
-        <CheckSquare size={13} /> Tarefas do dia · {done.length}/{tasks.length}
+        <CheckSquare size={13} /> Atividades do dia · {done.length}/{tasks.length}
       </button>
       {open && (
         <div className="absolute right-0 mt-1.5 w-72 bg-[var(--sur)] border border-[var(--bdr)] rounded-xl shadow-card z-20 overflow-hidden">
