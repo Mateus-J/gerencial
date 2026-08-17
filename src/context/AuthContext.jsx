@@ -2,11 +2,58 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { sha256, hashPass, genSalt, isHashed } from '../lib/authCrypto'
+import { totpVerify } from '../lib/totp'
 
 const AuthContext = createContext(null)
 const SESSION_KEY = 'ctrl_session'
+const LAST_USER_KEY = 'ctrl_last_username'
+const LOGOUT_REASON_KEY = 'ctrl_logout_reason'
 const USERS_DOC = () => doc(db, 'controle', 'users')
 const AUDIT_DOC = () => doc(db, 'controle', 'audit_log')
+
+// "HH:MM" -> minutos desde 00:00, pra comparar horário de acesso
+function toMinutes(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '')
+  if (!m) return null
+  return Number(m[1]) * 60 + Number(m[2])
+}
+
+// Se o usuário tem janela de horário configurada, checa se agora está dentro dela.
+// Sem horário configurado (um ou os dois campos vazios) = sem restrição.
+export function withinAccessWindow(user) {
+  const start = toMinutes(user?.acessoInicio)
+  const end = toMinutes(user?.acessoFim)
+  if (start == null || end == null) return true
+  const now = new Date()
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  if (start <= end) return nowMin >= start && nowMin <= end
+  // janela que cruza a meia-noite (ex.: 22:00–06:00)
+  return nowMin >= start || nowMin <= end
+}
+
+export function getLastUsername() {
+  try { return localStorage.getItem(LAST_USER_KEY) } catch (e) { return null }
+}
+
+// Lê o motivo do último logout automático (inatividade / fora do horário) e
+// já limpa, pra só aparecer uma vez na tela de login.
+export function consumeLogoutReason() {
+  try {
+    const r = localStorage.getItem(LOGOUT_REASON_KEY)
+    if (r) localStorage.removeItem(LOGOUT_REASON_KEY)
+    return r
+  } catch (e) { return null }
+}
+
+function todayStr() {
+  const d = new Date()
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+const twoFAFlagKey = (username) => `ctrl_2fa_ok_${username}_${todayStr()}`
+
+export function clearTwoFAFlag(username) {
+  try { localStorage.removeItem(twoFAFlagKey(username)) } catch (e) {}
+}
 
 async function addAuditEntry(type, details) {
   try {
@@ -92,6 +139,22 @@ export function AuthProvider({ children }) {
       const next = { ...fresh, [foundKey]: { ...foundUser, pass: h, salt: newSalt } }
       await saveUsers(next)
     }
+
+    if (!withinAccessWindow(foundUser)) {
+      addAuditEntry('login_fail', { username: foundKey, reason: 'Fora do horário permitido' })
+      return { ok: false, error: `Acesso permitido apenas entre ${foundUser.acessoInicio} e ${foundUser.acessoFim}.` }
+    }
+
+    localStorage.setItem(LAST_USER_KEY, foundKey)
+
+    if (foundUser.totpEnabled) {
+      const already = localStorage.getItem(twoFAFlagKey(foundKey)) === '1'
+      if (!already) {
+        // Não abre sessão ainda — devolve o usuário pendente pro Login.jsx pedir o código
+        return { ok: true, needs2FA: true, setup: !foundUser.totpConfirmed, pending: { username: foundKey, user: foundUser } }
+      }
+    }
+
     const session = { username: foundKey, ...foundUser }
     setCurrentUser(session)
     localStorage.setItem(SESSION_KEY, JSON.stringify(session))
@@ -99,8 +162,42 @@ export function AuthProvider({ children }) {
     return { ok: true, user: session }
   }
 
-  function logout() {
-    if (currentUser) addAuditEntry('logout', { username: currentUser.username })
+  // Confirma o código do app autenticador — usado tanto na primeira configuração
+  // (marca totpConfirmed) quanto na verificação diária normal.
+  async function verifyTwoFactor(username, code) {
+    const fresh = await loadUsers().catch(() => users)
+    const u = fresh[username]
+    if (!u || !u.totpSecret) return { ok: false, error: 'Configuração de 2FA não encontrada.' }
+    const valid = await totpVerify(u.totpSecret, code)
+    if (!valid) {
+      addAuditEntry('login_fail', { username, reason: '2FA inválido' })
+      return { ok: false, error: 'Código inválido ou expirado.' }
+    }
+    let userRecord = u
+    if (!u.totpConfirmed) {
+      const next = { ...fresh, [username]: { ...u, totpConfirmed: true } }
+      await saveUsers(next)
+      userRecord = next[username]
+    }
+    localStorage.setItem(twoFAFlagKey(username), '1')
+    const session = { username, ...userRecord }
+    setCurrentUser(session)
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    localStorage.setItem(LAST_USER_KEY, username)
+    addAuditEntry('login_ok', { username, role: userRecord.role, email: userRecord.email || '', twoFA: true })
+    return { ok: true, user: session }
+  }
+
+  function logout(reason) {
+    const safeReason = typeof reason === 'string' ? reason : null
+    if (currentUser) {
+      addAuditEntry(safeReason ? 'logout_auto' : 'logout', { username: currentUser.username, reason: safeReason })
+      // Ao sair, esquece a confirmação de 2FA de hoje — assim, ao entrar de
+      // novo (mesmo no mesmo dia), o código volta a ser pedido. O "1x por
+      // dia" vale enquanto a sessão continua aberta, não entre logins.
+      try { localStorage.removeItem(twoFAFlagKey(currentUser.username)) } catch (e) {}
+    }
+    if (safeReason) { try { localStorage.setItem(LOGOUT_REASON_KEY, safeReason) } catch (e) {} }
     setCurrentUser(null)
     localStorage.removeItem(SESSION_KEY)
   }
@@ -124,8 +221,35 @@ export function AuthProvider({ children }) {
     return { ok: true }
   }
 
+  // Deslogamento automático: 1h sem interação com o sistema, ou o horário
+  // permitido do usuário (definido em Usuários) chegou ao fim.
+  useEffect(() => {
+    if (!currentUser) return
+    const IDLE_LIMIT_MS = 60 * 60 * 1000 // 1 hora
+    const CHECK_EVERY_MS = 30 * 1000
+    let lastActivity = Date.now()
+    const markActivity = () => { lastActivity = Date.now() }
+    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll']
+    events.forEach((ev) => window.addEventListener(ev, markActivity, { passive: true }))
+
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivity >= IDLE_LIMIT_MS) {
+        logout('Sessão encerrada por 1h sem interação com o sistema.')
+        return
+      }
+      if (!withinAccessWindow(currentUser)) {
+        logout(`Sessão encerrada: fora do horário permitido (${currentUser.acessoInicio}–${currentUser.acessoFim}).`)
+      }
+    }, CHECK_EVERY_MS)
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, markActivity))
+      clearInterval(interval)
+    }
+  }, [currentUser])
+
   return (
-    <AuthContext.Provider value={{ currentUser, users, loading, login, logout, register, loadUsers, saveUsers }}>
+    <AuthContext.Provider value={{ currentUser, users, loading, login, logout, register, loadUsers, saveUsers, verifyTwoFactor }}>
       {children}
     </AuthContext.Provider>
   )

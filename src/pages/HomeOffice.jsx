@@ -4,6 +4,7 @@ import { Plus, X, Check } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'home_office')
 const DOWS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -21,6 +22,7 @@ function ptShortDate(d) { return d.getDate().toString().padStart(2, '0') + '/' +
 function strToColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h); return `hsl(${h % 360},55%,45%)` }
 
 export default function HomeOffice() {
+  const toast = useToast()
   const { currentUser } = useAuth()
   const CURRENT_USER = { username: currentUser.username, name: currentUser.name || currentUser.username }
   const isAdmin = currentUser.role === 'admin'
@@ -56,24 +58,28 @@ export default function HomeOffice() {
   }
 
   function submitRequest() {
-    if (!reqDate) { alert('⚠ Selecione uma data'); return }
+    if (!reqDate) { toast.error('Selecione uma data.'); return }
     const dup = requests.find((r) => r.username === CURRENT_USER.username && r.date === reqDate && r.status !== 'rejected')
-    if (dup) { alert('⚠ Você já tem uma solicitação para esta data'); return }
+    if (dup) { toast.error('Você já tem uma solicitação para esta data.'); return }
     const req = { id: 'ho_' + Date.now(), username: CURRENT_USER.username, name: CURRENT_USER.name, date: reqDate, type: reqType, obs: reqObs.trim(), status: 'pending', requestedAt: new Date().toISOString(), adminNote: '' }
     persist([...requests, req], collabs)
     setReqDate(''); setReqObs('')
+    toast.success('Solicitação enviada!')
   }
   function cancelRequest(id) {
     if (!confirm('Cancelar esta solicitação?')) return
     persist(requests.filter((r) => r.id !== id), collabs)
+    toast.success('Solicitação cancelada.')
   }
   function approveRequest(id, note) {
     const next = requests.map((r) => r.id === id ? { ...r, status: 'approved', adminNote: note || '', approvedAt: new Date().toISOString(), approvedBy: CURRENT_USER.username } : r)
     persist(next, collabs)
+    toast.success('Solicitação aprovada!')
   }
   function rejectRequest(id, note) {
     const next = requests.map((r) => r.id === id ? { ...r, status: 'rejected', adminNote: note || '', rejectedAt: new Date().toISOString(), rejectedBy: CURRENT_USER.username } : r)
     persist(next, collabs)
+    toast.success('Solicitação rejeitada.')
   }
   function toggleCell(collab, iso) {
     const uname = collab.username
@@ -100,10 +106,12 @@ export default function HomeOffice() {
     const c = { id: 'collab_' + Date.now(), name: newCollabName.trim(), role: newCollabRole.trim(), username: null, color: strToColor(newCollabName) }
     persist(requests, [...collabs, c])
     setNewCollabName(''); setNewCollabRole(''); setShowAddCollab(false)
+    toast.success('Colaborador adicionado!')
   }
   function removeCollab(id) {
     if (!confirm('Remover este colaborador da escala?')) return
     persist(requests, collabs.filter((c) => c.id !== id))
+    toast.success('Colaborador removido.')
   }
 
   const days = useMemo(() => getWeekDates(weekOffset), [weekOffset])

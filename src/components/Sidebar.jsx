@@ -1,9 +1,10 @@
 import {
   LayoutDashboard, Wallet, Percent, Landmark, AlertTriangle,
-  Home, CalendarDays, ShieldCheck, Settings, ChevronDown, LogOut, History, Building2,
+  Home, CalendarDays, Users, ShieldCheck, Settings, ChevronDown, LogOut, History, Building2,
   LayoutGrid, User,
 } from 'lucide-react'
 import { COLABORADORES } from '../hooks/useBoard'
+import logoId from '../assets/logo-id.png'
 
 const NAV = [
   {
@@ -15,7 +16,7 @@ const NAV = [
   {
     group: 'Operacional',
     items: [
-      { id: 'saldos', label: 'Saldos Aplicados', icon: Wallet },
+      { id: 'saldos', label: 'Saldos', icon: Wallet },
       { id: 'fundos', label: 'Fundos', icon: Building2 },
       { id: 'taxa-administracao', label: 'Taxa de Administração', icon: Percent },
       { id: 'portal-saldos', label: 'Portal Saldos', icon: Landmark },
@@ -32,6 +33,7 @@ const NAV = [
   {
     group: 'Sistema',
     items: [
+      { id: 'usuarios', label: 'Usuários', icon: Users, adminOnly: true },
       { id: 'auditoria', label: 'Auditoria', icon: ShieldCheck, adminOnly: true },
       { id: 'historico', label: 'Histórico', icon: History },
       { id: 'configuracoes', label: 'Configurações', icon: Settings, adminOnly: true },
@@ -55,13 +57,11 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
         collapsed ? 'w-[64px]' : 'w-[220px]'
       }`}
     >
-      <div className="h-[50px] flex items-center gap-2 px-4 border-b border-[var(--bdr)] shrink-0">
-        <div className="w-6 h-6 rounded-md bg-id-dark flex items-center justify-center text-white text-[11px] font-bold shrink-0">
-          ID
-        </div>
+      <div className="h-[50px] flex items-center justify-center gap-1 px-2.5 border-b border-[var(--bdr)] shrink-0">
+        <img src={logoId} alt="ID" className="w-5 h-5 object-contain shrink-0 self-center" />
         {!collapsed && (
-          <span className="font-display font-semibold text-[13px] tracking-wide truncate">
-            Gerencial
+          <span className="font-display font-semibold text-[12px] leading-none truncate self-center">
+            Gerencial Liquidação
           </span>
         )}
       </div>
@@ -123,12 +123,12 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <div className="text-[12px] font-medium truncate">{user.name}</div>
+              <div className="text-[12px] font-medium truncate">Olá, {user.name}</div>
               <div className="text-[10.5px] text-[var(--tx3)] truncate">{user.role}</div>
             </div>
           )}
           {onLogout && (
-            <button onClick={onLogout} title="Sair" className="text-[var(--tx3)] hover:text-red-400 shrink-0">
+            <button onClick={() => onLogout()} title="Sair" className="text-[var(--tx3)] hover:text-red-400 shrink-0">
               <LogOut size={14} />
             </button>
           )}

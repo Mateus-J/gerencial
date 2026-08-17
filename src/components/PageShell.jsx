@@ -14,9 +14,9 @@ export function PageHeader({ eyebrow, title, actions }) {
   )
 }
 
-export function Card({ children, className = '' }) {
+export function Card({ children, className = '', ...rest }) {
   return (
-    <div className={`bg-[var(--sur)] border border-[var(--bdr)] rounded-xl shadow-card ${className}`}>
+    <div className={`bg-[var(--sur)] border border-[var(--bdr)] rounded-xl shadow-card ${className}`} {...rest}>
       {children}
     </div>
   )
