@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'
 import { Plus, X, Building2, AlertTriangle, History as HistoryIcon } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts'
 import { db } from '../lib/firebase'
@@ -79,30 +79,31 @@ export default function Dashboard() {
 
   useEffect(() => {
     let mounted = true
-    getDoc(PEND_DOC())
-      .then((snap) => {
-        if (!mounted || !snap.exists()) return
+    // onSnapshot em vez de getDoc: qualquer pessoa concluindo/criando uma
+    // pendência atualiza a tela de todo mundo que estiver com ela aberta,
+    // sem precisar dar refresh — é o que o indicador "Tempo real ativo" promete.
+    const unsubPend = onSnapshot(PEND_DOC(), (snap) => {
+      if (!mounted) return
+      if (snap.exists()) {
         setItems(snap.data().items || [])
         setResponsaveis(snap.data().responsaveis || [])
         setOcorrencias(snap.data().ocorrencias?.length ? snap.data().ocorrencias : OCORRENCIAS_DEFAULT)
         if (snap.data().alertaDias) setAlertaDias(snap.data().alertaDias)
-      })
-      .catch((e) => console.warn('pendLoad err', e))
-      .finally(() => mounted && setLoading(false))
+      }
+      setLoading(false)
+    }, (e) => { console.warn('pendLoad err', e); mounted && setLoading(false) })
     // Total de concluídas, tempo médio de retorno e gráfico semanal vêm do Histórico
-    getDoc(HIST_DOC())
-      .then((snap) => {
-        if (!mounted || !snap.exists()) return
-        const histItems = snap.data().items || []
-        setConcluidasCount(histItems.length)
-        const durations = histItems.filter((h) => h.createdAt && h.concluidoEm).map((h) => h.concluidoEm - h.createdAt)
-        if (durations.length) setTempoMedioMs(durations.reduce((a, b) => a + b, 0) / durations.length)
-        setWeeklyData(buildWeeklyData(histItems))
-      })
-      .catch((e) => console.warn('histCountLoad err', e))
+    const unsubHist = onSnapshot(HIST_DOC(), (snap) => {
+      if (!mounted || !snap.exists()) return
+      const histItems = snap.data().items || []
+      setConcluidasCount(histItems.length)
+      const durations = histItems.filter((h) => h.createdAt && h.concluidoEm).map((h) => h.concluidoEm - h.createdAt)
+      setTempoMedioMs(durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null)
+      setWeeklyData(buildWeeklyData(histItems))
+    }, (e) => console.warn('histCountLoad err', e))
     // Atualiza a coluna "Tempo" a cada minuto
     const t = setInterval(() => forceTick((x) => x + 1), 60000)
-    return () => { mounted = false; clearInterval(t) }
+    return () => { mounted = false; unsubPend(); unsubHist(); clearInterval(t) }
   }, [])
 
   function persist(nextItems, nextResp) {

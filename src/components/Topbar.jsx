@@ -1,4 +1,5 @@
 import { Search, Moon, Sun, Bell } from 'lucide-react'
+import { colorForUser, initialsFor } from '../hooks/usePresence'
 
 const STATUS_LABEL = {
   connecting: 'Conectando…',
@@ -11,7 +12,32 @@ const STATUS_DOT = {
   offline: 'bg-amber-500 animate-pulse',
 }
 
-export default function Topbar({ title, subtitle, status, dark, onToggleDark, search, onSearch }) {
+function PresenceAvatars({ users }) {
+  if (!users.length) return null
+  const shown = users.slice(0, 4)
+  const extra = users.length - shown.length
+  return (
+    <div className="hidden sm:flex items-center -space-x-1.5 mr-1.5">
+      {shown.map((u) => (
+        <div
+          key={u.username}
+          title={u.name + (u.active ? ' · ativo agora' : ' · com o sistema aberto')}
+          style={{ backgroundColor: colorForUser(u.username), '--presence-color': colorForUser(u.username) }}
+          className={`w-6 h-6 rounded-full flex items-center justify-center text-[9.5px] font-semibold text-white border-2 border-[var(--sur)] ${u.active ? 'presence-active' : ''}`}
+        >
+          {initialsFor(u.name)}
+        </div>
+      ))}
+      {extra > 0 && (
+        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9.5px] font-semibold bg-[var(--sur2)] text-[var(--tx3)] border-2 border-[var(--sur)]">
+          +{extra}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function Topbar({ title, subtitle, status, dark, onToggleDark, search, onSearch, presence = [] }) {
   return (
     <header className="h-[56px] shrink-0 border-b border-[var(--bdr)] bg-[var(--sur)]/60 backdrop-blur flex items-center gap-3 px-5">
       <div className="min-w-0">
@@ -20,10 +46,14 @@ export default function Topbar({ title, subtitle, status, dark, onToggleDark, se
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-[var(--tx3)] mr-1">
-          <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} />
-          {STATUS_LABEL[status]}
-        </div>
+        {status === 'ok' && presence.length > 0 ? (
+          <PresenceAvatars users={presence} />
+        ) : (
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-[var(--tx3)] mr-1">
+            <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} />
+            {STATUS_LABEL[status]}
+          </div>
+        )}
 
         {onSearch && (
           <div className="relative">

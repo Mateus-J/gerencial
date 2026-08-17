@@ -19,6 +19,7 @@ import Quadro from './pages/Quadro'
 import PendReminderModal from './components/PendReminderModal'
 import { useFirebaseStatus } from './hooks/useFirebaseStatus'
 import { usePendReminder } from './hooks/usePendReminder'
+import { usePresence } from './hooks/usePresence'
 import { COLABORADORES } from './hooks/useBoard'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ToastProvider } from './components/Toast'
@@ -85,6 +86,7 @@ function Redirect({ username, setActive, ...rest }) {
 
 function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }) {
   const { pendingItems, dismiss } = usePendReminder(currentUser.notifPendencias === true)
+  const presence = usePresence()
   const initials = (currentUser.name || currentUser.username || '?').split(' ').slice(0, 2).map((w) => w[0] || '').join('').toUpperCase()
   const roleLabel = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }[currentUser.role] || currentUser.role
 
@@ -115,7 +117,7 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         isAdmin={isAdmin}
-    ownSlug={currentUser.boardSlug || currentUser.username}
+        ownSlug={currentUser.boardSlug || currentUser.username}
         ownName={currentUser.name || currentUser.username}
         user={{ name: currentUser.name || currentUser.username, role: roleLabel, initials }}
         onLogout={logout}
@@ -129,6 +131,7 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
           onToggleDark={() => setDark((d) => !d)}
           search={search}
           onSearch={setSearch}
+          presence={presence}
         />
         <main className="flex-1 overflow-y-auto p-5">
           {isBoard ? <Quadro slug={boardSlug} ownerName={boardOwnerName} /> : <Page />}
