@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { Plus, Download, Trash2 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
+import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'multas_juros')
 
@@ -52,6 +53,7 @@ function calcGuia(g, mj) {
 }
 
 export default function MultasJuros() {
+  const toast = useToast()
   const [mj, setMj] = useState(defState())
   const [loading, setLoading] = useState(true)
   const [selicMonth, setSelicMonth] = useState('')
@@ -74,10 +76,12 @@ export default function MultasJuros() {
   function addRow() {
     const id = 'mj' + Date.now() + Math.floor(Math.random() * 1000)
     persist({ ...mj, guias: [...mj.guias, { id, fundo: '', cnpj: '', tributo: '', processo: '', venc: '', pgto: '', valor: 0, status: 'Pendente' }] })
+    toast.success('Guia adicionada!')
   }
   function deleteRow(id) {
     if (!confirm('Excluir esta guia?')) return
     persist({ ...mj, guias: mj.guias.filter((g) => g.id !== id) })
+    toast.success('Guia excluída.')
   }
   function editField(id, field, value) {
     const guias = mj.guias.map((g) => g.id === id ? { ...g, [field]: field === 'valor' ? (parseFloat(String(value).replace(/\./g, '').replace(',', '.')) || 0) : value } : g)
@@ -91,14 +95,16 @@ export default function MultasJuros() {
   }
   function addSelic() {
     const rate = parseFloat(String(selicRate).replace(',', '.'))
-    if (!selicMonth || isNaN(rate)) { alert('Informe mês e taxa válidos'); return }
+    if (!selicMonth || isNaN(rate)) { toast.error('Informe mês e taxa válidos.'); return }
     persist({ ...mj, selic: { ...mj.selic, [selicMonth]: rate / 100 } })
     setSelicMonth(''); setSelicRate('')
+    toast.success('Taxa Selic adicionada!')
   }
   function deleteSelic(key) {
     const selic = { ...mj.selic }
     delete selic[key]
     persist({ ...mj, selic })
+    toast.success('Taxa Selic removida.')
   }
 
   const computed = useMemo(() => mj.guias.map((g) => ({ guia: g, calc: calcGuia(g, mj) })), [mj])
@@ -124,6 +130,7 @@ export default function MultasJuros() {
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     a.download = 'multas_juros_' + new Date().toISOString().slice(0, 10) + '.csv'
     a.click()
+    toast.success('CSV exportado!')
   }
 
   if (loading) {

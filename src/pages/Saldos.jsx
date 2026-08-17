@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 import { Upload, FileSpreadsheet, Download, X } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
+import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'saldos_v2')
 
@@ -48,6 +49,7 @@ function matchNome(nomeExt, lista) {
 }
 
 export default function Saldos() {
+  const toast = useToast()
   const [SD, setSD] = useState(emptySD())
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -89,7 +91,7 @@ export default function Saldos() {
         // topo (título, prestador, data-base) antes da tabela de verdade — acha a
         // linha com "Fundo (Cotista)" pra saber onde os dados realmente começam.
         const hdrIdx = raw.findIndex((r) => r.some((c) => String(c).trim() === 'Fundo (Cotista)'))
-        if (hdrIdx < 0) { alert('⚠ Não encontrei a coluna "Fundo (Cotista)" nesse arquivo. O layout pode ter mudado de novo.'); return }
+        if (hdrIdx < 0) { toast.error('Não encontrei a coluna "Fundo (Cotista)" nesse arquivo. O layout pode ter mudado de novo.'); return }
         const header = raw[hdrIdx].map((h) => String(h).trim())
         const idxSeq = header.findIndex((h) => h === '#')
         const idxNome = header.indexOf('Fundo (Cotista)')
@@ -111,7 +113,7 @@ export default function Saldos() {
           if (idSob > 0) cotistas.push({ nome: nome.substring(0, 120), fundo: 'ID Soberano', saldoInicial: idSob, saldoAtualizado: idSob, saldoBloqueado: 0 })
           if (idRF === 0 && idSob === 0) cotistas.push({ nome: nome.substring(0, 120), fundo: '—', saldoInicial: 0, saldoAtualizado: 0, saldoBloqueado: 0, _semFundo: true })
         })
-        if (!cotistas.length) { alert('⚠ Nenhum cotista encontrado. Verifique o arquivo.'); return }
+        if (!cotistas.length) { toast.error('Nenhum cotista encontrado. Verifique o arquivo.'); return }
         cotistas.forEach((c) => {
           const existing = SD.cotistas.find((x) => x.nome === c.nome && x.fundo === c.fundo)
           if (existing) {
@@ -131,9 +133,10 @@ export default function Saldos() {
         }
         cotistas.forEach((c) => { delete c._fundoIncorreto; delete c._regularizado })
         save(next)
+        toast.success(`Liquidez importada — ${cotistas.length} cotista(s) carregado(s).`)
       } catch (err) {
         console.error(err)
-        alert('⚠ Erro ao ler planilha: ' + err.message)
+        toast.error('Erro ao ler planilha: ' + err.message)
       }
     }
     reader.readAsArrayBuffer(file)
@@ -155,7 +158,7 @@ export default function Saldos() {
         const saldoI = hdr.findIndex((h) => h === 'vl_saldo_in')
         const dtI = hdr.findIndex((h) => h === 'dt_mov')
         const histI = hdr.findIndex((h) => h === 'ds_historico')
-        if (dcI < 0 || valI < 0 || descI < 0) { alert('⚠ Colunas não encontradas no CSV'); return }
+        if (dcI < 0 || valI < 0 || descI < 0) { toast.error('Colunas não encontradas no CSV.'); return }
         const parseV = (s) => parseFloat(String(s).replace(',', '.')) || 0
         const data = rows.slice(1).filter((r) => r.length > Math.max(dcI, valI, descI))
         const isSob = file.name.includes('454398')
@@ -231,10 +234,10 @@ export default function Saldos() {
           sobSaldoInicial: cotistas.filter((c) => c.fundo === 'ID Soberano' && !c._wrongFund).reduce((a, c) => a + c.saldoInicial, 0),
         }
         save(next)
-        alert('✅ Extrato ' + fundoKey + ' importado — ' + matched + ' de ' + Object.keys(movMap).length + ' cotistas encontrados na liquidez')
+        toast.success('Extrato ' + fundoKey + ' importado — ' + matched + ' de ' + Object.keys(movMap).length + ' cotistas encontrados na liquidez.')
       } catch (err) {
         console.error(err)
-        alert('⚠ Erro: ' + err.message)
+        toast.error('Erro: ' + err.message)
       }
     }
     reader.readAsText(file, 'iso-8859-1')
@@ -243,6 +246,7 @@ export default function Saldos() {
   function regularizar(idx) {
     const cotistas = SD.cotistas.map((c, i) => (i === idx ? { ...c, _regularizado: true } : c))
     save({ ...SD, cotistas })
+    toast.success('Marcado como regularizado.')
   }
 
   function openBloq(idx) {
@@ -254,7 +258,7 @@ export default function Saldos() {
   function addBloqueio() {
     if (bloqIdx === null) return
     const v = parseFloat(String(bloqVal).replace(/\./g, '').replace(',', '.')) || 0
-    if (!v) { alert('⚠ Digite um valor'); return }
+    if (!v) { toast.error('Digite um valor.'); return }
     const cotistas = SD.cotistas.map((c, i) => {
       if (i !== bloqIdx) return c
       const bloqueios = [...(c.bloqueios || []), { valor: v, desc: bloqDesc.trim(), data: new Date().toLocaleDateString('pt-BR') }]
@@ -262,6 +266,7 @@ export default function Saldos() {
     })
     save({ ...SD, cotistas })
     setBloqVal(''); setBloqDesc('')
+    toast.success('Saldo bloqueado registrado!')
   }
 
   function removeBloqueio(bIdx) {
@@ -275,7 +280,7 @@ export default function Saldos() {
   }
 
   function exportCSV() {
-    if (!SD.cotistas.length) { alert('Nenhum dado para exportar'); return }
+    if (!SD.cotistas.length) { toast.error('Nenhum dado para exportar.'); return }
     const h = 'Cotista;Fundo;Saldo Inicial;Movimentação;Saldo Atualizado;Saldo Bloqueado;Saldo Utilizado;Status;Observação'
     const fmt = (v) => (v != null ? Number(v).toFixed(2).replace('.', ',') : '')
     const lines = SD.cotistas.map((r) => {
@@ -297,6 +302,7 @@ export default function Saldos() {
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     a.download = 'saldos_' + new Date().toISOString().slice(0, 10) + '.csv'
     a.click()
+    toast.success('CSV exportado!')
   }
 
   const rows = useMemo(() => {

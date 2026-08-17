@@ -4,6 +4,7 @@ import { UserPlus, ShieldCheck, RotateCcw } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { genSecret } from '../lib/totp'
+import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'users')
 const ROLE_LABEL = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }
@@ -32,6 +33,7 @@ function genSalt() {
 }
 
 export default function Usuarios() {
+  const toast = useToast()
   const [users, setUsers] = useState({})
   const [loading, setLoading] = useState(true)
   const [nu, setNu] = useState({ user: '', name: '', email: '', pass: '', role: 'user' })
@@ -47,31 +49,36 @@ export default function Usuarios() {
 
   function persist(next) {
     setUsers(next)
-    setDoc(DOC_REF(), { users: next, updatedAt: Date.now() }, { merge: false }).catch((e) => console.warn('usersSave err', e))
+    setDoc(DOC_REF(), { users: next, updatedAt: Date.now() }, { merge: false }).catch((e) => { console.warn('usersSave err', e); toast.error('Erro ao salvar: ' + e.message) })
   }
 
   async function addUser() {
     const { user, name, email, pass, role } = nu
-    if (!user || !name || !pass) { alert('⚠️ Preencha usuário, nome e senha'); return }
-    if (users[user]) { alert('⚠️ Usuário já existe'); return }
+    if (!user || !name || !pass) { toast.error('Preencha usuário, nome e senha.'); return }
+    if (users[user]) { toast.error('Usuário já existe.'); return }
     const salt = genSalt()
     const passHash = await hashPass(pass, salt)
     persist({ ...users, [user]: { pass: passHash, salt, name, email, role } })
     setNu({ user: '', name: '', email: '', pass: '', role: 'user' })
+    toast.success(`Usuário @${user} adicionado com sucesso!`)
   }
   function removeUser(key) {
     if (!confirm('Remover usuário @' + key + '?')) return
     const next = { ...users }; delete next[key]
     persist(next)
+    toast.success(`Usuário @${key} removido.`)
   }
   function updateField(key, field, value) {
     persist({ ...users, [key]: { ...users[key], [field]: value } })
+    if (field === 'role' && value !== 'pending') toast.success(`@${key} aprovado como ${ROLE_LABEL[value] || value}.`)
+    if (field === 'acessoInicio' || field === 'acessoFim') toast.success('Horário de acesso atualizado.')
   }
   async function updatePass(key, newPass) {
     if (!newPass) return
     const salt = genSalt()
     const passHash = await hashPass(newPass, salt)
     persist({ ...users, [key]: { ...users[key], pass: passHash, salt } })
+    toast.success(`Senha de @${key} atualizada.`)
   }
   function toggle2FA(key, enabled) {
     const u = users[key]
@@ -79,11 +86,13 @@ export default function Usuarios() {
     // segredo salvo (se reativar sem "resetar", não precisa escanear de novo).
     const secret = u.totpSecret || genSecret()
     persist({ ...users, [key]: { ...u, totpEnabled: enabled, totpSecret: secret } })
+    toast.success(enabled ? `2FA ativado para @${key}.` : `2FA desativado para @${key}.`)
   }
   function reset2FA(key) {
     if (!confirm('Resetar 2FA de @' + key + '? A pessoa vai precisar escanear um novo QR code no próximo login.')) return
     const u = users[key]
     persist({ ...users, [key]: { ...u, totpSecret: genSecret(), totpConfirmed: false } })
+    toast.success('2FA resetado com sucesso!')
   }
 
   if (loading) {

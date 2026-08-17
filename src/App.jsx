@@ -21,6 +21,7 @@ import { useFirebaseStatus } from './hooks/useFirebaseStatus'
 import { usePendReminder } from './hooks/usePendReminder'
 import { COLABORADORES } from './hooks/useBoard'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { ToastProvider } from './components/Toast'
 
 const PAGES = {
   dashboard: { component: Dashboard, title: 'Pendências', subtitle: 'Área Liquidação' },
@@ -140,8 +141,10 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </ToastProvider>
   )
 }
