@@ -6,6 +6,7 @@ import { PageHeader, Card } from '../components/PageShell'
 import { genSecret } from '../lib/totp'
 import { clearTwoFAFlag } from '../context/AuthContext'
 import { useToast } from '../components/Toast'
+import { COLABORADORES, slugify } from '../hooks/useBoard'
 
 const DOC_REF = () => doc(db, 'controle', 'users')
 const ROLE_LABEL = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }
@@ -59,9 +60,12 @@ export default function Usuarios() {
     if (users[user]) { toast.error('Usuário já existe.'); return }
     const salt = genSalt()
     const passHash = await hashPass(pass, salt)
-    persist({ ...users, [user]: { pass: passHash, salt, name, email, role } })
+    // Se o nome bater com um dos colaboradores fixos (André Castro, etc.),
+    // já vincula ao quadro dele automaticamente — evita ficar sem "Atividades do dia".
+    const matched = COLABORADORES.find((c) => c.slug === slugify(name))
+    persist({ ...users, [user]: { pass: passHash, salt, name, email, role, ...(matched ? { boardSlug: matched.slug } : {}) } })
     setNu({ user: '', name: '', email: '', pass: '', role: 'user' })
-    toast.success(`Usuário @${user} adicionado com sucesso!`)
+    toast.success(`Usuário @${user} adicionado com sucesso!${matched ? ` Vinculado ao quadro de ${matched.name}.` : ''}`)
   }
   function removeUser(key) {
     if (!confirm('Remover usuário @' + key + '?')) return
@@ -73,6 +77,10 @@ export default function Usuarios() {
     persist({ ...users, [key]: { ...users[key], [field]: value } })
     if (field === 'role' && value !== 'pending') toast.success(`@${key} aprovado como ${ROLE_LABEL[value] || value}.`)
     if (field === 'acessoInicio' || field === 'acessoFim') toast.success('Horário de acesso atualizado.')
+    if (field === 'boardSlug') {
+      const label = COLABORADORES.find((c) => c.slug === value)?.name
+      toast.success(label ? `@${key} vinculado ao quadro de ${label}.` : `@${key} agora usa o quadro próprio.`)
+    }
   }
   async function updatePass(key, newPass) {
     if (!newPass) return
@@ -112,7 +120,7 @@ export default function Usuarios() {
   return (
     <div>
       <PageHeader eyebrow="Equipe" title="Usuários" />
-      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">2FA usa um app autenticador (Google Authenticator, Microsoft Authenticator, Authy…) — a pessoa configura escaneando um QR code no primeiro login e só precisa digitar o código de novo 1x por dia, no mesmo aparelho. Horário permitido em branco = sem restrição.</p>
+      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">2FA usa um app autenticador (Google Authenticator, Microsoft Authenticator, Authy…) — a pessoa configura escaneando um QR code no primeiro login e só precisa digitar o código de novo 1x por dia, no mesmo aparelho. Horário permitido em branco = sem restrição. "Quadro vinculado" conecta o login da pessoa ao quadro fixo dela (o mesmo que aparece em Controle na sua sidebar) — sem isso, "Meu Quadro" e as Atividades do dia dela ficam vazios, mesmo que você já tenha cadastrado atividades para ela.</p>
 
       {pending.length > 0 && (
         <Card className="mb-4 border-amber-500/40">
@@ -146,6 +154,7 @@ export default function Usuarios() {
                 <th className="px-3 py-2.5 font-medium">Nome</th>
                 <th className="px-3 py-2.5 font-medium">E-mail</th>
                 <th className="px-3 py-2.5 font-medium">Perfil</th>
+                <th className="px-3 py-2.5 font-medium">Quadro vinculado</th>
                 <th className="px-3 py-2.5 font-medium">Senha</th>
                 <th className="px-3 py-2.5 font-medium">2FA</th>
                 <th className="px-3 py-2.5 font-medium">Horário permitido</th>
@@ -155,7 +164,7 @@ export default function Usuarios() {
             </thead>
             <tbody>
               {!Object.keys(users).length ? (
-                <tr><td colSpan={9} className="text-center py-8 text-[var(--tx3)]">Nenhum usuário cadastrado ainda.</td></tr>
+                <tr><td colSpan={10} className="text-center py-8 text-[var(--tx3)]">Nenhum usuário cadastrado ainda.</td></tr>
               ) : Object.entries(users).map(([key, u]) => (
                 <tr key={key} className="border-b border-[var(--bdr)]/60 text-[12.5px]">
                   <td className="px-3 py-2 font-medium">@{key}</td>
@@ -167,6 +176,16 @@ export default function Usuarios() {
                       <option value="admin">Administrador</option>
                       <option value="user">Equipe</option>
                       <option value="consulta">Consulta</option>
+                    </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <select
+                      defaultValue={u.boardSlug || ''}
+                      onChange={(e) => updateField(key, 'boardSlug', e.target.value)}
+                      className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px] max-w-[150px]"
+                    >
+                      <option value="">— Quadro próprio —</option>
+                      {COLABORADORES.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
                     </select>
                   </td>
                   <td className="px-3 py-2"><input type="password" placeholder="Nova senha…" onBlur={(e) => e.target.value && updatePass(key, e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px] w-[110px]" /></td>

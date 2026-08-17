@@ -115,7 +115,7 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         isAdmin={isAdmin}
-        ownSlug={currentUser.username}
+    ownSlug={currentUser.boardSlug || currentUser.username}
         ownName={currentUser.name || currentUser.username}
         user={{ name: currentUser.name || currentUser.username, role: roleLabel, initials }}
         onLogout={logout}
