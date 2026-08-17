@@ -51,6 +51,10 @@ function todayStr() {
 }
 const twoFAFlagKey = (username) => `ctrl_2fa_ok_${username}_${todayStr()}`
 
+export function clearTwoFAFlag(username) {
+  try { localStorage.removeItem(twoFAFlagKey(username)) } catch (e) {}
+}
+
 async function addAuditEntry(type, details) {
   try {
     const snap = await getDoc(AUDIT_DOC())
@@ -186,7 +190,13 @@ export function AuthProvider({ children }) {
 
   function logout(reason) {
     const safeReason = typeof reason === 'string' ? reason : null
-    if (currentUser) addAuditEntry(safeReason ? 'logout_auto' : 'logout', { username: currentUser.username, reason: safeReason })
+    if (currentUser) {
+      addAuditEntry(safeReason ? 'logout_auto' : 'logout', { username: currentUser.username, reason: safeReason })
+      // Ao sair, esquece a confirmação de 2FA de hoje — assim, ao entrar de
+      // novo (mesmo no mesmo dia), o código volta a ser pedido. O "1x por
+      // dia" vale enquanto a sessão continua aberta, não entre logins.
+      try { localStorage.removeItem(twoFAFlagKey(currentUser.username)) } catch (e) {}
+    }
     if (safeReason) { try { localStorage.setItem(LOGOUT_REASON_KEY, safeReason) } catch (e) {} }
     setCurrentUser(null)
     localStorage.removeItem(SESSION_KEY)

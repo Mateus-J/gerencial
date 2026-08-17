@@ -4,6 +4,7 @@ import { UserPlus, ShieldCheck, RotateCcw } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { genSecret } from '../lib/totp'
+import { clearTwoFAFlag } from '../context/AuthContext'
 import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'users')
@@ -86,12 +87,14 @@ export default function Usuarios() {
     // segredo salvo (se reativar sem "resetar", não precisa escanear de novo).
     const secret = u.totpSecret || genSecret()
     persist({ ...users, [key]: { ...u, totpEnabled: enabled, totpSecret: secret } })
+    clearTwoFAFlag(key)
     toast.success(enabled ? `2FA ativado para @${key}.` : `2FA desativado para @${key}.`)
   }
   function reset2FA(key) {
     if (!confirm('Resetar 2FA de @' + key + '? A pessoa vai precisar escanear um novo QR code no próximo login.')) return
     const u = users[key]
     persist({ ...users, [key]: { ...u, totpSecret: genSecret(), totpConfirmed: false } })
+    clearTwoFAFlag(key)
     toast.success('2FA resetado com sucesso!')
   }
 
