@@ -129,7 +129,6 @@ export default function Login() {
               <button disabled={busy} type="submit" className="w-full bg-id-dark hover:bg-id-mid rounded-lg py-2.5 text-[13px] font-medium mt-4 disabled:opacity-50">
                 {busy ? 'Verificando…' : 'Entrar'}
               </button>
-              <p className="text-[10.5px] text-[var(--tx4)] text-center mt-3">Só vai pedir de novo amanhã, neste dispositivo.</p>
             </form>
           ) : mode === 'login' ? (
             <form onSubmit={handleLogin}>
