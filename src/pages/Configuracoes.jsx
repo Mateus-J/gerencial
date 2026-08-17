@@ -3,8 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { Download, Upload, Copy, Check, Plus, X } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
-import { COLABORADORES } from '../hooks/useBoard'
-import { useToast } from '../components/Toast'
+import Usuarios from './Usuarios'
 
 // Todas as coleções 'controle/*' que este app usa — usado no backup completo
 const COLLECTIONS = ['saldos_v2', 'taxa_adm', 'portal_saldos', 'multas_juros', 'home_office', 'agenda', 'users', 'audit_log', 'pendencias', 'pendencias_historico', 'fundos_extra']
@@ -33,7 +32,6 @@ function genSalt() {
 }
 
 export default function Configuracoes() {
-  const toast = useToast()
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [newAdminPass, setNewAdminPass] = useState('')
@@ -53,9 +51,8 @@ export default function Configuracoes() {
       a.href = URL.createObjectURL(blob)
       a.download = `gerencial_backup_${date}.json`
       a.click()
-      toast.success('Backup exportado com sucesso!')
     } catch (e) {
-      toast.error('Erro ao gerar backup: ' + e.message)
+      alert('⚠ Erro ao gerar backup: ' + e.message)
     } finally {
       setBusy(false)
     }
@@ -68,15 +65,15 @@ export default function Configuracoes() {
       try {
         const parsed = JSON.parse(e.target.result)
         const keys = Object.keys(parsed).filter((k) => COLLECTIONS.includes(k))
-        if (!keys.length) { toast.error('Arquivo inválido — nenhuma coleção reconhecida.'); return }
+        if (!keys.length) { alert('⚠ Arquivo inválido — nenhuma coleção reconhecida.'); return }
         if (!confirm(`Restaurar backup com ${keys.length} coleções (${keys.join(', ')})? O estado atual será sobrescrito.`)) return
         setBusy(true)
         for (const k of keys) {
           if (parsed[k] != null) await setDoc(doc(db, 'controle', k), parsed[k], { merge: false })
         }
-        toast.success(`${keys.length} coleções restauradas com sucesso!`)
+        alert(`✅ ${keys.length} coleções restauradas com sucesso!`)
       } catch (err) {
-        toast.error('Erro ao ler arquivo: ' + err.message)
+        alert('⚠ Erro ao ler arquivo: ' + err.message)
       } finally {
         setBusy(false)
       }
@@ -85,12 +82,12 @@ export default function Configuracoes() {
   }
 
   async function setupAdminPass() {
-    if (!newAdminPass || newAdminPass.length < 4) { toast.error('Senha muito curta (mín. 4 caracteres).'); return }
+    if (!newAdminPass || newAdminPass.length < 4) { alert('⚠ Senha muito curta (mín. 4 caracteres)'); return }
     const salt = genSalt()
     const hash = await sha256(salt + ':' + newAdminPass)
     await setDoc(doc(db, 'controle', 'admin_tab_pass'), { hash, salt }, { merge: false })
     setNewAdminPass('')
-    toast.success('Senha da aba Configurações atualizada!')
+    alert('✅ Senha da aba Configurações atualizada!')
   }
 
   function copyRules() {
@@ -103,6 +100,11 @@ export default function Configuracoes() {
   return (
     <div>
       <PageHeader eyebrow="Sistema" title="Configurações" />
+
+      <div className="mb-4">
+        <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-2">Usuários e permissões</div>
+        <Usuarios />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-4">
@@ -151,85 +153,14 @@ export default function Configuracoes() {
           field="ocorrencias"
         />
         <AlertaAtrasoConfig />
-        <TarefasColaboradorConfig />
       </div>
     </div>
-  )
-}
-
-// Cadastra as atividades fixas de cada colaborador — elas viram o checklist
-// diário na aba Controle daquela pessoa (marcação reinicia à meia-noite).
-function TarefasColaboradorConfig() {
-  const toast = useToast()
-  const [slug, setSlug] = useState(COLABORADORES[0].slug)
-  const [tasks, setTasks] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [novo, setNovo] = useState('')
-
-  useEffect(() => {
-    let mounted = true
-    setLoading(true)
-    getDoc(doc(db, 'controle', 'board_' + slug))
-      .then((snap) => { if (mounted) setTasks(snap.exists() ? (snap.data().tasks || []) : []) })
-      .catch((e) => console.warn('tasksLoad err', e))
-      .finally(() => mounted && setLoading(false))
-    return () => { mounted = false }
-  }, [slug])
-
-  async function persist(next) {
-    setTasks(next)
-    try {
-      const snap = await getDoc(doc(db, 'controle', 'board_' + slug))
-      const current = snap.exists() ? snap.data() : {}
-      await setDoc(doc(db, 'controle', 'board_' + slug), { ...current, tasks: next }, { merge: false })
-    } catch (e) { console.warn('tasksSave err', e); toast.error('Erro ao salvar: ' + e.message) }
-  }
-
-  function add() {
-    const v = novo.trim()
-    if (!v) return
-    persist([...tasks, { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: v }])
-    setNovo('')
-    toast.success('Atividade adicionada!')
-  }
-  function remove(id) {
-    persist(tasks.filter((t) => t.id !== id))
-    toast.success('Atividade removida.')
-  }
-
-  return (
-    <Card className="p-4 lg:col-span-2">
-      <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-1">Tarefas por colaborador</div>
-      <p className="text-[12px] text-[var(--tx3)] mb-3">Cadastra as atividades fixas de cada pessoa. Elas aparecem como checklist na aba Controle dela, com marcação diária que reinicia à meia-noite.</p>
-      <select value={slug} onChange={(e) => setSlug(e.target.value)} className="w-full sm:w-64 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2.5 py-1.5 text-[12px] mb-3">
-        {COLABORADORES.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
-      </select>
-      <div className="flex gap-2 mb-3">
-        <input value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder="Adicionar atividade…" className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2.5 py-1.5 text-[12px]" />
-        <button onClick={add} className="flex items-center gap-1 bg-id-dark hover:bg-id-mid rounded-lg px-3 text-[12px]"><Plus size={13} /></button>
-      </div>
-      {loading ? (
-        <p className="text-[11.5px] text-[var(--tx3)]">Carregando…</p>
-      ) : !tasks.length ? (
-        <p className="text-[11.5px] text-[var(--tx3)]">Nenhuma atividade cadastrada ainda.</p>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {tasks.map((t) => (
-            <div key={t.id} className="flex items-center justify-between text-[12px] bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-1.5">
-              {t.text}
-              <button onClick={() => remove(t.id)} className="text-[var(--tx4)] hover:text-red-500"><X size={13} /></button>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
   )
 }
 
 // Configura a partir de quantos dias em aberto uma pendência é considerada
 // atrasada (destaque vermelho na tabela + KPI de atrasadas no Dashboard).
 function AlertaAtrasoConfig() {
-  const toast = useToast()
   const [dias, setDias] = useState(3)
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
@@ -249,9 +180,8 @@ function AlertaAtrasoConfig() {
       const current = snap.exists() ? snap.data() : {}
       await setDoc(doc(db, 'controle', 'pendencias'), { ...current, alertaDias: Number(dias) || 3 }, { merge: false })
       setSaved(true)
-      toast.success('Alerta de atraso atualizado!')
       setTimeout(() => setSaved(false), 1500)
-    } catch (e) { console.warn('alertaSave err', e); toast.error('Erro ao salvar: ' + e.message) }
+    } catch (e) { console.warn('alertaSave err', e) }
   }
 
   return (
@@ -270,7 +200,6 @@ function AlertaAtrasoConfig() {
 // Gerencia uma lista simples (array de strings) dentro do doc controle/pendencias,
 // sem mexer nos outros campos do documento (items, etc.)
 function ListManager({ title, description, field }) {
-  const toast = useToast()
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [novo, setNovo] = useState('')
@@ -290,7 +219,7 @@ function ListManager({ title, description, field }) {
       const snap = await getDoc(doc(db, 'controle', 'pendencias'))
       const current = snap.exists() ? snap.data() : {}
       await setDoc(doc(db, 'controle', 'pendencias'), { ...current, [field]: next }, { merge: false })
-    } catch (e) { console.warn('listSave err', e); toast.error('Erro ao salvar: ' + e.message) }
+    } catch (e) { console.warn('listSave err', e) }
   }
 
   function add() {
@@ -298,11 +227,9 @@ function ListManager({ title, description, field }) {
     if (!v || list.includes(v)) return
     persist([...list, v])
     setNovo('')
-    toast.success('Item adicionado!')
   }
   function remove(v) {
     persist(list.filter((x) => x !== v))
-    toast.success('Item removido.')
   }
 
   return (

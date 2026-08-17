@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
-import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'agenda')
 const DOWS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -35,7 +34,6 @@ function expandRecurrDates(startDate, recurrence, endDate) {
 }
 
 export default function Agenda() {
-  const toast = useToast()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const now = new Date()
@@ -65,8 +63,8 @@ export default function Agenda() {
   }
 
   function addItem() {
-    if (!title.trim()) { toast.error('Digite um título.'); return }
-    if (!date) { toast.error('Selecione uma data.'); return }
+    if (!title.trim()) { alert('⚠️ Digite um título'); return }
+    if (!date) { alert('⚠️ Selecione uma data'); return }
     const dates = recurrence === 'none' ? [date] : expandRecurrDates(date, recurrence, recurrEnd)
     const recurGroupId = recurrence !== 'none' ? 'rg' + Date.now() : undefined
     const newItems = dates.map((d) => ({
@@ -77,7 +75,6 @@ export default function Agenda() {
     }))
     persist([...newItems, ...items])
     setTitle(''); setNote(''); setTime('')
-    toast.success('Item adicionado à agenda!')
   }
 
   function toggleDone(id) {
@@ -86,7 +83,6 @@ export default function Agenda() {
   function deleteItem(id) {
     if (!confirm('Excluir este item?')) return
     persist(items.filter((i) => i.id !== id))
-    toast.success('Item excluído.')
   }
 
   function calNav(dir) {

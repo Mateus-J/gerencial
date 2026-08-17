@@ -8,7 +8,6 @@ import {
 } from 'recharts'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
-import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'taxa_adm')
 const TA_C = ['#8FB352', '#38bdf8', '#a78bfa', '#f59e0b', '#2dd4bf', '#f87171', '#0ea5e9', '#84cc16', '#ec4899', '#eab308']
@@ -35,7 +34,6 @@ function recalc(parsed) {
 }
 
 export default function TaxaAdministracao() {
-  const toast = useToast()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [mode, setMode] = useState('all') // all | mes
@@ -111,7 +109,7 @@ export default function TaxaAdministracao() {
           if (!mesRef || val <= 0) return
           parsedNew.push({ fundo, gestor, classif, cnpj, conta, mesRef, status, val })
         })
-        if (!parsedNew.length) { toast.error('Nenhum dado válido no arquivo.'); return }
+        if (!parsedNew.length) { alert('⚠ Nenhum dado válido no arquivo'); return }
 
         const makeKey = (r) => (r.fundo || '').trim().toUpperCase() + '|' + (r.mesRef || '').trim()
         const existing = data?.parsed || []
@@ -128,8 +126,8 @@ export default function TaxaAdministracao() {
         const next = { ...recalc(merged), importedAt: new Date().toLocaleString('pt-BR') }
         setSelMes(next.lastMes); setMode('all'); setSelected(new Set())
         await persist(next)
-        toast.success(`Importado: ${countNew} novo(s), ${countUpdated} atualizado(s) — total ${merged.length} registros, ${next.months.length} meses.`)
-      } catch (err) { console.error(err); toast.error('Erro: ' + err.message) }
+        alert(`✅ Importado: ${countNew} novo(s), ${countUpdated} atualizado(s) — total ${merged.length} registros, ${next.months.length} meses`)
+      } catch (err) { console.error(err); alert('⚠ Erro: ' + err.message) }
     }
     reader.readAsArrayBuffer(file)
   }
@@ -161,30 +159,26 @@ export default function TaxaAdministracao() {
     const mes = mode === 'mes' ? selMes : data.lastMes || ''
     const parsed = [{ fundo: 'Novo Fundo', gestor: '', classif: '', mesRef: mes, status: 'PENDENTE', val: 0 }, ...data.parsed]
     persist(recalc(parsed))
-    toast.success('Registro adicionado!')
   }
   function bulkDelete() {
     if (!selected.size) return
     if (!confirm(`Excluir ${selected.size} registro(s) selecionado(s)?`)) return
-    const n = selected.size
     const parsed = data.parsed.filter((_, i) => !selected.has(i))
     setSelected(new Set())
     persist(recalc(parsed))
-    toast.success(`${n} registro(s) excluído(s).`)
   }
   function toggleSelect(ri) {
     setSelected((s) => { const n = new Set(s); n.has(ri) ? n.delete(ri) : n.add(ri); return n })
   }
 
   function exportCSV() {
-    if (!filtered.length) { toast.error('Nenhum dado para exportar.'); return }
+    if (!filtered.length) { alert('Nenhum dado'); return }
     const h = 'Fundo;Gestor;Classificação;Mês Ref;Status;Valor'
     const lines = filtered.map((r) => [r.fundo, r.gestor, r.classif, r.mesRef, r.status, r.val.toFixed(2).replace('.', ',')].join(';'))
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['\uFEFF' + h + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }))
     a.download = 'taxa_adm_' + new Date().toISOString().slice(0, 10) + '.csv'
     a.click()
-    toast.success('CSV exportado!')
   }
 
   const sortedRows = useMemo(() => {

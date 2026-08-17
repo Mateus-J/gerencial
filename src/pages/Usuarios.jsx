@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { UserPlus, ShieldCheck, RotateCcw } from 'lucide-react'
+import { UserPlus } from 'lucide-react'
 import { db } from '../lib/firebase'
-import { PageHeader, Card } from '../components/PageShell'
-import { genSecret } from '../lib/totp'
-import { clearTwoFAFlag } from '../context/AuthContext'
-import { useToast } from '../components/Toast'
+import { Card } from '../components/PageShell'
 
 const DOC_REF = () => doc(db, 'controle', 'users')
 const ROLE_LABEL = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }
@@ -34,7 +31,6 @@ function genSalt() {
 }
 
 export default function Usuarios() {
-  const toast = useToast()
   const [users, setUsers] = useState({})
   const [loading, setLoading] = useState(true)
   const [nu, setNu] = useState({ user: '', name: '', email: '', pass: '', role: 'user' })
@@ -50,70 +46,41 @@ export default function Usuarios() {
 
   function persist(next) {
     setUsers(next)
-    setDoc(DOC_REF(), { users: next, updatedAt: Date.now() }, { merge: false }).catch((e) => { console.warn('usersSave err', e); toast.error('Erro ao salvar: ' + e.message) })
+    setDoc(DOC_REF(), { users: next, updatedAt: Date.now() }, { merge: false }).catch((e) => console.warn('usersSave err', e))
   }
 
   async function addUser() {
     const { user, name, email, pass, role } = nu
-    if (!user || !name || !pass) { toast.error('Preencha usuário, nome e senha.'); return }
-    if (users[user]) { toast.error('Usuário já existe.'); return }
+    if (!user || !name || !pass) { alert('⚠️ Preencha usuário, nome e senha'); return }
+    if (users[user]) { alert('⚠️ Usuário já existe'); return }
     const salt = genSalt()
     const passHash = await hashPass(pass, salt)
     persist({ ...users, [user]: { pass: passHash, salt, name, email, role } })
     setNu({ user: '', name: '', email: '', pass: '', role: 'user' })
-    toast.success(`Usuário @${user} adicionado com sucesso!`)
   }
   function removeUser(key) {
     if (!confirm('Remover usuário @' + key + '?')) return
     const next = { ...users }; delete next[key]
     persist(next)
-    toast.success(`Usuário @${key} removido.`)
   }
   function updateField(key, field, value) {
     persist({ ...users, [key]: { ...users[key], [field]: value } })
-    if (field === 'role' && value !== 'pending') toast.success(`@${key} aprovado como ${ROLE_LABEL[value] || value}.`)
-    if (field === 'acessoInicio' || field === 'acessoFim') toast.success('Horário de acesso atualizado.')
   }
   async function updatePass(key, newPass) {
     if (!newPass) return
     const salt = genSalt()
     const passHash = await hashPass(newPass, salt)
     persist({ ...users, [key]: { ...users[key], pass: passHash, salt } })
-    toast.success(`Senha de @${key} atualizada.`)
-  }
-  function toggle2FA(key, enabled) {
-    const u = users[key]
-    // Gera o segredo na primeira vez que ativa; ao desativar, mantém o
-    // segredo salvo (se reativar sem "resetar", não precisa escanear de novo).
-    const secret = u.totpSecret || genSecret()
-    persist({ ...users, [key]: { ...u, totpEnabled: enabled, totpSecret: secret } })
-    clearTwoFAFlag(key)
-    toast.success(enabled ? `2FA ativado para @${key}.` : `2FA desativado para @${key}.`)
-  }
-  function reset2FA(key) {
-    if (!confirm('Resetar 2FA de @' + key + '? A pessoa vai precisar escanear um novo QR code no próximo login.')) return
-    const u = users[key]
-    persist({ ...users, [key]: { ...u, totpSecret: genSecret(), totpConfirmed: false } })
-    clearTwoFAFlag(key)
-    toast.success('2FA resetado com sucesso!')
   }
 
   if (loading) {
-    return (
-      <div>
-        <PageHeader eyebrow="Equipe" title="Usuários" />
-        <Card className="p-10 text-center text-[var(--tx3)]">Carregando…</Card>
-      </div>
-    )
+    return <Card className="p-10 text-center text-[var(--tx3)]">Carregando…</Card>
   }
 
   const pending = Object.entries(users).filter(([, u]) => u.role === 'pending')
 
   return (
     <div>
-      <PageHeader eyebrow="Equipe" title="Usuários" />
-      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">2FA usa um app autenticador (Google Authenticator, Microsoft Authenticator, Authy…) — a pessoa configura escaneando um QR code no primeiro login e só precisa digitar o código de novo 1x por dia, no mesmo aparelho. Horário permitido em branco = sem restrição.</p>
-
       {pending.length > 0 && (
         <Card className="mb-4 border-amber-500/40">
           <div className="p-3 border-b border-[var(--bdr)]">
@@ -147,15 +114,13 @@ export default function Usuarios() {
                 <th className="px-3 py-2.5 font-medium">E-mail</th>
                 <th className="px-3 py-2.5 font-medium">Perfil</th>
                 <th className="px-3 py-2.5 font-medium">Senha</th>
-                <th className="px-3 py-2.5 font-medium">2FA</th>
-                <th className="px-3 py-2.5 font-medium">Horário permitido</th>
                 <th className="px-3 py-2.5 font-medium">Lembrete pendências</th>
                 <th className="px-3 py-2.5 font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
               {!Object.keys(users).length ? (
-                <tr><td colSpan={9} className="text-center py-8 text-[var(--tx3)]">Nenhum usuário cadastrado ainda.</td></tr>
+                <tr><td colSpan={7} className="text-center py-8 text-[var(--tx3)]">Nenhum usuário cadastrado ainda.</td></tr>
               ) : Object.entries(users).map(([key, u]) => (
                 <tr key={key} className="border-b border-[var(--bdr)]/60 text-[12.5px]">
                   <td className="px-3 py-2 font-medium">@{key}</td>
@@ -170,39 +135,12 @@ export default function Usuarios() {
                     </select>
                   </td>
                   <td className="px-3 py-2"><input type="password" placeholder="Nova senha…" onBlur={(e) => e.target.value && updatePass(key, e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px] w-[110px]" /></td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" checked={!!u.totpEnabled} onChange={(e) => toggle2FA(key, e.target.checked)} className="sr-only peer" />
-                        <span className="w-8 h-4 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors" />
-                        <span className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
-                      </label>
-                      {u.totpEnabled && (
-                        <>
-                          {u.totpConfirmed ? (
-                            <ShieldCheck size={13} className="text-id-light" title="2FA configurado" />
-                          ) : (
-                            <span className="text-[9.5px] text-amber-400" title="Ainda não configurou no app autenticador">pendente</span>
-                          )}
-                          <button type="button" onClick={() => reset2FA(key)} title="Resetar 2FA (gera novo QR code)" className="text-[var(--tx4)] hover:text-red-400">
-                            <RotateCcw size={12} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1">
-                      <input type="time" defaultValue={u.acessoInicio || ''} onBlur={(e) => updateField(key, 'acessoInicio', e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1 py-1 text-[11px] w-[78px]" />
-                      <span className="text-[var(--tx4)] text-[11px]">–</span>
-                      <input type="time" defaultValue={u.acessoFim || ''} onBlur={(e) => updateField(key, 'acessoFim', e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1 py-1 text-[11px] w-[78px]" />
-                    </div>
-                  </td>
                   <td className="px-3 py-2 text-center">
-                    <label className="relative inline-flex items-center cursor-pointer">
+                    <label className="inline-flex items-center cursor-pointer">
                       <input type="checkbox" checked={!!u.notifPendencias} onChange={(e) => updateField(key, 'notifPendencias', e.target.checked)} className="sr-only peer" />
-                      <span className="w-8 h-4 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors" />
-                      <span className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
+                      <span className="w-8 h-4 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors relative">
+                        <span className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
+                      </span>
                     </label>
                   </td>
                   <td className="px-3 py-2"><button onClick={() => removeUser(key)} className="text-[11px] text-red-400 border border-red-500/30 rounded-md px-2 py-0.5">Remover</button></td>

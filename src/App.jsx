@@ -9,7 +9,6 @@ import PortalSaldos from './pages/PortalSaldos'
 import MultasJuros from './pages/MultasJuros'
 import HomeOffice from './pages/HomeOffice'
 import Agenda from './pages/Agenda'
-import Usuarios from './pages/Usuarios'
 import Auditoria from './pages/Auditoria'
 import Historico from './pages/Historico'
 import Configuracoes from './pages/Configuracoes'
@@ -21,18 +20,16 @@ import { useFirebaseStatus } from './hooks/useFirebaseStatus'
 import { usePendReminder } from './hooks/usePendReminder'
 import { COLABORADORES } from './hooks/useBoard'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import { ToastProvider } from './components/Toast'
 
 const PAGES = {
   dashboard: { component: Dashboard, title: 'Pendências', subtitle: 'Área Liquidação' },
-  saldos: { component: Saldos, title: 'Saldos', subtitle: 'Conta lastros' },
+  saldos: { component: Saldos, title: 'Saldos Aplicados', subtitle: 'Conta lastros' },
   fundos: { component: Fundos, title: 'Fundos', subtitle: 'Base de referência' },
   'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração' },
   'portal-saldos': { component: PortalSaldos, title: 'Portal Saldos' },
   'multas-juros': { component: MultasJuros, title: 'Multas e Juros', subtitle: 'Cálculo base Selic' },
   'home-office': { component: HomeOffice, title: 'Home Office', subtitle: 'Escala da equipe' },
   agenda: { component: Agenda, title: 'Agenda' },
-  usuarios: { component: Usuarios, title: 'Usuários', adminOnly: true },
   auditoria: { component: Auditoria, title: 'Auditoria', adminOnly: true },
   historico: { component: Historico, title: 'Histórico', subtitle: 'Pendências concluídas' },
   configuracoes: { component: Configuracoes, title: 'Configurações', adminOnly: true },
@@ -42,13 +39,15 @@ function AppShell() {
   const { currentUser, loading, logout } = useAuth()
   const [active, setActive] = useState('dashboard')
   const [collapsed, setCollapsed] = useState(false)
-  const [dark, setDark] = useState(() => localStorage.getItem('gerencial_theme') === 'dark')
+  const [dark, setDark] = useState(() => {
+    try { return localStorage.getItem('ctrl_theme_dark') === '1' } catch (e) { return false }
+  })
   const [search, setSearch] = useState('')
   const status = useFirebaseStatus()
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
-    localStorage.setItem('gerencial_theme', dark ? 'dark' : 'light')
+    try { localStorage.setItem('ctrl_theme_dark', dark ? '1' : '0') } catch (e) { /* noop */ }
   }, [dark])
 
   if (loading) {
@@ -141,10 +140,8 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <AppShell />
-      </AuthProvider>
-    </ToastProvider>
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   )
 }

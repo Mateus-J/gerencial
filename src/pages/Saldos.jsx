@@ -4,7 +4,6 @@ import * as XLSX from 'xlsx'
 import { Upload, FileSpreadsheet, Download, X } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
-import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'saldos_v2')
 
@@ -49,7 +48,6 @@ function matchNome(nomeExt, lista) {
 }
 
 export default function Saldos() {
-  const toast = useToast()
   const [SD, setSD] = useState(emptySD())
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -91,7 +89,7 @@ export default function Saldos() {
         // topo (título, prestador, data-base) antes da tabela de verdade — acha a
         // linha com "Fundo (Cotista)" pra saber onde os dados realmente começam.
         const hdrIdx = raw.findIndex((r) => r.some((c) => String(c).trim() === 'Fundo (Cotista)'))
-        if (hdrIdx < 0) { toast.error('Não encontrei a coluna "Fundo (Cotista)" nesse arquivo. O layout pode ter mudado de novo.'); return }
+        if (hdrIdx < 0) { alert('⚠ Não encontrei a coluna "Fundo (Cotista)" nesse arquivo. O layout pode ter mudado de novo.'); return }
         const header = raw[hdrIdx].map((h) => String(h).trim())
         const idxSeq = header.findIndex((h) => h === '#')
         const idxNome = header.indexOf('Fundo (Cotista)')
@@ -113,7 +111,7 @@ export default function Saldos() {
           if (idSob > 0) cotistas.push({ nome: nome.substring(0, 120), fundo: 'ID Soberano', saldoInicial: idSob, saldoAtualizado: idSob, saldoBloqueado: 0 })
           if (idRF === 0 && idSob === 0) cotistas.push({ nome: nome.substring(0, 120), fundo: '—', saldoInicial: 0, saldoAtualizado: 0, saldoBloqueado: 0, _semFundo: true })
         })
-        if (!cotistas.length) { toast.error('Nenhum cotista encontrado. Verifique o arquivo.'); return }
+        if (!cotistas.length) { alert('⚠ Nenhum cotista encontrado. Verifique o arquivo.'); return }
         cotistas.forEach((c) => {
           const existing = SD.cotistas.find((x) => x.nome === c.nome && x.fundo === c.fundo)
           if (existing) {
@@ -133,10 +131,9 @@ export default function Saldos() {
         }
         cotistas.forEach((c) => { delete c._fundoIncorreto; delete c._regularizado })
         save(next)
-        toast.success(`Liquidez importada — ${cotistas.length} cotista(s) carregado(s).`)
       } catch (err) {
         console.error(err)
-        toast.error('Erro ao ler planilha: ' + err.message)
+        alert('⚠ Erro ao ler planilha: ' + err.message)
       }
     }
     reader.readAsArrayBuffer(file)
@@ -158,7 +155,7 @@ export default function Saldos() {
         const saldoI = hdr.findIndex((h) => h === 'vl_saldo_in')
         const dtI = hdr.findIndex((h) => h === 'dt_mov')
         const histI = hdr.findIndex((h) => h === 'ds_historico')
-        if (dcI < 0 || valI < 0 || descI < 0) { toast.error('Colunas não encontradas no CSV.'); return }
+        if (dcI < 0 || valI < 0 || descI < 0) { alert('⚠ Colunas não encontradas no CSV'); return }
         const parseV = (s) => parseFloat(String(s).replace(',', '.')) || 0
         const data = rows.slice(1).filter((r) => r.length > Math.max(dcI, valI, descI))
         const isSob = file.name.includes('454398')
@@ -234,10 +231,10 @@ export default function Saldos() {
           sobSaldoInicial: cotistas.filter((c) => c.fundo === 'ID Soberano' && !c._wrongFund).reduce((a, c) => a + c.saldoInicial, 0),
         }
         save(next)
-        toast.success('Extrato ' + fundoKey + ' importado — ' + matched + ' de ' + Object.keys(movMap).length + ' cotistas encontrados na liquidez.')
+        alert('✅ Extrato ' + fundoKey + ' importado — ' + matched + ' de ' + Object.keys(movMap).length + ' cotistas encontrados na liquidez')
       } catch (err) {
         console.error(err)
-        toast.error('Erro: ' + err.message)
+        alert('⚠ Erro: ' + err.message)
       }
     }
     reader.readAsText(file, 'iso-8859-1')
@@ -246,7 +243,6 @@ export default function Saldos() {
   function regularizar(idx) {
     const cotistas = SD.cotistas.map((c, i) => (i === idx ? { ...c, _regularizado: true } : c))
     save({ ...SD, cotistas })
-    toast.success('Marcado como regularizado.')
   }
 
   function openBloq(idx) {
@@ -258,7 +254,7 @@ export default function Saldos() {
   function addBloqueio() {
     if (bloqIdx === null) return
     const v = parseFloat(String(bloqVal).replace(/\./g, '').replace(',', '.')) || 0
-    if (!v) { toast.error('Digite um valor.'); return }
+    if (!v) { alert('⚠ Digite um valor'); return }
     const cotistas = SD.cotistas.map((c, i) => {
       if (i !== bloqIdx) return c
       const bloqueios = [...(c.bloqueios || []), { valor: v, desc: bloqDesc.trim(), data: new Date().toLocaleDateString('pt-BR') }]
@@ -266,7 +262,6 @@ export default function Saldos() {
     })
     save({ ...SD, cotistas })
     setBloqVal(''); setBloqDesc('')
-    toast.success('Saldo bloqueado registrado!')
   }
 
   function removeBloqueio(bIdx) {
@@ -280,7 +275,7 @@ export default function Saldos() {
   }
 
   function exportCSV() {
-    if (!SD.cotistas.length) { toast.error('Nenhum dado para exportar.'); return }
+    if (!SD.cotistas.length) { alert('Nenhum dado para exportar'); return }
     const h = 'Cotista;Fundo;Saldo Inicial;Movimentação;Saldo Atualizado;Saldo Bloqueado;Saldo Utilizado;Status;Observação'
     const fmt = (v) => (v != null ? Number(v).toFixed(2).replace('.', ',') : '')
     const lines = SD.cotistas.map((r) => {
@@ -302,7 +297,6 @@ export default function Saldos() {
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     a.download = 'saldos_' + new Date().toISOString().slice(0, 10) + '.csv'
     a.click()
-    toast.success('CSV exportado!')
   }
 
   const rows = useMemo(() => {
@@ -310,12 +304,10 @@ export default function Saldos() {
     if (search) list = list.filter((r) => r.nome.toLowerCase().includes(search.toLowerCase()))
     if (filtro === 'rf') list = list.filter((r) => r.fundo === 'ID RF')
     if (filtro === 'sob') list = list.filter((r) => r.fundo === 'ID Soberano')
-    if (filtro === 'alerta') list = list.filter((r) => {
-      const sat = r.saldoAtualizado != null ? r.saldoAtualizado : r.saldoInicial
-      return sat < -1 || (r._fundoIncorreto?.length && !r._regularizado)
-    })
+    if (filtro === 'alerta') list = list.filter((r) => (r.saldoAtualizado != null ? r.saldoAtualizado : r.saldoInicial) < -1)
     if (filtro === 'semsaldo') list = list.filter((r) => (r.saldoInicial || 0) <= 0.01 && !r._wrongFund)
     if (filtro === 'incorreto') list = list.filter((r) => r._fundoIncorreto?.length && !r._regularizado)
+    if (filtro === 'bloqueio') list = list.filter((r) => r.bloqueios?.length)
 
     if (sort.col) {
       list.sort((a, b) => {
@@ -337,6 +329,20 @@ export default function Saldos() {
     return sat < -1 || (r._fundoIncorreto?.length && !r._regularizado)
   }).length
   const semSaldo = SD.cotistas.filter((r) => (r.saldoInicial || 0) <= 0.01 && !r._wrongFund).length
+  const incorretoCount = SD.cotistas.filter((r) => r._fundoIncorreto?.length && !r._regularizado).length
+  const bloqueioCount = SD.cotistas.filter((r) => r.bloqueios?.length).length
+  const rfCount = SD.cotistas.filter((r) => r.fundo === 'ID RF').length
+  const sobCount = SD.cotistas.filter((r) => r.fundo === 'ID Soberano').length
+
+  const FILTROS = [
+    { id: 'todos', label: 'Todos', count: SD.cotistas.length },
+    { id: 'rf', label: 'ID RF', count: rfCount },
+    { id: 'sob', label: 'ID Soberano', count: sobCount },
+    { id: 'alerta', label: 'Alertas', count: alertas, warn: true },
+    { id: 'semsaldo', label: 'Sem saldo', count: semSaldo },
+    { id: 'incorreto', label: 'Fundo incorreto', count: incorretoCount, warn: true },
+    { id: 'bloqueio', label: 'Com bloqueio', count: bloqueioCount },
+  ]
 
   function toggleSort(col) {
     setSort((s) => (s.col === col ? { col, asc: !s.asc } : { col, asc: true }))
@@ -348,18 +354,18 @@ export default function Saldos() {
     <div>
       <PageHeader
         eyebrow="Operacional"
-        title="Saldos"
+        title="Saldos Aplicados"
         actions={
           <>
             <input ref={liqInputRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => importLiquidez(e.target.files[0])} />
-            <button onClick={() => liqInputRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
-              <FileSpreadsheet size={13} /> Importar Liquidez
+            <button onClick={() => liqInputRef.current?.click()} className="flex items-center gap-1.5 text-[12.5px] bg-id-dark hover:bg-id-mid rounded-lg px-3.5 py-1.5 font-semibold text-white shadow-card">
+              <FileSpreadsheet size={14} /> Importar Liquidez
             </button>
             <input ref={extInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => importExtrato(e.target.files[0])} />
             <button onClick={() => extInputRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
               <Upload size={13} /> Importar Extrato
             </button>
-            <button onClick={exportCSV} className="flex items-center gap-1.5 text-[12px] bg-id-dark hover:bg-id-mid rounded-lg px-3 py-1.5 font-medium">
+            <button onClick={exportCSV} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
               <Download size={13} /> Exportar CSV
             </button>
           </>
@@ -395,21 +401,33 @@ export default function Saldos() {
       </div>
 
       <Card>
-        <div className="p-3 border-b border-[var(--bdr)] flex gap-2">
+        <div className="p-3 border-b border-[var(--bdr)] space-y-2.5">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar cotista…"
-            className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[12px] outline-none focus:border-id-mid placeholder:text-[var(--tx3)]"
+            className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[12px] outline-none focus:border-id-mid placeholder:text-[var(--tx3)]"
           />
-          <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-2 text-[12px]">
-            <option value="todos">Todos</option>
-            <option value="rf">ID RF</option>
-            <option value="sob">ID Soberano</option>
-            <option value="alerta">Alertas</option>
-            <option value="semsaldo">Sem saldo</option>
-            <option value="incorreto">Fundo incorreto</option>
-          </select>
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {FILTROS.map((f) => {
+              const active = filtro === f.id
+              const highlight = f.warn && f.count > 0
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setFiltro(f.id)}
+                  className={`flex items-center gap-1.5 text-[11.5px] px-2.5 py-1 rounded-full border transition-colors
+                    ${active ? 'bg-id-dark text-white border-id-dark' : highlight ? 'border-red-500/40 text-red-500 hover:bg-red-500/10' : 'border-[var(--bdr)] text-[var(--tx2)] hover:bg-[var(--sur2)]'}`}
+                >
+                  {f.label}
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20' : 'bg-[var(--sur2)]'}`}>{f.count}</span>
+                </button>
+              )
+            })}
+            {filtro !== 'todos' && (
+              <button onClick={() => setFiltro('todos')} className="text-[11px] text-[var(--tx3)] hover:text-[var(--tx)] underline underline-offset-2 ml-1">Limpar filtro</button>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">

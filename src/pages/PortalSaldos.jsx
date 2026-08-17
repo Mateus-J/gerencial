@@ -4,13 +4,11 @@ import * as XLSX from 'xlsx'
 import { Upload, Download } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
-import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'portal_saldos')
 const psFmt = (v) => (!v && v !== 0 ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
 export default function PortalSaldos() {
-  const toast = useToast()
   const [rows, setRows] = useState([])
   const [dataRef, setDataRef] = useState('')
   const [loading, setLoading] = useState(true)
@@ -60,14 +58,14 @@ export default function PortalSaldos() {
         })
         const ref = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
         persist(parsed, ref)
-        toast.success(parsed.length + ' fundos importados do Portal IDSF!')
-      } catch (err) { console.error(err); toast.error('Erro: ' + err.message) }
+        alert('✅ ' + parsed.length + ' fundos importados do Portal IDSF')
+      } catch (err) { console.error(err); alert('⚠ Erro: ' + err.message) }
     }
     reader.readAsArrayBuffer(file)
   }
 
   function exportCSV() {
-    if (!rows.length) { toast.error('Nenhum dado para exportar.'); return }
+    if (!rows.length) { alert('Nenhum dado para exportar'); return }
     const h = 'Fundo;CNPJ;Saldo;Conta;Tipo'
     const fmt = (v) => (v != null ? Number(v).toFixed(2).replace('.', ',') : '')
     const lines = rows.map((r) => [r.nome, r.cnpj, fmt(r.saldo), r.conta, r.tipo].join(';'))
@@ -75,7 +73,6 @@ export default function PortalSaldos() {
     a.href = URL.createObjectURL(new Blob(['\uFEFF' + h + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }))
     a.download = 'portal_saldos_' + new Date().toISOString().slice(0, 10) + '.csv'
     a.click()
-    toast.success('CSV exportado!')
   }
 
   const filtered = useMemo(() => {

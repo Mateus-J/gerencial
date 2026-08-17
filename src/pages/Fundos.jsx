@@ -2,7 +2,6 @@ import { useMemo, useRef, useState } from 'react'
 import { Plus, Upload, X, Trash2, Database } from 'lucide-react'
 import { PageHeader, Card } from '../components/PageShell'
 import { useFundos } from '../hooks/useFundos'
-import { useToast } from '../components/Toast'
 import FUNDOS_BASE from '../data/fundos.json'
 
 // Localiza colunas do CSV da CVM (registro_fundo.csv, dentro de
@@ -17,7 +16,6 @@ function findCol(headerRow, ...keywords) {
 }
 
 export default function Fundos() {
-  const toast = useToast()
   const { all, extra, loading, persist } = useFundos()
   const [q, setQ] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -33,12 +31,10 @@ export default function Fundos() {
   function addFundo(f) {
     persist([{ ...f, addedAt: Date.now() }, ...extra])
     setShowModal(false)
-    toast.success('Fundo adicionado!')
   }
   function removeFundo(cnpj) {
     if (!confirm('Remover este fundo da base?')) return
     persist(extra.filter((f) => f.cnpj !== cnpj))
-    toast.success('Fundo removido.')
   }
 
   function handleImportCSV(file) {
@@ -57,7 +53,7 @@ export default function Fundos() {
         const idxTipo = findCol(header, 'tp_fundo', 'classe', 'tipo')
         const idxGestor = findCol(header, 'gestor')
         const idxAdmin = findCol(header, 'admin', 'administrador')
-        if (idxCnpj < 0 || idxNome < 0) { toast.error('Não encontrei as colunas de CNPJ/Nome nesse CSV. Confira se é o registro_fundo.csv da CVM.'); setImporting(false); return }
+        if (idxCnpj < 0 || idxNome < 0) { alert('⚠ Não encontrei as colunas de CNPJ/Nome nesse CSV. Confira se é o registro_fundo.csv da CVM.'); setImporting(false); return }
 
         const existingMap = {}
         extra.forEach((f, i) => { existingMap[f.cnpj] = i })
@@ -77,10 +73,10 @@ export default function Fundos() {
           else { merged.push(item); existingMap[cnpj] = merged.length - 1; countNew++ }
         })
         persist(merged)
-        toast.success(`Importado: ${countNew} novo(s), ${countUpdated} atualizado(s).`)
+        alert(`✅ Importado: ${countNew} novo(s), ${countUpdated} atualizado(s)`)
       } catch (err) {
         console.error(err)
-        toast.error('Erro ao ler CSV: ' + err.message)
+        alert('⚠ Erro ao ler CSV: ' + err.message)
       } finally {
         setImporting(false)
       }
