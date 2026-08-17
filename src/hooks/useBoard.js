@@ -21,7 +21,11 @@ export function useBoard(slug) {
 
   const save = useCallback(async (next) => {
     setBoard(next)
-    try { await setDoc(DOC_REF(slug), next, { merge: false }) } catch (e) { console.warn('boardSave err', e) }
+    // merge:true é proposital aqui: o objeto local pode estar desatualizado
+    // (ex.: tarefas cadastradas em outra aba/sessão enquanto este quadro já
+    // estava aberto) — com merge:false isso apagaria campos que não estão
+    // no estado local. merge:true só atualiza as chaves enviadas.
+    try { await setDoc(DOC_REF(slug), next, { merge: true }) } catch (e) { console.warn('boardSave err', e) }
   }, [slug])
 
   return { board, loading, save }
