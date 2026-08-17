@@ -7,10 +7,12 @@ import { genSecret } from '../lib/totp'
 import { clearTwoFAFlag } from '../context/AuthContext'
 import { useToast } from '../components/Toast'
 import { COLABORADORES, slugify } from '../hooks/useBoard'
+import { useAuth } from '../context/AuthContext'
 
 const DOC_REF = () => doc(db, 'controle', 'users')
+const PERMS_DOC = () => doc(db, 'controle', 'permissoes')
 const ROLE_LABEL = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }
-const PERMS = [
+const DEFAULT_PERMS = [
   { action: 'Visualizar dados', desc: 'Ver grupos, linhas e colunas', admin: true, user: true, consulta: true },
   { action: 'Editar células', desc: 'Modificar valores nas linhas', admin: true, user: true, consulta: false },
   { action: 'Adicionar linhas', desc: 'Criar novas linhas nos grupos', admin: true, user: true, consulta: false },
@@ -36,9 +38,15 @@ function genSalt() {
 
 export default function Usuarios() {
   const toast = useToast()
+  const { currentUser } = useAuth()
   const [users, setUsers] = useState({})
   const [loading, setLoading] = useState(true)
   const [nu, setNu] = useState({ user: '', name: '', email: '', pass: '', role: 'user' })
+  const [perms, setPerms] = useState(DEFAULT_PERMS)
+  const [pendingToggle, setPendingToggle] = useState(null) // { action, role }
+  const [confirmPass, setConfirmPass] = useState('')
+  const [confirmBusy, setConfirmBusy] = useState(false)
+  const [confirmError, setConfirmError] = useState('')
 
   useEffect(() => {
     let mounted = true
@@ -46,8 +54,41 @@ export default function Usuarios() {
       .then((snap) => { if (mounted && snap.exists()) setUsers(snap.data().users || {}) })
       .catch((e) => console.warn('usersLoad err', e))
       .finally(() => mounted && setLoading(false))
+    getDoc(PERMS_DOC())
+      .then((snap) => { if (mounted && snap.exists() && snap.data().matrix?.length) setPerms(snap.data().matrix) })
+      .catch((e) => console.warn('permsLoad err', e))
     return () => { mounted = false }
   }, [])
+
+  function persistPerms(next) {
+    setPerms(next)
+    setDoc(PERMS_DOC(), { matrix: next, updatedAt: Date.now() }, { merge: false }).catch((e) => { console.warn('permsSave err', e); toast.error('Erro ao salvar permissões: ' + e.message) })
+  }
+
+  function requestToggle(action, role, current) {
+    setConfirmError('')
+    setConfirmPass('')
+    setPendingToggle({ action, role, next: !current })
+  }
+
+  async function confirmToggle() {
+    if (!confirmPass) { setConfirmError('Digite sua senha.'); return }
+    setConfirmBusy(true)
+    setConfirmError('')
+    try {
+      const me = users[currentUser.username]
+      const hash = await hashPass(confirmPass, me?.salt || '')
+      if (hash !== me?.pass) { setConfirmError('Senha incorreta.'); setConfirmBusy(false); return }
+      const next = perms.map((p) => p.action === pendingToggle.action ? { ...p, [pendingToggle.role]: pendingToggle.next } : p)
+      persistPerms(next)
+      toast.success(`Permissão "${pendingToggle.action}" atualizada.`)
+      setPendingToggle(null)
+    } catch (e) {
+      setConfirmError('Erro ao verificar senha: ' + e.message)
+    } finally {
+      setConfirmBusy(false)
+    }
+  }
 
   function persist(next) {
     setUsers(next)
@@ -245,20 +286,55 @@ export default function Usuarios() {
       </Card>
 
       <Card className="p-4">
-        <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-3">Permissões por perfil</div>
+        <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-1">Permissões por perfil</div>
+        <p className="text-[11.5px] text-[var(--tx3)] mb-3">Clique num checkmark pra mudar — pede sua senha antes de confirmar, já que isso afeta o que cada perfil pode fazer.</p>
         <div className="grid grid-cols-[1fr_1fr_60px_60px_60px] gap-2 text-[10px] uppercase text-[var(--tx3)] mb-1 px-1">
           <div>Ação</div><div>Descrição</div><div className="text-center">Admin</div><div className="text-center">Equipe</div><div className="text-center">Consulta</div>
         </div>
-        {PERMS.map((p) => (
+        {perms.map((p) => (
           <div key={p.action} className="grid grid-cols-[1fr_1fr_60px_60px_60px] gap-2 text-[12px] py-1.5 border-t border-[var(--bdr)]/60 items-center px-1">
             <div>{p.action}</div>
             <div className="text-[var(--tx3)] text-[11px]">{p.desc}</div>
-            <div className="text-center">{p.admin ? <span className="text-id-light">✓</span> : <span className="text-[var(--tx4)]">—</span>}</div>
-            <div className="text-center">{p.user ? <span className="text-id-light">✓</span> : <span className="text-[var(--tx4)]">—</span>}</div>
-            <div className="text-center">{p.consulta ? <span className="text-id-light">✓</span> : <span className="text-[var(--tx4)]">—</span>}</div>
+            {['admin', 'user', 'consulta'].map((role) => (
+              <button
+                key={role}
+                onClick={() => requestToggle(p.action, role, p[role])}
+                title={`Alterar permissão de ${ROLE_LABEL[role] || role} para "${p.action}"`}
+                className="flex items-center justify-center hover:bg-[var(--sur2)] rounded-md py-0.5 transition-colors"
+              >
+                {p[role] ? <span className="text-id-light text-[14px]">✓</span> : <span className="text-[var(--tx4)] text-[14px]">—</span>}
+              </button>
+            ))}
           </div>
         ))}
       </Card>
+
+      {pendingToggle && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={() => setPendingToggle(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl p-5 w-full max-w-[360px] shadow-card">
+            <div className="text-[13px] font-semibold mb-1">Confirmar alteração de permissão</div>
+            <p className="text-[12px] text-[var(--tx3)] mb-3">
+              {pendingToggle.next ? 'Conceder' : 'Remover'} "<strong>{pendingToggle.action}</strong>" para <strong>{ROLE_LABEL[pendingToggle.role]}</strong>. Digite sua senha pra confirmar.
+            </p>
+            <input
+              type="password"
+              autoFocus
+              value={confirmPass}
+              onChange={(e) => setConfirmPass(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && confirmToggle()}
+              placeholder="Sua senha"
+              className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[13px] outline-none focus:border-id-mid mb-1"
+            />
+            {confirmError && <p className="text-[11.5px] text-red-400 mb-2">{confirmError}</p>}
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setPendingToggle(null)} className="flex-1 border border-[var(--bdr)] rounded-lg py-2 text-[12.5px] hover:bg-[var(--sur2)]">Cancelar</button>
+              <button disabled={confirmBusy} onClick={confirmToggle} className="flex-1 bg-id-dark hover:bg-id-mid rounded-lg py-2 text-[12.5px] font-medium disabled:opacity-50">
+                {confirmBusy ? 'Confirmando…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

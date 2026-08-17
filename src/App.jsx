@@ -61,12 +61,13 @@ function AppShell() {
   const isAdmin = currentUser.role === 'admin'
   const isBoard = active.startsWith('board:')
 
-  // Quadros (Controle): cada um só acessa o próprio, admin acessa qualquer um
+  // Quadros (Controle): cada um só acessa o próprio (login OU quadro vinculado), admin acessa qualquer um
   if (isBoard) {
     const slug = active.slice('board:'.length)
-    const isOwn = slug === currentUser.username
+    const ownBoardSlug = currentUser.boardSlug || currentUser.username
+    const isOwn = slug === ownBoardSlug
     if (!isOwn && !isAdmin) {
-      return <Redirect to="board:" username={currentUser.username} setActive={setActive} {...{ collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+      return <Redirect to="board:" slug={ownBoardSlug} setActive={setActive} {...{ collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
     }
   } else {
     const page = PAGES[active] ?? PAGES.dashboard
@@ -79,9 +80,9 @@ function AppShell() {
 }
 
 // Pequeno helper: se um não-admin tentar abrir o quadro de outra pessoa via URL/estado direto, manda pro próprio
-function Redirect({ username, setActive, ...rest }) {
-  useEffect(() => { setActive('board:' + username) }, [])
-  return <AppShellInner active={'board:' + username} setActive={setActive} {...rest} />
+function Redirect({ slug, setActive, ...rest }) {
+  useEffect(() => { setActive('board:' + slug) }, [])
+  return <AppShellInner active={'board:' + slug} setActive={setActive} {...rest} />
 }
 
 function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }) {
