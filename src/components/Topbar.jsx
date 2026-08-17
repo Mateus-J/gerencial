@@ -17,19 +17,19 @@ function PresenceAvatars({ users }) {
   const shown = users.slice(0, 4)
   const extra = users.length - shown.length
   return (
-    <div className="hidden sm:flex items-center -space-x-1.5 mr-1.5">
+    <div className="hidden sm:flex items-center gap-1 mr-1.5">
       {shown.map((u) => (
         <div
           key={u.username}
           title={u.name + (u.active ? ' · ativo agora' : ' · com o sistema aberto')}
           style={{ backgroundColor: colorForUser(u.username), '--presence-color': colorForUser(u.username) }}
-          className={`w-6 h-6 rounded-full flex items-center justify-center text-[9.5px] font-semibold text-white border-2 border-[var(--sur)] ${u.active ? 'presence-active' : ''}`}
+          className={`w-6 h-6 rounded-full flex items-center justify-center text-[9.5px] font-semibold text-white ${u.active ? 'presence-active' : ''}`}
         >
           {initialsFor(u.name)}
         </div>
       ))}
       {extra > 0 && (
-        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9.5px] font-semibold bg-[var(--sur2)] text-[var(--tx3)] border-2 border-[var(--sur)]">
+        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9.5px] font-semibold bg-[var(--sur2)] text-[var(--tx3)]">
           +{extra}
         </div>
       )}

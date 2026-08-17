@@ -66,10 +66,10 @@ body {
 .animate-toast-in { animation: toast-in .18s ease-out; }
 
 @keyframes presence-glow {
-  0%, 100% { box-shadow: 0 0 0 2px var(--presence-color), 0 0 0 4px color-mix(in srgb, var(--presence-color) 35%, transparent); }
-  50% { box-shadow: 0 0 0 2px var(--presence-color), 0 0 0 6px color-mix(in srgb, var(--presence-color) 15%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--presence-color) 45%, transparent); }
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--presence-color) 25%, transparent); }
 }
-.presence-active { animation: presence-glow 1.8s ease-in-out infinite; }
+.presence-active { animation: presence-glow 2.6s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
