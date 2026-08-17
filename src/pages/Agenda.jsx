@@ -61,7 +61,7 @@ export default function Agenda() {
 
   function persist(next) {
     setItems(next)
-    setDoc(DOC_REF(), { items: next }, { merge: false }).catch((e) => console.warn('agSave err', e))
+    setDoc(DOC_REF(), { items: next }, { merge: false }).catch((e) => { console.warn('agSave err', e); toast.error('Erro ao salvar: ' + e.message) })
   }
 
   function addItem() {
@@ -69,12 +69,18 @@ export default function Agenda() {
     if (!date) { toast.error('Selecione uma data.'); return }
     const dates = recurrence === 'none' ? [date] : expandRecurrDates(date, recurrence, recurrEnd)
     const recurGroupId = recurrence !== 'none' ? 'rg' + Date.now() : undefined
-    const newItems = dates.map((d) => ({
-      id: 'ag' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-      type, title: title.trim(), date: d, time, note: note.trim(),
-      done: false, createdAt: new Date().toISOString(),
-      recurrence: recurrence !== 'none' ? recurrence : undefined, recurGroupId,
-    }))
+    // Firestore rejeita a gravação inteira se algum campo vier `undefined`
+    // (era exatamente o caso de recurrence/recurGroupId em itens não
+    // recorrentes) — por isso só inclui esses campos quando fazem sentido.
+    const newItems = dates.map((d) => {
+      const item = {
+        id: 'ag' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        type, title: title.trim(), date: d, time, note: note.trim(),
+        done: false, createdAt: new Date().toISOString(),
+      }
+      if (recurrence !== 'none') { item.recurrence = recurrence; item.recurGroupId = recurGroupId }
+      return item
+    })
     persist([...newItems, ...items])
     setTitle(''); setNote(''); setTime('')
     toast.success('Item adicionado à agenda!')

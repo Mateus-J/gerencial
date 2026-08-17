@@ -19,7 +19,10 @@ const sortKey = (m) => { const p = m.split('.'); return parseInt(p[1]) * 100 + p
 
 function recalc(parsed) {
   const months = [...new Set(parsed.map((r) => r.mesRef))].sort((a, b) => sortKey(a) - sortKey(b))
-  const lastMes = months[months.length - 1]
+  // months[months.length - 1] vira `undefined` quando a lista fica vazia
+  // (ex.: excluir todos os registros) — e o Firestore rejeita a gravação
+  // inteira se algum campo vier `undefined`. `null` é seguro.
+  const lastMes = months.length ? months[months.length - 1] : null
   const monthly = months.map((mes) => {
     const mr = parsed.filter((r) => r.mesRef === mes)
     const pago = mr.filter((r) => r.status === 'PAGO').reduce((a, r) => a + r.val, 0)
@@ -66,7 +69,7 @@ export default function TaxaAdministracao() {
 
   async function persist(next) {
     setData(next)
-    try { await setDoc(DOC_REF(), next, { merge: false }) } catch (e) { console.warn('taSave err', e) }
+    try { await setDoc(DOC_REF(), next, { merge: false }) } catch (e) { console.warn('taSave err', e); toast.error('Erro ao salvar: ' + e.message) }
   }
 
   function handleImport(file) {
