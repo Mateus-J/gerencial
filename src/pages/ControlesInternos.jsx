@@ -5,6 +5,7 @@ import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import KpiCard from '../components/KpiCard'
 import { useFundos } from '../hooks/useFundos'
+import { COLABORADORES } from '../hooks/useBoard'
 import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'controles_internos')
@@ -50,7 +51,7 @@ export default function ControlesInternos() {
   }
 
   const rows = useMemo(() => items.filter((i) =>
-    (i.fundo || '').toLowerCase().includes(q.toLowerCase()) || (i.motivo || '').toLowerCase().includes(q.toLowerCase())
+    (i.fundo || '').toLowerCase().includes(q.toLowerCase()) || (i.motivo || '').toLowerCase().includes(q.toLowerCase()) || (i.pagoPor || '').toLowerCase().includes(q.toLowerCase())
   ), [items, q])
 
   const totalDebito = items.filter((i) => i.tipo !== 'credito').reduce((a, i) => a + Number(i.valor || 0), 0)
@@ -70,7 +71,7 @@ export default function ControlesInternos() {
           </button>
         }
       />
-      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Só você vê essa aba. Controla despesas que a ID Corretora pagou por conta de um fundo (débito) e reembolsos/entradas (crédito) — com a contrapartida pendente até confirmar.</p>
+      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Só você vê essa aba. Controla despesas pagas por conta de um fundo — seja pela ID Corretora, seja por alguém que adiantou o pagamento — aguardando o fundo reembolsar. Também serve pra créditos/entradas.</p>
 
       <div className="flex flex-wrap gap-3 mb-4">
         <KpiCard label="Total débito" value={fmt(totalDebito)} sub="pago pela ID Corretora" accent="amber" />
@@ -91,6 +92,7 @@ export default function ControlesInternos() {
             <thead>
               <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
                 <th className="px-4 py-2.5 font-medium">Fundo</th>
+                <th className="px-4 py-2.5 font-medium">Pago por</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium">Motivo</th>
                 <th className="px-4 py-2.5 font-medium">Valor</th>
@@ -101,12 +103,13 @@ export default function ControlesInternos() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
               ) : !rows.length ? (
-                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">{items.length ? 'Nenhum resultado.' : 'Nenhum lançamento ainda. Clique em "Novo lançamento" para começar.'}</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-[var(--tx3)]">{items.length ? 'Nenhum resultado.' : 'Nenhum lançamento ainda. Clique em "Novo lançamento" para começar.'}</td></tr>
               ) : rows.map((r) => (
                 <tr key={r.id} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
-                  <td className="px-4 py-3 font-medium max-w-[240px] truncate" title={r.fundo}>{r.fundo}</td>
+                  <td className="px-4 py-3 font-medium max-w-[200px] truncate" title={r.fundo}>{r.fundo}</td>
+                  <td className="px-4 py-3 text-[var(--tx2)] max-w-[140px] truncate" title={r.pagoPor}>{r.pagoPor || '—'}</td>
                   <td className="px-4 py-3">
                     {r.tipo === 'credito' ? (
                       <span className="text-[10.5px] font-semibold bg-id-mid/15 text-id-dark dark:text-id-light px-1.5 py-0.5 rounded-md">Crédito</span>
@@ -147,6 +150,7 @@ export default function ControlesInternos() {
 
 function NovoLancamentoModal({ fundosAll, onClose, onSave }) {
   const [fundo, setFundo] = useState('')
+  const [pagoPor, setPagoPor] = useState('')
   const [tipo, setTipo] = useState('debito')
   const [motivo, setMotivo] = useState('')
   const [valor, setValor] = useState('')
@@ -162,7 +166,7 @@ function NovoLancamentoModal({ fundosAll, onClose, onSave }) {
     if (!fundo.trim()) { setError('Informe o fundo.'); return }
     const v = Number(String(valor).replace(',', '.'))
     if (!v || v <= 0) { setError('Informe um valor válido.'); return }
-    onSave({ fundo: fundo.trim(), tipo, motivo: motivo.trim(), valor: v, data })
+    onSave({ fundo: fundo.trim(), pagoPor: pagoPor.trim(), tipo, motivo: motivo.trim(), valor: v, data })
   }
 
   return (
@@ -173,6 +177,21 @@ function NovoLancamentoModal({ fundosAll, onClose, onSave }) {
           <button onClick={onClose} className="text-[var(--tx3)] hover:text-[var(--tx)]"><X size={18} /></button>
         </div>
         <div className="p-5 flex flex-col gap-3">
+          <div>
+            <label className="block text-[11px] text-[var(--tx3)] mb-1">Quem pagou</label>
+            <input
+              value={pagoPor}
+              onChange={(e) => setPagoPor(e.target.value)}
+              placeholder="Ex: ID Corretora, ou o nome de quem adiantou…"
+              list="pagoPorOptions"
+              className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[13px] outline-none focus:border-id-mid"
+            />
+            <datalist id="pagoPorOptions">
+              <option value="ID Corretora" />
+              {COLABORADORES.map((c) => <option key={c.slug} value={c.name} />)}
+            </datalist>
+          </div>
+
           <div>
             <label className="block text-[11px] text-[var(--tx3)] mb-1">Tipo</label>
             <div className="grid grid-cols-2 gap-2">
