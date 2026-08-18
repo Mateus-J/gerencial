@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Wallet, Percent, Landmark, AlertTriangle,
   Home, CalendarDays, Users, ShieldCheck, Settings, ChevronDown, LogOut, History, Building2,
-  LayoutGrid, User,
+  LayoutGrid, User, Lock,
 } from 'lucide-react'
 import { COLABORADORES } from '../hooks/useBoard'
 import logoId from '../assets/logo-id.png'
@@ -18,7 +18,7 @@ const NAV = [
     items: [
       { id: 'saldos', label: 'Saldos', icon: Wallet },
       { id: 'fundos', label: 'Fundos', icon: Building2 },
-      { id: 'taxa-administracao', label: 'Taxa de Administração', icon: Percent },
+      { id: 'taxa-administracao', label: 'Taxa de Administração', icon: Percent, adminOnly: true },
       { id: 'portal-saldos', label: 'Portal Saldos', icon: Landmark },
       { id: 'multas-juros', label: 'Multas e Juros', icon: AlertTriangle, badge: true },
     ],
@@ -39,9 +39,15 @@ const NAV = [
       { id: 'configuracoes', label: 'Configurações', icon: Settings, adminOnly: true },
     ],
   },
+  {
+    group: 'Privado',
+    items: [
+      { id: 'controles-internos', label: 'Controles Internos', icon: Lock, ownerOnly: true },
+    ],
+  },
 ]
 
-export default function Sidebar({ active, onNavigate, counts = {}, user, collapsed, onToggleCollapsed, isAdmin, onLogout, ownSlug, ownName }) {
+export default function Sidebar({ active, onNavigate, counts = {}, user, collapsed, onToggleCollapsed, isAdmin, isOwner, onLogout, ownSlug, ownName }) {
   const controleGroup = {
     group: 'Controle',
     items: [
@@ -68,7 +74,7 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
         {navGroups.map((group) => {
-          const visibleItems = group.items.filter((item) => !item.adminOnly || isAdmin)
+          const visibleItems = group.items.filter((item) => (!item.adminOnly || isAdmin) && (!item.ownerOnly || isOwner))
           if (!visibleItems.length) return null
           return (
           <div key={group.group}>

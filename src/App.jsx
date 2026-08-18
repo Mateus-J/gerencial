@@ -13,6 +13,7 @@ import Usuarios from './pages/Usuarios'
 import Auditoria from './pages/Auditoria'
 import Historico from './pages/Historico'
 import Configuracoes from './pages/Configuracoes'
+import ControlesInternos from './pages/ControlesInternos'
 import Login from './pages/Login'
 import PendingApproval from './pages/PendingApproval'
 import Quadro from './pages/Quadro'
@@ -24,11 +25,14 @@ import { COLABORADORES } from './hooks/useBoard'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ToastProvider } from './components/Toast'
 
+// Único e-mail com acesso à aba Controles Internos — nem outros admins veem
+const OWNER_EMAIL = 'mateus.jesus@idsf.com.br'
+
 const PAGES = {
   dashboard: { component: Dashboard, title: 'Pendências', subtitle: 'Área Liquidação' },
   saldos: { component: Saldos, title: 'Saldos', subtitle: 'Conta lastros' },
   fundos: { component: Fundos, title: 'Fundos', subtitle: 'Base de referência' },
-  'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração' },
+  'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração', adminOnly: true },
   'portal-saldos': { component: PortalSaldos, title: 'Portal Saldos' },
   'multas-juros': { component: MultasJuros, title: 'Multas e Juros', subtitle: 'Cálculo base Selic' },
   'home-office': { component: HomeOffice, title: 'Home Office', subtitle: 'Escala da equipe' },
@@ -37,6 +41,7 @@ const PAGES = {
   auditoria: { component: Auditoria, title: 'Auditoria', adminOnly: true },
   historico: { component: Historico, title: 'Histórico', subtitle: 'Pendências concluídas' },
   configuracoes: { component: Configuracoes, title: 'Configurações', adminOnly: true },
+  'controles-internos': { component: ControlesInternos, title: 'Controles Internos', ownerOnly: true },
 }
 
 function AppShell() {
@@ -59,6 +64,7 @@ function AppShell() {
   if (currentUser.role === 'pending') return <PendingApproval />
 
   const isAdmin = currentUser.role === 'admin'
+  const isOwner = currentUser.username === 'admin' || (currentUser.email || '').toLowerCase() === OWNER_EMAIL
   const isBoard = active.startsWith('board:')
 
   // Quadros (Controle): cada um só acessa o próprio (login OU quadro vinculado), admin acessa qualquer um
@@ -67,16 +73,16 @@ function AppShell() {
     const ownBoardSlug = currentUser.boardSlug || currentUser.username
     const isOwn = slug === ownBoardSlug
     if (!isOwn && !isAdmin) {
-      return <Redirect to="board:" slug={ownBoardSlug} setActive={setActive} {...{ collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+      return <Redirect to="board:" slug={ownBoardSlug} setActive={setActive} {...{ collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, isOwner, logout }} />
     }
   } else {
     const page = PAGES[active] ?? PAGES.dashboard
-    if (page.adminOnly && !isAdmin) {
-      return <AppShellInner {...{ active: 'dashboard', setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+    if ((page.adminOnly && !isAdmin) || (page.ownerOnly && !isOwner)) {
+      return <AppShellInner {...{ active: 'dashboard', setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, isOwner, logout }} />
     }
   }
 
-  return <AppShellInner {...{ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }} />
+  return <AppShellInner {...{ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, isOwner, logout }} />
 }
 
 // Pequeno helper: se um não-admin tentar abrir o quadro de outra pessoa via URL/estado direto, manda pro próprio
@@ -85,7 +91,7 @@ function Redirect({ slug, setActive, ...rest }) {
   return <AppShellInner active={'board:' + slug} setActive={setActive} {...rest} />
 }
 
-function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, logout }) {
+function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDark, search, setSearch, status, currentUser, isAdmin, isOwner, logout }) {
   const { pendingItems, dismiss } = usePendReminder(currentUser.notifPendencias === true)
   const presence = usePresence()
   const initials = (currentUser.name || currentUser.username || '?').split(' ').slice(0, 2).map((w) => w[0] || '').join('').toUpperCase()
@@ -118,6 +124,7 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         isAdmin={isAdmin}
+        isOwner={isOwner}
         ownSlug={currentUser.boardSlug || currentUser.username}
         ownName={currentUser.name || currentUser.username}
         user={{ name: currentUser.name || currentUser.username, role: roleLabel, initials }}
