@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'
-import { Plus, X, Building2, AlertTriangle, History as HistoryIcon } from 'lucide-react'
+import { Plus, X, Building2, AlertTriangle, History as HistoryIcon, Info } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [detailItem, setDetailItem] = useState(null)
   const [, forceTick] = useState(0)
 
   useEffect(() => {
@@ -126,6 +127,11 @@ export default function Dashboard() {
     setShowModal(false)
   }
 
+  function updateObservacao(id, value) {
+    const next = items.map((i) => (i.id === id ? { ...i, observacao: value } : i))
+    persist(next)
+  }
+
   async function concluir(item) {
     const remaining = items.filter((i) => i.id !== item.id)
     persist(remaining)
@@ -142,7 +148,7 @@ export default function Dashboard() {
     } catch (e) { console.warn('histSave err', e) }
   }
 
-  const rows = useMemo(() => items.filter((r) => (r.fundo || '').toLowerCase().includes(q.toLowerCase()) || (r.detalhamento || '').toLowerCase().includes(q.toLowerCase())), [items, q])
+  const rows = useMemo(() => items.filter((r) => (r.fundo || '').toLowerCase().includes(q.toLowerCase()) || (r.detalhamento || '').toLowerCase().includes(q.toLowerCase()) || (r.observacao || '').toLowerCase().includes(q.toLowerCase())), [items, q])
   const pendentes = items.filter((r) => r.status === 'Pendente').length
   const totalGeral = pendentes + concluidasCount
   const pctConcluidas = totalGeral > 0 ? Math.round((concluidasCount / totalGeral) * 100) : 0
@@ -224,26 +230,43 @@ export default function Dashboard() {
                 <th className="px-4 py-2.5 font-medium">Responsável</th>
                 <th className="px-4 py-2.5 font-medium">Prioridade</th>
                 <th className="px-4 py-2.5 font-medium">Status</th>
+                <th className="px-4 py-2.5 font-medium">Observação</th>
                 <th className="px-4 py-2.5 font-medium">Tempo</th>
                 <th className="px-4 py-2.5 font-medium text-right"></th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
               ) : !rows.length ? (
-                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">{items.length ? 'Nenhum resultado.' : 'Nenhuma pendência em aberto. Clique em "Nova pendência" para começar.'}</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-[var(--tx3)]">{items.length ? 'Nenhum resultado.' : 'Nenhuma pendência em aberto. Clique em "Nova pendência" para começar.'}</td></tr>
               ) : rows.map((r) => {
                 const atrasada = r.status === 'Pendente' && isAtrasada(r)
                 return (
                 <tr key={r.id} className={`border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px] ${atrasada ? 'bg-red-500/5' : ''}`} style={atrasada ? { borderLeft: '3px solid #ef4444' } : undefined}>
-                  <td className="px-4 py-3 font-medium max-w-[220px] truncate" title={r.fundo}>{r.fundo}</td>
+                  <td className="px-4 py-3 font-medium max-w-[220px]">
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setDetailItem(r)} title="Ver detalhamento" className="shrink-0 text-[var(--tx4)] hover:text-id-light">
+                        <Info size={14} />
+                      </button>
+                      <span className="truncate" title={r.fundo}>{r.fundo}</span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <span className="text-[10.5px] font-mono bg-sky-500/10 text-sky-600 dark:text-sky-300 px-1.5 py-0.5 rounded-md">{r.ocorrencia}</span>
                   </td>
                   <td className="px-4 py-3 text-[var(--tx2)]">{r.responsavel || '—'}</td>
                   <td className="px-4 py-3"><PriorityBadge prioridade={r.prioridade} /></td>
                   <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+                  <td className="px-4 py-3">
+                    <input
+                      key={r.id + '_' + (r.observacao || '')}
+                      defaultValue={r.observacao || ''}
+                      onBlur={(e) => { if (e.target.value !== (r.observacao || '')) updateObservacao(r.id, e.target.value) }}
+                      placeholder="Ex: aguardando outra área…"
+                      className="w-full min-w-[160px] bg-transparent border border-transparent hover:border-[var(--bdr)] focus:border-id-mid focus:bg-[var(--sur2)] rounded-md px-2 py-1 text-[11.5px] outline-none placeholder:text-[var(--tx4)]"
+                    />
+                  </td>
                   <td className={`px-4 py-3 font-mono ${atrasada ? 'text-red-500 font-semibold' : 'text-[var(--tx3)]'}`}>
                     {atrasada && '⚠ '}{timeAgo(r.createdAt)}
                   </td>
@@ -280,6 +303,54 @@ export default function Dashboard() {
           onSave={addPendencia}
         />
       )}
+
+      {detailItem && <DetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
+    </div>
+  )
+}
+
+function DetailField({ label, value }) {
+  if (!value) return null
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-[var(--tx3)] mb-0.5">{label}</div>
+      <div className="text-[13px] text-[var(--tx)] whitespace-pre-wrap break-words">{value}</div>
+    </div>
+  )
+}
+
+function DetailModal({ item, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[480px] shadow-card max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--bdr)]">
+          <div>
+            <div className="font-display font-semibold text-[15px]">{item.fundo}</div>
+            <div className="text-[11px] text-[var(--tx3)]">{item.ocorrencia}</div>
+          </div>
+          <button onClick={onClose} className="text-[var(--tx3)] hover:text-[var(--tx)]"><X size={18} /></button>
+        </div>
+        <div className="p-5 flex flex-col gap-3.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <StatusBadge status={item.status} />
+            <PriorityBadge prioridade={item.prioridade} />
+          </div>
+          <DetailField label="Detalhamento" value={item.detalhamento} />
+          <DetailField label="Observação" value={item.observacao} />
+          <div className="grid grid-cols-2 gap-3">
+            <DetailField label="Responsável" value={item.responsavel} />
+            <DetailField label="CNPJ" value={item.cnpj} />
+            <DetailField label="Alçada" value={item.alcada} />
+            <DetailField label="Criado por" value={item.createdBy} />
+          </div>
+          {item.createdAt && <DetailField label="Aberta em" value={new Date(item.createdAt).toLocaleString('pt-BR')} />}
+          {item.slackLink && (
+            <a href={item.slackLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[12px] text-id-light hover:underline w-fit">
+              <SlackIcon size={14} /> Abrir no Slack
+            </a>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
