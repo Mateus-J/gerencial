@@ -53,10 +53,11 @@ export default function ControlesInternos() {
     (i.fundo || '').toLowerCase().includes(q.toLowerCase()) || (i.motivo || '').toLowerCase().includes(q.toLowerCase())
   ), [items, q])
 
-  const totalPago = items.reduce((a, i) => a + Number(i.valor || 0), 0)
+  const totalDebito = items.filter((i) => i.tipo !== 'credito').reduce((a, i) => a + Number(i.valor || 0), 0)
+  const totalCredito = items.filter((i) => i.tipo === 'credito').reduce((a, i) => a + Number(i.valor || 0), 0)
   const totalPendente = items.filter((i) => !i.recebido).reduce((a, i) => a + Number(i.valor || 0), 0)
-  const totalRecebido = items.filter((i) => i.recebido).reduce((a, i) => a + Number(i.valor || 0), 0)
   const qtdPendente = items.filter((i) => !i.recebido).length
+  const saldo = totalCredito - totalDebito
 
   return (
     <div>
@@ -69,12 +70,13 @@ export default function ControlesInternos() {
           </button>
         }
       />
-      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Só você vê essa aba. Controla despesas que a ID Corretora pagou por conta de um fundo — aguardando a contrapartida (reembolso) do fundo.</p>
+      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Só você vê essa aba. Controla despesas que a ID Corretora pagou por conta de um fundo (débito) e reembolsos/entradas (crédito) — com a contrapartida pendente até confirmar.</p>
 
       <div className="flex flex-wrap gap-3 mb-4">
-        <KpiCard label="Total pago" value={fmt(totalPago)} sub={`${items.length} lançamento${items.length !== 1 ? 's' : ''}`} accent="blue" />
-        <KpiCard label="Pendente de recebimento" value={fmt(totalPendente)} sub={`${qtdPendente} em aberto`} accent={qtdPendente > 0 ? 'amber' : 'neutral'} />
-        <KpiCard label="Recebido" value={fmt(totalRecebido)} sub={`${items.length - qtdPendente} confirmado(s)`} accent="green" />
+        <KpiCard label="Total débito" value={fmt(totalDebito)} sub="pago pela ID Corretora" accent="amber" />
+        <KpiCard label="Total crédito" value={fmt(totalCredito)} sub="recebido / reembolsado" accent="green" />
+        <KpiCard label="Saldo" value={fmt(saldo)} sub={saldo >= 0 ? 'a favor' : 'a descoberto'} accent={saldo >= 0 ? 'green' : 'amber'} />
+        <KpiCard label="Pendente de confirmação" value={fmt(totalPendente)} sub={`${qtdPendente} em aberto`} accent={qtdPendente > 0 ? 'blue' : 'neutral'} />
       </div>
 
       <Card>
@@ -88,7 +90,8 @@ export default function ControlesInternos() {
           <table className="w-full text-left">
             <thead>
               <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
-                <th className="px-4 py-2.5 font-medium">Nome</th>
+                <th className="px-4 py-2.5 font-medium">Fundo</th>
+                <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium">Motivo</th>
                 <th className="px-4 py-2.5 font-medium">Valor</th>
                 <th className="px-4 py-2.5 font-medium">Data pagamento</th>
@@ -98,14 +101,23 @@ export default function ControlesInternos() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
               ) : !rows.length ? (
-                <tr><td colSpan={6} className="text-center py-10 text-[var(--tx3)]">{items.length ? 'Nenhum resultado.' : 'Nenhum lançamento ainda. Clique em "Novo lançamento" para começar.'}</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-[var(--tx3)]">{items.length ? 'Nenhum resultado.' : 'Nenhum lançamento ainda. Clique em "Novo lançamento" para começar.'}</td></tr>
               ) : rows.map((r) => (
                 <tr key={r.id} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
                   <td className="px-4 py-3 font-medium max-w-[240px] truncate" title={r.fundo}>{r.fundo}</td>
+                  <td className="px-4 py-3">
+                    {r.tipo === 'credito' ? (
+                      <span className="text-[10.5px] font-semibold bg-id-mid/15 text-id-dark dark:text-id-light px-1.5 py-0.5 rounded-md">Crédito</span>
+                    ) : (
+                      <span className="text-[10.5px] font-semibold bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-md">Débito</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-[var(--tx2)] max-w-[280px] truncate" title={r.motivo}>{r.motivo || '—'}</td>
-                  <td className="px-4 py-3 font-mono">{fmt(r.valor)}</td>
+                  <td className={`px-4 py-3 font-mono font-medium ${r.tipo === 'credito' ? 'text-id-dark dark:text-id-light' : 'text-red-500'}`}>
+                    {r.tipo === 'credito' ? '+ ' : '− '}{fmt(r.valor)}
+                  </td>
                   <td className="px-4 py-3 text-[var(--tx3)]">{r.data ? new Date(r.data + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                   <td className="px-4 py-3">
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -135,6 +147,7 @@ export default function ControlesInternos() {
 
 function NovoLancamentoModal({ fundosAll, onClose, onSave }) {
   const [fundo, setFundo] = useState('')
+  const [tipo, setTipo] = useState('debito')
   const [motivo, setMotivo] = useState('')
   const [valor, setValor] = useState('')
   const [data, setData] = useState(new Date().toISOString().slice(0, 10))
@@ -149,7 +162,7 @@ function NovoLancamentoModal({ fundosAll, onClose, onSave }) {
     if (!fundo.trim()) { setError('Informe o fundo.'); return }
     const v = Number(String(valor).replace(',', '.'))
     if (!v || v <= 0) { setError('Informe um valor válido.'); return }
-    onSave({ fundo: fundo.trim(), motivo: motivo.trim(), valor: v, data })
+    onSave({ fundo: fundo.trim(), tipo, motivo: motivo.trim(), valor: v, data })
   }
 
   return (
@@ -160,6 +173,26 @@ function NovoLancamentoModal({ fundosAll, onClose, onSave }) {
           <button onClick={onClose} className="text-[var(--tx3)] hover:text-[var(--tx)]"><X size={18} /></button>
         </div>
         <div className="p-5 flex flex-col gap-3">
+          <div>
+            <label className="block text-[11px] text-[var(--tx3)] mb-1">Tipo</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setTipo('debito')}
+                className={`rounded-lg py-2 text-[12.5px] font-medium border transition-colors ${tipo === 'debito' ? 'bg-red-500/10 border-red-500/50 text-red-500' : 'border-[var(--bdr)] text-[var(--tx3)] hover:bg-[var(--sur2)]'}`}
+              >
+                Débito (saiu)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipo('credito')}
+                className={`rounded-lg py-2 text-[12.5px] font-medium border transition-colors ${tipo === 'credito' ? 'bg-id-mid/15 border-id-mid/50 text-id-dark dark:text-id-light' : 'border-[var(--bdr)] text-[var(--tx3)] hover:bg-[var(--sur2)]'}`}
+              >
+                Crédito (entrou)
+              </button>
+            </div>
+          </div>
+
           <div className="relative">
             <label className="block text-[11px] text-[var(--tx3)] mb-1">Fundo</label>
             <input
