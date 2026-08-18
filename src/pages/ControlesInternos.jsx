@@ -88,7 +88,7 @@ export default function ControlesInternos() {
           <table className="w-full text-left">
             <thead>
               <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
-                <th className="px-4 py-2.5 font-medium">Fundo</th>
+                <th className="px-4 py-2.5 font-medium">Nome</th>
                 <th className="px-4 py-2.5 font-medium">Motivo</th>
                 <th className="px-4 py-2.5 font-medium">Valor</th>
                 <th className="px-4 py-2.5 font-medium">Data pagamento</th>
