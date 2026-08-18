@@ -244,14 +244,7 @@ export default function Dashboard() {
                 const atrasada = r.status === 'Pendente' && isAtrasada(r)
                 return (
                 <tr key={r.id} className={`border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px] ${atrasada ? 'bg-red-500/5' : ''}`} style={atrasada ? { borderLeft: '3px solid #ef4444' } : undefined}>
-                  <td className="px-4 py-3 font-medium max-w-[220px]">
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => setDetailItem(r)} title="Ver detalhamento" className="shrink-0 text-[var(--tx4)] hover:text-id-light">
-                        <Info size={14} />
-                      </button>
-                      <span className="truncate" title={r.fundo}>{r.fundo}</span>
-                    </div>
-                  </td>
+                  <td className="px-4 py-3 font-medium max-w-[220px] truncate" title={r.fundo}>{r.fundo}</td>
                   <td className="px-4 py-3">
                     <span className="text-[10.5px] font-mono bg-sky-500/10 text-sky-600 dark:text-sky-300 px-1.5 py-0.5 rounded-md">{r.ocorrencia}</span>
                   </td>
@@ -272,6 +265,9 @@ export default function Dashboard() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center gap-1.5 justify-end">
+                      <button onClick={() => setDetailItem(r)} title="Ver detalhamento" className="opacity-70 hover:opacity-100 text-[var(--tx3)] hover:text-id-light">
+                        <Info size={15} />
+                      </button>
                       {r.slackLink && (
                         <a href={r.slackLink} target="_blank" rel="noreferrer" title="Abrir no Slack" className="opacity-80 hover:opacity-100">
                           <SlackIcon size={15} />
