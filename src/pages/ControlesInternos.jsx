@@ -109,6 +109,12 @@ export default function ControlesInternos() {
     setShowModal(false)
     toast.success('Lançamento registrado!')
   }
+  function toggleReembolsavel(id) {
+    const next = items.map((i) => i.id === id ? { ...i, reembolsavel: i.reembolsavel === false } : i)
+    persist(next)
+    const item = next.find((i) => i.id === id)
+    toast.success(item.reembolsavel ? 'Marcado como reembolsável.' : 'Marcado como não reembolsável (custo da ID Corretora).')
+  }
   function toggleRecebido(id) {
     const next = items.map((i) => i.id === id ? { ...i, recebido: !i.recebido, recebidoEm: !i.recebido ? new Date().toISOString() : null } : i)
     persist(next)
@@ -192,8 +198,8 @@ export default function ControlesInternos() {
             <thead>
               <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
                 <th className="px-4 py-2.5 font-medium">ID</th>
-                <th className="px-4 py-2.5 font-medium">Destinatário</th>
                 <th className="px-4 py-2.5 font-medium">Pago por</th>
+                <th className="px-4 py-2.5 font-medium">Destinatário</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium">Valor</th>
                 <th className="px-4 py-2.5 font-medium">Data pagamento</th>
@@ -211,6 +217,7 @@ export default function ControlesInternos() {
               ) : rows.map((r) => (
                 <tr key={r.id} className="group/row border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
                   <td className="px-4 py-3 text-[var(--tx3)] font-mono">{r.numero ? String(r.numero).padStart(4, '0') : '—'}</td>
+                  <td className="px-4 py-3 text-[var(--tx2)] max-w-[200px] truncate" title={r.pagoPor}>{r.pagoPor || '—'}</td>
                   <td className="px-4 py-3 font-medium max-w-[260px] truncate" title={r.fundo}>
                     <div className="flex items-center gap-1.5">
                       <button onClick={() => setDetailItem(r)} title="Ver motivo e detalhes" className="shrink-0 text-[var(--tx4)] hover:text-id-light">
@@ -219,7 +226,6 @@ export default function ControlesInternos() {
                       <span className="truncate">{r.fundo}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-[var(--tx2)] max-w-[200px] truncate" title={r.pagoPor}>{r.pagoPor || '—'}</td>
                   <td className="px-4 py-3">
                     {r.tipo === 'credito' ? (
                       <span className="text-[10.5px] font-semibold bg-id-mid/15 text-id-dark dark:text-id-light px-1.5 py-0.5 rounded-md">Crédito</span>
@@ -232,11 +238,13 @@ export default function ControlesInternos() {
                   </td>
                   <td className="px-4 py-3 text-[var(--tx3)] whitespace-nowrap">{r.data ? new Date(r.data + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                   <td className="px-4 py-3">
-                    {r.reembolsavel === false ? (
-                      <span className="text-[10.5px] text-[var(--tx4)]">Não</span>
-                    ) : (
-                      <span className="text-[10.5px] text-id-dark dark:text-id-light">Sim</span>
-                    )}
+                    <button
+                      onClick={() => toggleReembolsavel(r.id)}
+                      title="Clique para alternar"
+                      className={`text-[10.5px] font-medium hover:underline ${r.reembolsavel === false ? 'text-red-500' : 'text-id-dark dark:text-id-light'}`}
+                    >
+                      {r.reembolsavel === false ? 'Não' : 'Sim'}
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     {r.reembolsavel === false ? (
@@ -251,8 +259,8 @@ export default function ControlesInternos() {
                   </td>
                   <td className="px-4 py-3">
                     {r.anexoUrl ? (
-                      <a href={toDownloadLink(r.anexoUrl)} target="_blank" rel="noreferrer" title={r.anexoNome || r.anexoUrl} className="inline-flex items-center gap-1 text-[11px] text-id-light hover:underline max-w-[110px] truncate">
-                        <Paperclip size={12} className="shrink-0" /> {r.anexoNome || 'Anexo'}
+                      <a href={toDownloadLink(r.anexoUrl)} target="_blank" rel="noreferrer" title={r.anexoNome || r.anexoUrl} className="inline-flex text-id-light hover:text-id-dark dark:hover:text-white">
+                        <Paperclip size={15} />
                       </a>
                     ) : (
                       <span className="text-[var(--tx4)] text-[11px]">—</span>
