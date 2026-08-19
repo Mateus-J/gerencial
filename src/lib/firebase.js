@@ -4,6 +4,7 @@
 // direto do HTML original — ajuste aqui se algo mudar.
 import { initializeApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage'
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth'
 
 const firebaseConfig = {
@@ -22,6 +23,7 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig)
 export const db = getFirestore(app)
 export const auth = getAuth(app)
+export const storage = getStorage(app)
 
 export function ensureAnonAuth() {
   return new Promise((resolve, reject) => {
