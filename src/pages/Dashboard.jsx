@@ -317,7 +317,7 @@ function DetailField({ label, value }) {
 
 function DetailModal({ item, onClose }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
       <div onClick={(e) => e.stopPropagation()} className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[480px] shadow-card max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--bdr)]">
           <div>
@@ -392,7 +392,7 @@ function NovaPendenciaModal({ responsaveis, ocorrencias, fundos, onClose, onSave
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[520px] p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-[15px] font-semibold">Nova pendência</h2>

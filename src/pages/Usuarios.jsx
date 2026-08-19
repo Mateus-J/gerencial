@@ -310,7 +310,7 @@ export default function Usuarios() {
       </Card>
 
       {pendingToggle && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={() => setPendingToggle(null)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
           <div onClick={(e) => e.stopPropagation()} className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl p-5 w-full max-w-[360px] shadow-card">
             <div className="text-[13px] font-semibold mb-1">Confirmar alteração de permissão</div>
             <p className="text-[12px] text-[var(--tx3)] mb-3">

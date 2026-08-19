@@ -129,13 +129,16 @@ function driveDownloadLink(fileId) {
   return `https://drive.google.com/uc?export=download&id=${fileId}`
 }
 
-// Fluxo completo: garante a pasta raiz "Controles Internos (Gerencial)" >
-// subpasta com o nome da conta de origem > sobe o arquivo ali > deixa
-// visível por link > devolve o link de download direto.
-export async function uploadToContaFolder(file, contaNome) {
-  const rootId = await ensureFolder('Controles Internos (Gerencial)')
-  const contaFolderId = await ensureFolder(contaNome || 'Sem conta', rootId)
-  const fileId = await uploadFileToDrive(file, contaFolderId)
+// Fluxo completo: garante a hierarquia de pastas
+// "Gerencial Liquidação" > "Controles Internos" > "Anexos" > [ID do
+// lançamento] > sobe o arquivo ali > deixa visível por link > devolve o
+// link de download direto.
+export async function uploadToLancamentoFolder(file, idLabel) {
+  const rootId = await ensureFolder('Gerencial Liquidação')
+  const ciId = await ensureFolder('Controles Internos', rootId)
+  const anexosId = await ensureFolder('Anexos', ciId)
+  const itemFolderId = await ensureFolder(String(idLabel), anexosId)
+  const fileId = await uploadFileToDrive(file, itemFolderId)
   await makePublic(fileId)
   return { fileId, url: driveDownloadLink(fileId) }
 }

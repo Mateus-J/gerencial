@@ -6,7 +6,7 @@ import { PageHeader, Card } from '../components/PageShell'
 import KpiCard from '../components/KpiCard'
 import { useFundos } from '../hooks/useFundos'
 import { COLABORADORES } from '../hooks/useBoard'
-import { uploadToContaFolder, isDriveConfigured } from '../lib/googleDrive'
+import { uploadToLancamentoFolder, isDriveConfigured } from '../lib/googleDrive'
 import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'controles_internos')
@@ -31,6 +31,7 @@ export default function ControlesInternos() {
   const { all: fundosAll } = useFundos()
   const [items, setItems] = useState([])
   const [contas, setContas] = useState([])
+  const [proximoNumero, setProximoNumero] = useState(1)
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -41,6 +42,7 @@ export default function ControlesInternos() {
       const data = snap.exists() ? snap.data() : {}
       setItems(data.items || [])
       setContas(data.contas || [])
+      setProximoNumero(data.proximoNumero || 1)
       setLoading(false)
     }, (e) => { console.warn('ciLoad err', e); setLoading(false) })
     return () => unsub()
@@ -59,11 +61,16 @@ export default function ControlesInternos() {
     localStorage.setItem(CONTA_ATUAL_KEY, id)
   }
 
-  function persist(nextItems, nextContas) {
+  function persist(nextItems, nextContas, nextNumero) {
     setItems(nextItems)
     if (nextContas) setContas(nextContas)
-    setDoc(DOC_REF(), { items: nextItems, contas: nextContas || contas, updatedAt: Date.now() }, { merge: false })
-      .catch((e) => { console.warn('ciSave err', e); toast.error('Erro ao salvar: ' + e.message) })
+    if (nextNumero) setProximoNumero(nextNumero)
+    setDoc(DOC_REF(), {
+      items: nextItems,
+      contas: nextContas || contas,
+      proximoNumero: nextNumero || proximoNumero,
+      updatedAt: Date.now(),
+    }, { merge: false }).catch((e) => { console.warn('ciSave err', e); toast.error('Erro ao salvar: ' + e.message) })
   }
 
   function addConta(nome) {
@@ -94,7 +101,8 @@ export default function ControlesInternos() {
   }
 
   function addItem(data) {
-    persist([{ id: 'ci' + Date.now(), contaId: contaAtual, recebido: false, createdAt: new Date().toISOString(), ...data }, ...items])
+    const numero = proximoNumero
+    persist([{ id: 'ci' + Date.now(), numero, contaId: contaAtual, recebido: false, createdAt: new Date().toISOString(), ...data }, ...items], null, numero + 1)
     setShowModal(false)
     toast.success('Lançamento registrado!')
   }
@@ -168,6 +176,7 @@ export default function ControlesInternos() {
           <table className="w-full text-left">
             <thead>
               <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
+                <th className="px-4 py-2.5 font-medium">ID</th>
                 <th className="px-4 py-2.5 font-medium">Destinatário</th>
                 <th className="px-4 py-2.5 font-medium">Pago por</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
@@ -181,11 +190,12 @@ export default function ControlesInternos() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
+                <tr><td colSpan={10} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
               ) : !rows.length ? (
-                <tr><td colSpan={9} className="text-center py-10 text-[var(--tx3)]">{itemsDaConta.length ? 'Nenhum resultado.' : `Nenhum lançamento ainda em "${contaAtualNome}". Clique em "Novo lançamento" para começar.`}</td></tr>
+                <tr><td colSpan={10} className="text-center py-10 text-[var(--tx3)]">{itemsDaConta.length ? 'Nenhum resultado.' : `Nenhum lançamento ainda em "${contaAtualNome}". Clique em "Novo lançamento" para começar.`}</td></tr>
               ) : rows.map((r) => (
                 <tr key={r.id} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
+                  <td className="px-4 py-3 text-[var(--tx3)] font-mono">{r.numero ? '#' + String(r.numero).padStart(4, '0') : '—'}</td>
                   <td className="px-4 py-3 font-medium max-w-[200px] truncate" title={r.fundo}>{r.fundo}</td>
                   <td className="px-4 py-3 text-[var(--tx2)] max-w-[140px] truncate" title={r.pagoPor}>{r.pagoPor || '—'}</td>
                   <td className="px-4 py-3">
@@ -230,7 +240,7 @@ export default function ControlesInternos() {
         <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)]">{itemsDaConta.length} registro{itemsDaConta.length !== 1 ? 's' : ''} · conta "{contaAtualNome}"</div>
       </Card>
 
-      {showModal && <NovoLancamentoModal fundosAll={fundosAll} contaAtualNome={contaAtualNome} onClose={() => setShowModal(false)} onSave={addItem} />}
+      {showModal && <NovoLancamentoModal fundosAll={fundosAll} contaAtualNome={contaAtualNome} numeroPrevisto={proximoNumero} onClose={() => setShowModal(false)} onSave={addItem} />}
     </div>
   )
 }
@@ -305,7 +315,7 @@ function ContaSwitcher({ contas, contaAtual, onSelect, onCreate, onRemove }) {
   )
 }
 
-function NovoLancamentoModal({ fundosAll, contaAtualNome, onClose, onSave }) {
+function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClose, onSave }) {
   const [fundo, setFundo] = useState('')
   const [pagoPor, setPagoPor] = useState('')
   const [tipo, setTipo] = useState('debito')
@@ -334,7 +344,8 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, onClose, onSave }) {
       setUploading(true)
       setError('')
       try {
-        const { url } = await uploadToContaFolder(driveFile, contaAtualNome)
+        const idLabel = String(numeroPrevisto).padStart(4, '0')
+        const { url } = await uploadToLancamentoFolder(driveFile, idLabel)
         payload.anexoUrl = url
         payload.anexoNome = driveFile.name
       } catch (e) {
@@ -350,11 +361,11 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, onClose, onSave }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
       <div onClick={(e) => e.stopPropagation()} className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[420px] shadow-card max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--bdr)]">
           <div>
-            <div className="font-display font-semibold text-[14px]">Novo lançamento</div>
+            <div className="font-display font-semibold text-[14px]">Novo lançamento <span className="text-[var(--tx3)] font-mono text-[12px]">#{String(numeroPrevisto).padStart(4, '0')}</span></div>
             <div className="text-[11px] text-[var(--tx3)] flex items-center gap-1"><Wallet size={11} /> Conta: {contaAtualNome}</div>
           </div>
           <button onClick={onClose} className="text-[var(--tx3)] hover:text-[var(--tx)]"><X size={18} /></button>
@@ -465,7 +476,7 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, onClose, onSave }) {
                     <span className="truncate">{driveFile ? driveFile.name : 'Escolher arquivo (PDF, imagem…)'}</span>
                     <input type="file" onChange={(e) => setDriveFile(e.target.files?.[0] || null)} className="hidden" />
                   </label>
-                  <p className="text-[10.5px] text-[var(--tx4)] mt-1">Sobe pro seu Drive automaticamente, numa pasta "Controles Internos (Gerencial)" → "{contaAtualNome}". Na primeira vez, o Google vai pedir sua autorização.</p>
+                  <p className="text-[10.5px] text-[var(--tx4)] mt-1">Sobe pro seu Drive automaticamente em Gerencial Liquidação → Controles Internos → Anexos → #{String(numeroPrevisto).padStart(4, '0')}. Na primeira vez, o Google vai pedir sua autorização.</p>
                 </>
               )
             ) : (

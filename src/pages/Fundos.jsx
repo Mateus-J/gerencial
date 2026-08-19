@@ -166,7 +166,7 @@ function IncluirFundoModal({ onClose, onSave }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[440px] p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-[15px] font-semibold">Incluir fundo</h2>
