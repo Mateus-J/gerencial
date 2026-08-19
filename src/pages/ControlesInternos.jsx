@@ -195,7 +195,7 @@ export default function ControlesInternos() {
                 <tr><td colSpan={10} className="text-center py-10 text-[var(--tx3)]">{itemsDaConta.length ? 'Nenhum resultado.' : `Nenhum lançamento ainda em "${contaAtualNome}". Clique em "Novo lançamento" para começar.`}</td></tr>
               ) : rows.map((r) => (
                 <tr key={r.id} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
-                  <td className="px-4 py-3 text-[var(--tx3)] font-mono">{r.numero ? '#' + String(r.numero).padStart(4, '0') : '—'}</td>
+                  <td className="px-4 py-3 text-[var(--tx3)] font-mono">{r.numero ? + String(r.numero).padStart(4, '0') : '—'}</td>
                   <td className="px-4 py-3 font-medium max-w-[200px] truncate" title={r.fundo}>{r.fundo}</td>
                   <td className="px-4 py-3 text-[var(--tx2)] max-w-[140px] truncate" title={r.pagoPor}>{r.pagoPor || '—'}</td>
                   <td className="px-4 py-3">
@@ -365,7 +365,7 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClos
       <div onClick={(e) => e.stopPropagation()} className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[420px] shadow-card max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--bdr)]">
           <div>
-            <div className="font-display font-semibold text-[14px]">Novo lançamento <span className="text-[var(--tx3)] font-mono text-[12px]">#{String(numeroPrevisto).padStart(4, '0')}</span></div>
+            <div className="font-display font-semibold text-[14px]">Novo lançamento <span className="text-[var(--tx3)] font-mono text-[12px]">{String(numeroPrevisto).padStart(4, '0')}</span></div>
             <div className="text-[11px] text-[var(--tx3)] flex items-center gap-1"><Wallet size={11} /> Conta: {contaAtualNome}</div>
           </div>
           <button onClick={onClose} className="text-[var(--tx3)] hover:text-[var(--tx)]"><X size={18} /></button>
@@ -476,7 +476,7 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClos
                     <span className="truncate">{driveFile ? driveFile.name : 'Escolher arquivo (PDF, imagem…)'}</span>
                     <input type="file" onChange={(e) => setDriveFile(e.target.files?.[0] || null)} className="hidden" />
                   </label>
-                  <p className="text-[10.5px] text-[var(--tx4)] mt-1">Sobe pro seu Drive automaticamente em Gerencial Liquidação → Controles Internos → Anexos → #{String(numeroPrevisto).padStart(4, '0')}. Na primeira vez, o Google vai pedir sua autorização.</p>
+                  <p className="text-[10.5px] text-[var(--tx4)] mt-1">Sobe pro seu Drive automaticamente em Gerencial Liquidação → Controles Internos → Anexos → {String(numeroPrevisto).padStart(4, '0')}. Na primeira vez, o Google vai pedir sua autorização.</p>
                 </>
               )
             ) : (
