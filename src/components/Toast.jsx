@@ -18,16 +18,16 @@ export function ToastProvider({ children }) {
     setToasts((t) => t.filter((x) => x.id !== id))
   }, [])
 
-  const push = useCallback((type, message) => {
+  const push = useCallback((type, message, action) => {
     const id = ++counter.current
-    setToasts((t) => [...t, { id, type, message }])
-    setTimeout(() => remove(id), 4000)
+    setToasts((t) => [...t, { id, type, message, action }])
+    setTimeout(() => remove(id), action ? 7000 : 4000)
   }, [remove])
 
   const api = {
-    success: (msg) => push('success', msg),
-    error: (msg) => push('error', msg),
-    info: (msg) => push('info', msg),
+    success: (msg, action) => push('success', msg, action),
+    error: (msg, action) => push('error', msg, action),
+    info: (msg, action) => push('info', msg, action),
   }
 
   return (
@@ -39,12 +39,21 @@ export function ToastProvider({ children }) {
           return (
             <div
               key={t.id}
-              onClick={() => remove(t.id)}
-              className={`flex items-start gap-2.5 bg-[var(--sur)] border ${STYLES[t.type]} rounded-xl px-3.5 py-3 shadow-card cursor-pointer animate-toast-in`}
+              className={`flex items-start gap-2.5 bg-[var(--sur)] border ${STYLES[t.type]} rounded-xl px-3.5 py-3 shadow-card animate-toast-in`}
             >
               <Icon size={17} className="shrink-0 mt-0.5" />
               <span className="text-[12.5px] text-[var(--tx)] leading-snug flex-1">{t.message}</span>
-              <X size={13} className="shrink-0 mt-0.5 text-[var(--tx4)]" />
+              {t.action && (
+                <button
+                  onClick={() => { t.action.onClick(); remove(t.id) }}
+                  className="shrink-0 text-[12px] font-semibold text-id-light hover:underline"
+                >
+                  {t.action.label}
+                </button>
+              )}
+              <button onClick={() => remove(t.id)} className="shrink-0 mt-0.5 text-[var(--tx4)] hover:text-[var(--tx2)]">
+                <X size={13} />
+              </button>
             </div>
           )
         })}

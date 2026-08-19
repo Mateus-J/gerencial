@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { Plus, X, Search, CheckCircle2, Paperclip, Wallet, Check, Trash2 } from 'lucide-react'
+import { Plus, X, Search, CheckCircle2, Paperclip, Wallet, Check, Trash2, Info } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import KpiCard from '../components/KpiCard'
@@ -35,7 +35,10 @@ export default function ControlesInternos() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [detailItem, setDetailItem] = useState(null)
   const [contaAtual, setContaAtual] = useState(() => localStorage.getItem(CONTA_ATUAL_KEY) || '')
+  const itemsRef = useRef(items)
+  itemsRef.current = items
 
   useEffect(() => {
     const unsub = onSnapshot(DOC_REF(), (snap) => {
@@ -113,9 +116,17 @@ export default function ControlesInternos() {
     toast.success(item.recebido ? 'Marcado como recebido!' : 'Marcado como pendente novamente.')
   }
   function removeItem(id) {
-    if (!confirm('Excluir este lançamento?')) return
+    const item = items.find((i) => i.id === id)
+    if (!item) return
+    if (!confirm(`Excluir o lançamento ${String(item.numero).padStart(4, '0')} (${item.fundo})?`)) return
     persist(items.filter((i) => i.id !== id))
-    toast.success('Lançamento excluído.')
+    toast.success('Lançamento excluído.', {
+      label: 'Desfazer',
+      onClick: () => {
+        persist([item, ...itemsRef.current.filter((i) => i.id !== id)])
+        toast.success('Lançamento restaurado!')
+      },
+    })
   }
 
   // Tudo abaixo — KPIs e tabela — só considera a conta selecionada, pra
@@ -128,8 +139,12 @@ export default function ControlesInternos() {
 
   const totalDebito = itemsDaConta.filter((i) => i.tipo !== 'credito').reduce((a, i) => a + Number(i.valor || 0), 0)
   const totalCredito = itemsDaConta.filter((i) => i.tipo === 'credito').reduce((a, i) => a + Number(i.valor || 0), 0)
-  const totalPendente = itemsDaConta.filter((i) => !i.recebido).reduce((a, i) => a + Number(i.valor || 0), 0)
-  const qtdPendente = itemsDaConta.filter((i) => !i.recebido).length
+  // Só entra como "pendente de recebimento" o que é reembolsável — um custo
+  // que já é da própria ID Corretora (não reembolsável) nunca vai ser
+  // "recebido", então não faz sentido contar como pendência.
+  const pendentesReembolsaveis = itemsDaConta.filter((i) => i.reembolsavel !== false && !i.recebido)
+  const totalPendente = pendentesReembolsaveis.reduce((a, i) => a + Number(i.valor || 0), 0)
+  const qtdPendente = pendentesReembolsaveis.length
   const saldo = totalCredito - totalDebito
   const contaAtualNome = contas.find((c) => c.id === contaAtual)?.nome
 
@@ -159,10 +174,10 @@ export default function ControlesInternos() {
       <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Só você vê essa aba. Controla despesas pagas por conta de algo (um fundo, contrato, etc.) — seja pela ID Corretora, seja por alguém que adiantou o pagamento — aguardando o reembolso. Também serve pra créditos/entradas. Cada conta de origem tem seus próprios números, sem misturar.</p>
 
       <div className="flex flex-wrap gap-3 mb-4">
-        <KpiCard label="Total débito" value={fmt(totalDebito)} sub="pago pela ID Corretora" accent="amber" />
+        <KpiCard label="Total débito" value={fmt(totalDebito)} sub="pago pela ID Corretora" accent="red" />
         <KpiCard label="Total crédito" value={fmt(totalCredito)} sub="recebido / reembolsado" accent="green" />
-        <KpiCard label="Saldo" value={fmt(saldo)} sub={saldo >= 0 ? 'a favor' : 'a descoberto'} accent={saldo >= 0 ? 'green' : 'amber'} />
-        <KpiCard label="Pendente de confirmação" value={fmt(totalPendente)} sub={`${qtdPendente} em aberto`} accent={qtdPendente > 0 ? 'blue' : 'neutral'} />
+        <KpiCard label="Saldo" value={fmt(saldo)} sub={saldo >= 0 ? 'a favor' : 'a descoberto'} accent="blue" />
+        <KpiCard label="Pendente de recebimento" value={fmt(totalPendente)} sub={`${qtdPendente} em aberto`} accent={qtdPendente > 0 ? 'amber' : 'neutral'} />
       </div>
 
       <Card>
@@ -180,9 +195,9 @@ export default function ControlesInternos() {
                 <th className="px-4 py-2.5 font-medium">Destinatário</th>
                 <th className="px-4 py-2.5 font-medium">Pago por</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
-                <th className="px-4 py-2.5 font-medium">Motivo</th>
                 <th className="px-4 py-2.5 font-medium">Valor</th>
                 <th className="px-4 py-2.5 font-medium">Data pagamento</th>
+                <th className="px-4 py-2.5 font-medium">Reembolsável?</th>
                 <th className="px-4 py-2.5 font-medium">Recebido?</th>
                 <th className="px-4 py-2.5 font-medium">Anexo</th>
                 <th className="px-4 py-2.5 font-medium text-right"></th>
@@ -194,10 +209,17 @@ export default function ControlesInternos() {
               ) : !rows.length ? (
                 <tr><td colSpan={10} className="text-center py-10 text-[var(--tx3)]">{itemsDaConta.length ? 'Nenhum resultado.' : `Nenhum lançamento ainda em "${contaAtualNome}". Clique em "Novo lançamento" para começar.`}</td></tr>
               ) : rows.map((r) => (
-                <tr key={r.id} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
-                  <td className="px-4 py-3 text-[var(--tx3)] font-mono">{r.numero ? + String(r.numero).padStart(4, '0') : '—'}</td>
-                  <td className="px-4 py-3 font-medium max-w-[200px] truncate" title={r.fundo}>{r.fundo}</td>
-                  <td className="px-4 py-3 text-[var(--tx2)] max-w-[140px] truncate" title={r.pagoPor}>{r.pagoPor || '—'}</td>
+                <tr key={r.id} className="group/row border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
+                  <td className="px-4 py-3 text-[var(--tx3)] font-mono">{r.numero ? String(r.numero).padStart(4, '0') : '—'}</td>
+                  <td className="px-4 py-3 font-medium max-w-[260px] truncate" title={r.fundo}>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setDetailItem(r)} title="Ver motivo e detalhes" className="shrink-0 text-[var(--tx4)] hover:text-id-light">
+                        <Info size={14} />
+                      </button>
+                      <span className="truncate">{r.fundo}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-[var(--tx2)] max-w-[200px] truncate" title={r.pagoPor}>{r.pagoPor || '—'}</td>
                   <td className="px-4 py-3">
                     {r.tipo === 'credito' ? (
                       <span className="text-[10.5px] font-semibold bg-id-mid/15 text-id-dark dark:text-id-light px-1.5 py-0.5 rounded-md">Crédito</span>
@@ -205,17 +227,27 @@ export default function ControlesInternos() {
                       <span className="text-[10.5px] font-semibold bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-md">Débito</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-[var(--tx2)] max-w-[280px] truncate" title={r.motivo}>{r.motivo || '—'}</td>
-                  <td className={`px-4 py-3 font-mono font-medium ${r.tipo === 'credito' ? 'text-id-dark dark:text-id-light' : 'text-red-500'}`}>
+                  <td className={`px-4 py-3 font-mono font-medium whitespace-nowrap ${r.tipo === 'credito' ? 'text-id-dark dark:text-id-light' : 'text-red-500'}`}>
                     {r.tipo === 'credito' ? '+ ' : '− '}{fmt(r.valor)}
                   </td>
-                  <td className="px-4 py-3 text-[var(--tx3)]">{r.data ? new Date(r.data + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                  <td className="px-4 py-3 text-[var(--tx3)] whitespace-nowrap">{r.data ? new Date(r.data + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                   <td className="px-4 py-3">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" checked={!!r.recebido} onChange={() => toggleRecebido(r.id)} className="sr-only peer" />
-                      <span className="w-9 h-5 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors" />
-                      <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
-                    </label>
+                    {r.reembolsavel === false ? (
+                      <span className="text-[10.5px] text-[var(--tx4)]">Não</span>
+                    ) : (
+                      <span className="text-[10.5px] text-id-dark dark:text-id-light">Sim</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {r.reembolsavel === false ? (
+                      <span className="text-[var(--tx4)] text-[11px]">N/A</span>
+                    ) : (
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" checked={!!r.recebido} onChange={() => toggleRecebido(r.id)} className="sr-only peer" />
+                        <span className="w-9 h-5 bg-[var(--sur2)] border border-[var(--bdr)] rounded-full peer-checked:bg-id-mid transition-colors" />
+                        <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
+                      </label>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {r.anexoUrl ? (
@@ -229,7 +261,7 @@ export default function ControlesInternos() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center gap-2 justify-end">
                       {r.recebido && <CheckCircle2 size={14} className="text-id-light" />}
-                      <button onClick={() => removeItem(r.id)} className="text-[var(--tx4)] hover:text-red-500"><X size={14} /></button>
+                      <button onClick={() => removeItem(r.id)} title="Excluir" className="opacity-0 group-hover/row:opacity-100 text-[var(--tx4)] hover:text-red-500 transition-opacity"><X size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -240,7 +272,45 @@ export default function ControlesInternos() {
         <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)]">{itemsDaConta.length} registro{itemsDaConta.length !== 1 ? 's' : ''} · conta "{contaAtualNome}"</div>
       </Card>
 
+      {detailItem && <DetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
+
       {showModal && <NovoLancamentoModal fundosAll={fundosAll} contaAtualNome={contaAtualNome} numeroPrevisto={proximoNumero} onClose={() => setShowModal(false)} onSave={addItem} />}
+    </div>
+  )
+}
+
+function DetailField({ label, value }) {
+  if (!value) return null
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-[var(--tx3)] mb-0.5">{label}</div>
+      <div className="text-[13px] text-[var(--tx)] whitespace-pre-wrap break-words">{value}</div>
+    </div>
+  )
+}
+
+function DetailModal({ item, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl w-full max-w-[440px] shadow-card max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--bdr)]">
+          <div>
+            <div className="font-display font-semibold text-[15px]">{item.fundo}</div>
+            <div className="text-[11px] text-[var(--tx3)] font-mono">{String(item.numero).padStart(4, '0')}</div>
+          </div>
+          <button onClick={onClose} className="text-[var(--tx3)] hover:text-[var(--tx)]"><X size={18} /></button>
+        </div>
+        <div className="p-5 flex flex-col gap-3.5">
+          <DetailField label="Motivo" value={item.motivo} />
+          <div className="grid grid-cols-2 gap-3">
+            <DetailField label="Pago por" value={item.pagoPor} />
+            <DetailField label="Tipo" value={item.tipo === 'credito' ? 'Crédito' : 'Débito'} />
+            <DetailField label="Reembolsável?" value={item.reembolsavel === false ? 'Não' : 'Sim'} />
+            <DetailField label="Recebido?" value={item.reembolsavel === false ? 'N/A' : (item.recebido ? 'Sim' : 'Ainda não')} />
+          </div>
+          {item.createdAt && <DetailField label="Registrado em" value={new Date(item.createdAt).toLocaleString('pt-BR')} />}
+        </div>
+      </div>
     </div>
   )
 }
@@ -319,6 +389,7 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClos
   const [fundo, setFundo] = useState('')
   const [pagoPor, setPagoPor] = useState('')
   const [tipo, setTipo] = useState('debito')
+  const [reembolsavel, setReembolsavel] = useState(true)
   const [motivo, setMotivo] = useState('')
   const [valor, setValor] = useState('')
   const [data, setData] = useState(new Date().toISOString().slice(0, 10))
@@ -338,7 +409,7 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClos
     if (!fundo.trim()) { setError('Informe a referência.'); return }
     const v = Number(String(valor).replace(',', '.'))
     if (!v || v <= 0) { setError('Informe um valor válido.'); return }
-    const payload = { fundo: fundo.trim(), pagoPor: pagoPor.trim(), tipo, motivo: motivo.trim(), valor: v, data }
+    const payload = { fundo: fundo.trim(), pagoPor: pagoPor.trim(), tipo, reembolsavel, motivo: motivo.trim(), valor: v, data }
 
     if (anexoMode === 'upload' && driveFile) {
       setUploading(true)
@@ -405,6 +476,29 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClos
               </button>
             </div>
           </div>
+
+          {tipo === 'debito' && (
+            <div>
+              <label className="block text-[11px] text-[var(--tx3)] mb-1">É reembolsável?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReembolsavel(true)}
+                  className={`rounded-lg py-2 text-[12.5px] font-medium border transition-colors ${reembolsavel ? 'bg-id-mid/15 border-id-mid/50 text-id-dark dark:text-id-light' : 'border-[var(--bdr)] text-[var(--tx3)] hover:bg-[var(--sur2)]'}`}
+                >
+                  Sim, o fundo reembolsa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReembolsavel(false)}
+                  className={`rounded-lg py-2 text-[12.5px] font-medium border transition-colors ${!reembolsavel ? 'bg-[var(--sur2)] border-[var(--bdr)] text-[var(--tx2)]' : 'border-[var(--bdr)] text-[var(--tx3)] hover:bg-[var(--sur2)]'}`}
+                >
+                  Não, custo da ID Corretora
+                </button>
+              </div>
+              <p className="text-[10.5px] text-[var(--tx4)] mt-1">Se não for reembolsável, não entra no KPI "Pendente de recebimento" — já que nunca vai ser recebido de volta.</p>
+            </div>
+          )}
 
           <div className="relative">
             <label className="block text-[11px] text-[var(--tx3)] mb-1">Destinatário do recurso</label>

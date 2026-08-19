@@ -3,6 +3,7 @@ const ACCENTS = {
   amber: 'border-amber-500/40',
   green: 'border-id-mid/40',
   blue: 'border-sky-500/40',
+  red: 'border-red-500/40',
 }
 
 // Cor do número acompanha a cor da borda de cada KPI (neutro fica na cor de
@@ -12,6 +13,7 @@ const VALUE_COLORS = {
   amber: 'text-amber-600 dark:text-amber-400',
   green: 'text-id-dark dark:text-id-light',
   blue: 'text-sky-600 dark:text-sky-400',
+  red: 'text-red-600 dark:text-red-400',
 }
 
 export default function KpiCard({ label, value, sub, accent = 'neutral' }) {
