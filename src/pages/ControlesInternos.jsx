@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { Plus, X, Search, CheckCircle2, Paperclip, Wallet, Check } from 'lucide-react'
+import { Plus, X, Search, CheckCircle2, Paperclip, Wallet, Check, Trash2 } from 'lucide-react'
 import { db, storage } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import KpiCard from '../components/KpiCard'
@@ -63,6 +63,24 @@ export default function ControlesInternos() {
     return id
   }
 
+  function removeConta(id) {
+    const conta = contas.find((c) => c.id === id)
+    const vinculados = items.filter((i) => i.contaId === id)
+    const aviso = vinculados.length
+      ? `Excluir a conta "${conta.nome}"? Ela tem ${vinculados.length} lançamento(s) — todos serão excluídos junto. Não dá pra desfazer.`
+      : `Excluir a conta "${conta.nome}"? Não dá pra desfazer.`
+    if (!confirm(aviso)) return
+    const nextContas = contas.filter((c) => c.id !== id)
+    const nextItems = items.filter((i) => i.contaId !== id)
+    persist(nextItems, nextContas)
+    if (contaAtual === id) {
+      const proxima = nextContas[0]?.id || ''
+      setContaAtual(proxima)
+      localStorage.setItem(CONTA_ATUAL_KEY, proxima)
+    }
+    toast.success(`Conta "${conta.nome}" excluída.`)
+  }
+
   function addItem(data) {
     persist([{ id: 'ci' + Date.now(), contaId: contaAtual, recebido: false, createdAt: new Date().toISOString(), ...data }, ...items])
     setShowModal(false)
@@ -111,13 +129,14 @@ export default function ControlesInternos() {
         title="Controles Internos"
         actions={
           <div className="flex items-center gap-2">
-            <ContaSwitcher contas={contas} contaAtual={contaAtual} onSelect={selectConta} onCreate={addConta} />
+            <ContaSwitcher contas={contas} contaAtual={contaAtual} onSelect={selectConta} onCreate={addConta} onRemove={removeConta} />
             <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-id-dark hover:bg-id-mid text-white rounded-lg px-3 py-1.5 text-[12.5px] font-medium">
               <Plus size={14} /> Novo lançamento
             </button>
           </div>
         }
       />
+      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Só você vê essa aba. Controla despesas pagas por conta de algo (um fundo, contrato, etc.) — seja pela ID Corretora, seja por alguém que adiantou o pagamento — aguardando o reembolso. Também serve pra créditos/entradas. Cada conta de origem tem seus próprios números, sem misturar.</p>
 
       <div className="flex flex-wrap gap-3 mb-4">
         <KpiCard label="Total débito" value={fmt(totalDebito)} sub="pago pela ID Corretora" accent="amber" />
@@ -216,7 +235,7 @@ function PrimeiraConta({ onCreate }) {
   )
 }
 
-function ContaSwitcher({ contas, contaAtual, onSelect, onCreate }) {
+function ContaSwitcher({ contas, contaAtual, onSelect, onCreate, onRemove }) {
   const [open, setOpen] = useState(false)
   const [novaConta, setNovaConta] = useState('')
   const atual = contas.find((c) => c.id === contaAtual)
@@ -239,14 +258,22 @@ function ContaSwitcher({ contas, contaAtual, onSelect, onCreate }) {
           <div className="absolute right-0 mt-1.5 w-64 bg-[var(--sur)] border border-[var(--bdr)] rounded-xl shadow-card z-20 overflow-hidden">
             <div className="max-h-52 overflow-y-auto py-1">
               {contas.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => { onSelect(c.id); setOpen(false) }}
-                  className="w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-[12.5px] hover:bg-[var(--sur2)]"
-                >
-                  <span className="truncate">{c.nome}</span>
-                  {c.id === contaAtual && <Check size={13} className="text-id-light shrink-0" />}
-                </button>
+                <div key={c.id} className="group/conta flex items-center hover:bg-[var(--sur2)]">
+                  <button
+                    onClick={() => { onSelect(c.id); setOpen(false) }}
+                    className="flex-1 flex items-center justify-between gap-2 text-left px-3 py-2 text-[12.5px] min-w-0"
+                  >
+                    <span className="truncate">{c.nome}</span>
+                    {c.id === contaAtual && <Check size={13} className="text-id-light shrink-0" />}
+                  </button>
+                  <button
+                    onClick={() => onRemove(c.id)}
+                    title="Excluir conta"
+                    className="opacity-0 group-hover/conta:opacity-100 text-[var(--tx4)] hover:text-red-500 px-2 shrink-0"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               ))}
             </div>
             <div className="border-t border-[var(--bdr)] p-2 flex gap-1.5">
