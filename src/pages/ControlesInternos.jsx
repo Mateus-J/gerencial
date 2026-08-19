@@ -118,7 +118,6 @@ export default function ControlesInternos() {
           </div>
         }
       />
-      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Só você vê essa aba. Controla despesas pagas por conta de algo (um fundo, contrato, etc.) — seja pela ID Corretora, seja por alguém que adiantou o pagamento — aguardando o reembolso. Também serve pra créditos/entradas. Cada conta de origem tem seus próprios números, sem misturar.</p>
 
       <div className="flex flex-wrap gap-3 mb-4">
         <KpiCard label="Total débito" value={fmt(totalDebito)} sub="pago pela ID Corretora" accent="amber" />
