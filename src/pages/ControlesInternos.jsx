@@ -221,7 +221,7 @@ export default function ControlesInternos() {
                 <th className="px-4 py-2.5 font-medium">Destinatário</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium">Valor</th>
-                <th className="px-4 py-2.5 font-medium">Saldo (antes → depois)</th>
+                <th className="px-4 py-2.5 font-medium">Saldo</th>
                 <th className="px-4 py-2.5 font-medium">Data pagamento</th>
                 <th className="px-4 py-2.5 font-medium">Reembolsável?</th>
                 <th className="px-4 py-2.5 font-medium">Recebido?</th>
@@ -249,8 +249,8 @@ export default function ControlesInternos() {
                   <td className={`px-4 py-3 font-mono font-medium whitespace-nowrap ${r.tipo === 'credito' ? 'text-id-dark dark:text-id-light' : 'text-red-500'}`}>
                     {r.tipo === 'credito' ? '+ ' : '− '}{fmt(r.valor)}
                   </td>
-                  <td className="px-4 py-3 text-sky-600 dark:text-sky-400 whitespace-nowrap font-mono text-[11px]">
-                    {saldoPorItem.has(r.id) ? `${fmt(saldoPorItem.get(r.id).antes)} → ${fmt(saldoPorItem.get(r.id).depois)}` : '—'}
+                  <td className="px-4 py-3 font-mono font-medium whitespace-nowrap text-sky-600 dark:text-sky-400" title={saldoPorItem.has(r.id) ? `Antes: ${fmt(saldoPorItem.get(r.id).antes)}` : ''}>
+                    {saldoPorItem.has(r.id) ? fmt(saldoPorItem.get(r.id).depois) : '—'}
                   </td>
                   <td className="px-4 py-3 text-[var(--tx3)] whitespace-nowrap">{r.data ? new Date(r.data + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                   <td className="px-4 py-3">
