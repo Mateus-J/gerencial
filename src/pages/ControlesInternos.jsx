@@ -1,18 +1,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { Plus, X, Search, CheckCircle2, Paperclip, Wallet, Check, Trash2 } from 'lucide-react'
-import { db, storage } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import KpiCard from '../components/KpiCard'
 import { useFundos } from '../hooks/useFundos'
 import { COLABORADORES } from '../hooks/useBoard'
+import { uploadToContaFolder, isDriveConfigured } from '../lib/googleDrive'
 import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'controles_internos')
 const CONTA_ATUAL_KEY = 'ci_conta_atual'
 
 const fmt = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// Se for um link do Google Drive, converte pro formato de download direto
+// (uc?export=download&id=...). Fora do Drive, ou se não reconhecer o
+// formato, mantém o link como veio. Arquivos grandes no Drive ainda podem
+// mostrar uma tela de confirmação do próprio Google antes de baixar —
+// isso é uma trava do Drive, não tem como contornar de fora.
+function toDownloadLink(url) {
+  if (!url) return url
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/)
+  if (m && url.includes('drive.google.com')) return `https://drive.google.com/uc?export=download&id=${m[1]}`
+  return url
+}
 
 export default function ControlesInternos() {
   const toast = useToast()
@@ -197,8 +209,8 @@ export default function ControlesInternos() {
                   </td>
                   <td className="px-4 py-3">
                     {r.anexoUrl ? (
-                      <a href={r.anexoUrl} target="_blank" rel="noreferrer" title={r.anexoNome} className="inline-flex items-center gap-1 text-[11px] text-id-light hover:underline max-w-[110px] truncate">
-                        <Paperclip size={12} className="shrink-0" /> {r.anexoNome || 'Arquivo'}
+                      <a href={toDownloadLink(r.anexoUrl)} target="_blank" rel="noreferrer" title={r.anexoNome || r.anexoUrl} className="inline-flex items-center gap-1 text-[11px] text-id-light hover:underline max-w-[110px] truncate">
+                        <Paperclip size={12} className="shrink-0" /> {r.anexoNome || 'Anexo'}
                       </a>
                     ) : (
                       <span className="text-[var(--tx4)] text-[11px]">—</span>
@@ -300,7 +312,10 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, onClose, onSave }) {
   const [motivo, setMotivo] = useState('')
   const [valor, setValor] = useState('')
   const [data, setData] = useState(new Date().toISOString().slice(0, 10))
-  const [file, setFile] = useState(null)
+  const [anexoMode, setAnexoMode] = useState(isDriveConfigured() ? 'upload' : 'link')
+  const [driveFile, setDriveFile] = useState(null)
+  const [anexoUrl, setAnexoUrl] = useState('')
+  const [anexoNome, setAnexoNome] = useState('')
   const [showList, setShowList] = useState(false)
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -314,20 +329,22 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, onClose, onSave }) {
     const v = Number(String(valor).replace(',', '.'))
     if (!v || v <= 0) { setError('Informe um valor válido.'); return }
     const payload = { fundo: fundo.trim(), pagoPor: pagoPor.trim(), tipo, motivo: motivo.trim(), valor: v, data }
-    if (file) {
+
+    if (anexoMode === 'upload' && driveFile) {
       setUploading(true)
+      setError('')
       try {
-        const path = `controles_internos/${Date.now()}_${file.name}`
-        const fileRef = ref(storage, path)
-        await uploadBytes(fileRef, file)
-        payload.anexoUrl = await getDownloadURL(fileRef)
-        payload.anexoNome = file.name
+        const { url } = await uploadToContaFolder(driveFile, contaAtualNome)
+        payload.anexoUrl = url
+        payload.anexoNome = driveFile.name
       } catch (e) {
-        setError('Erro ao enviar o anexo: ' + e.message)
         setUploading(false)
-        return
+        if (!confirm(`Não consegui enviar pro Drive (${e.message}). Quer salvar o lançamento sem o anexo mesmo assim?`)) return
       }
       setUploading(false)
+    } else if (anexoMode === 'link' && anexoUrl.trim()) {
+      payload.anexoUrl = anexoUrl.trim()
+      payload.anexoNome = anexoNome.trim() || 'Anexo'
     }
     onSave(payload)
   }
@@ -420,18 +437,64 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, onClose, onSave }) {
           </div>
 
           <div>
-            <label className="block text-[11px] text-[var(--tx3)] mb-1">Anexo (comprovante, opcional)</label>
-            <label className="flex items-center gap-2 border border-dashed border-[var(--bdr)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--tx3)] hover:bg-[var(--sur2)] cursor-pointer">
-              <Paperclip size={14} className="shrink-0" />
-              <span className="truncate">{file ? file.name : 'Escolher arquivo (PDF, imagem…)'}</span>
-              <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" />
-            </label>
+            <label className="block text-[11px] text-[var(--tx3)] mb-1.5">Anexo (comprovante, opcional)</label>
+            <div className="flex items-center gap-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg p-0.5 mb-2 w-fit">
+              <button
+                type="button"
+                onClick={() => setAnexoMode('upload')}
+                className={`text-[11.5px] px-2.5 py-1 rounded-md transition-colors ${anexoMode === 'upload' ? 'bg-[var(--sur)] shadow-card' : 'text-[var(--tx3)]'}`}
+              >
+                Enviar arquivo
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnexoMode('link')}
+                className={`text-[11.5px] px-2.5 py-1 rounded-md transition-colors ${anexoMode === 'link' ? 'bg-[var(--sur)] shadow-card' : 'text-[var(--tx3)]'}`}
+              >
+                Colar link
+              </button>
+            </div>
+
+            {anexoMode === 'upload' ? (
+              !isDriveConfigured() ? (
+                <p className="text-[11.5px] text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">A integração com o Drive ainda não foi configurada (falta o Client ID). Usa "Colar link" por enquanto.</p>
+              ) : (
+                <>
+                  <label className="flex items-center gap-2 border border-dashed border-[var(--bdr)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--tx3)] hover:bg-[var(--sur2)] cursor-pointer">
+                    <Paperclip size={14} className="shrink-0" />
+                    <span className="truncate">{driveFile ? driveFile.name : 'Escolher arquivo (PDF, imagem…)'}</span>
+                    <input type="file" onChange={(e) => setDriveFile(e.target.files?.[0] || null)} className="hidden" />
+                  </label>
+                  <p className="text-[10.5px] text-[var(--tx4)] mt-1">Sobe pro seu Drive automaticamente, numa pasta "Controles Internos (Gerencial)" → "{contaAtualNome}". Na primeira vez, o Google vai pedir sua autorização.</p>
+                </>
+              )
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Paperclip size={14} className="shrink-0 text-[var(--tx3)]" />
+                  <input
+                    value={anexoUrl}
+                    onChange={(e) => setAnexoUrl(e.target.value)}
+                    placeholder="Cole o link de compartilhamento do Drive…"
+                    className="flex-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[13px] outline-none focus:border-id-mid"
+                  />
+                </div>
+                {anexoUrl.trim() && (
+                  <input
+                    value={anexoNome}
+                    onChange={(e) => setAnexoNome(e.target.value)}
+                    placeholder="Nome pra exibir (ex: nota_fiscal.pdf)"
+                    className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[12px] outline-none focus:border-id-mid"
+                  />
+                )}
+              </>
+            )}
           </div>
 
           {error && <p className="text-[11.5px] text-red-400">{error}</p>}
 
           <button onClick={submit} disabled={uploading} className="w-full bg-id-dark hover:bg-id-mid text-white rounded-lg py-2.5 text-[13px] font-medium mt-1 disabled:opacity-50">
-            {uploading ? 'Enviando anexo…' : 'Registrar lançamento'}
+            {uploading ? 'Enviando pro Drive…' : 'Registrar lançamento'}
           </button>
         </div>
       </div>
