@@ -143,6 +143,25 @@ export default function ControlesInternos() {
     (i.fundo || '').toLowerCase().includes(q.toLowerCase()) || (i.motivo || '').toLowerCase().includes(q.toLowerCase()) || (i.pagoPor || '').toLowerCase().includes(q.toLowerCase())
   ), [itemsDaConta, q])
 
+  // Saldo acumulado da conta, andando em ordem cronológica (data de
+  // pagamento, com o número sequencial como desempate pra mesma data) —
+  // assim cada lançamento mostra como o saldo estava antes e ficou depois
+  // dele, tipo um extrato.
+  const saldoPorItem = useMemo(() => {
+    const ordenado = [...itemsDaConta].sort((a, b) => {
+      const d = (a.data || '').localeCompare(b.data || '')
+      return d !== 0 ? d : (a.numero || 0) - (b.numero || 0)
+    })
+    const map = new Map()
+    let acumulado = 0
+    for (const i of ordenado) {
+      const antes = acumulado
+      acumulado += i.tipo === 'credito' ? Number(i.valor || 0) : -Number(i.valor || 0)
+      map.set(i.id, { antes, depois: acumulado })
+    }
+    return map
+  }, [itemsDaConta])
+
   const totalDebito = itemsDaConta.filter((i) => i.tipo !== 'credito').reduce((a, i) => a + Number(i.valor || 0), 0)
   const totalCredito = itemsDaConta.filter((i) => i.tipo === 'credito').reduce((a, i) => a + Number(i.valor || 0), 0)
   // Só entra como "pendente de recebimento" o que é reembolsável — um custo
@@ -202,6 +221,7 @@ export default function ControlesInternos() {
                 <th className="px-4 py-2.5 font-medium">Destinatário</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium">Valor</th>
+                <th className="px-4 py-2.5 font-medium">Saldo (antes → depois)</th>
                 <th className="px-4 py-2.5 font-medium">Data pagamento</th>
                 <th className="px-4 py-2.5 font-medium">Reembolsável?</th>
                 <th className="px-4 py-2.5 font-medium">Recebido?</th>
@@ -211,9 +231,9 @@ export default function ControlesInternos() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
+                <tr><td colSpan={11} className="text-center py-10 text-[var(--tx3)]">Carregando…</td></tr>
               ) : !rows.length ? (
-                <tr><td colSpan={10} className="text-center py-10 text-[var(--tx3)]">{itemsDaConta.length ? 'Nenhum resultado.' : `Nenhum lançamento ainda em "${contaAtualNome}". Clique em "Novo lançamento" para começar.`}</td></tr>
+                <tr><td colSpan={11} className="text-center py-10 text-[var(--tx3)]">{itemsDaConta.length ? 'Nenhum resultado.' : `Nenhum lançamento ainda em "${contaAtualNome}". Clique em "Novo lançamento" para começar.`}</td></tr>
               ) : rows.map((r) => (
                 <tr key={r.id} className="group/row border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
                   <td className="px-4 py-3 text-[var(--tx3)] font-mono">{r.numero ? String(r.numero).padStart(4, '0') : '—'}</td>
@@ -228,6 +248,9 @@ export default function ControlesInternos() {
                   </td>
                   <td className={`px-4 py-3 font-mono font-medium whitespace-nowrap ${r.tipo === 'credito' ? 'text-id-dark dark:text-id-light' : 'text-red-500'}`}>
                     {r.tipo === 'credito' ? '+ ' : '− '}{fmt(r.valor)}
+                  </td>
+                  <td className="px-4 py-3 text-sky-600 dark:text-sky-400 whitespace-nowrap font-mono text-[11px]">
+                    {saldoPorItem.has(r.id) ? `${fmt(saldoPorItem.get(r.id).antes)} → ${fmt(saldoPorItem.get(r.id).depois)}` : '—'}
                   </td>
                   <td className="px-4 py-3 text-[var(--tx3)] whitespace-nowrap">{r.data ? new Date(r.data + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                   <td className="px-4 py-3">
