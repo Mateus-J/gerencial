@@ -177,7 +177,7 @@ export default function ControlesInternos() {
           </div>
         }
       />
-      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Só você vê essa aba. Controla despesas pagas por conta de algo (um fundo, contrato, etc.) — seja pela ID Corretora, seja por alguém que adiantou o pagamento — aguardando o reembolso. Também serve pra créditos/entradas. Cada conta de origem tem seus próprios números, sem misturar.</p>
+      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Fluxo de caixa e reembolsos</p>
 
       <div className="flex flex-wrap gap-3 mb-4">
         <KpiCard label="Total débito" value={fmt(totalDebito)} sub="pago pela ID Corretora" accent="red" />
@@ -218,14 +218,7 @@ export default function ControlesInternos() {
                 <tr key={r.id} className="group/row border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px]">
                   <td className="px-4 py-3 text-[var(--tx3)] font-mono">{r.numero ? String(r.numero).padStart(4, '0') : '—'}</td>
                   <td className="px-4 py-3 text-[var(--tx2)] max-w-[200px] truncate" title={r.pagoPor}>{r.pagoPor || '—'}</td>
-                  <td className="px-4 py-3 font-medium max-w-[260px] truncate" title={r.fundo}>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => setDetailItem(r)} title="Ver motivo e detalhes" className="shrink-0 text-[var(--tx4)] hover:text-id-light">
-                        <Info size={14} />
-                      </button>
-                      <span className="truncate">{r.fundo}</span>
-                    </div>
-                  </td>
+                  <td className="px-4 py-3 font-medium max-w-[260px] truncate" title={r.fundo}>{r.fundo}</td>
                   <td className="px-4 py-3">
                     {r.tipo === 'credito' ? (
                       <span className="text-[10.5px] font-semibold bg-id-mid/15 text-id-dark dark:text-id-light px-1.5 py-0.5 rounded-md">Crédito</span>
@@ -269,6 +262,7 @@ export default function ControlesInternos() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center gap-2 justify-end">
                       {r.recebido && <CheckCircle2 size={14} className="text-id-light" />}
+                      <button onClick={() => setDetailItem(r)} title="Ver motivo e detalhes" className="opacity-70 hover:opacity-100 text-[var(--tx3)] hover:text-id-light"><Info size={14} /></button>
                       <button onClick={() => removeItem(r.id)} title="Excluir" className="opacity-0 group-hover/row:opacity-100 text-[var(--tx4)] hover:text-red-500 transition-opacity"><X size={14} /></button>
                     </div>
                   </td>
@@ -504,7 +498,6 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClos
                   Não, custo da ID Corretora
                 </button>
               </div>
-              <p className="text-[10.5px] text-[var(--tx4)] mt-1">Se não for reembolsável, não entra no KPI "Pendente de recebimento" — já que nunca vai ser recebido de volta.</p>
             </div>
           )}
 
@@ -550,7 +543,7 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClos
           </div>
 
           <div>
-            <label className="block text-[11px] text-[var(--tx3)] mb-1.5">Anexo (comprovante, opcional)</label>
+            <label className="block text-[11px] text-[var(--tx3)] mb-1.5">Anexo (opcional)</label>
             <div className="flex items-center gap-1 bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg p-0.5 mb-2 w-fit">
               <button
                 type="button"
@@ -578,7 +571,6 @@ function NovoLancamentoModal({ fundosAll, contaAtualNome, numeroPrevisto, onClos
                     <span className="truncate">{driveFile ? driveFile.name : 'Escolher arquivo (PDF, imagem…)'}</span>
                     <input type="file" onChange={(e) => setDriveFile(e.target.files?.[0] || null)} className="hidden" />
                   </label>
-                  <p className="text-[10.5px] text-[var(--tx4)] mt-1">Sobe pro seu Drive automaticamente em Gerencial Liquidação → Controles Internos → Anexos → {String(numeroPrevisto).padStart(4, '0')}. Na primeira vez, o Google vai pedir sua autorização.</p>
                 </>
               )
             ) : (

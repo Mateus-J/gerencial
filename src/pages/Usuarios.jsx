@@ -161,7 +161,6 @@ export default function Usuarios() {
   return (
     <div>
       <PageHeader eyebrow="Equipe" title="Usuários" />
-      <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">2FA usa um app autenticador (Google Authenticator, Microsoft Authenticator, Authy…) — a pessoa configura escaneando um QR code no primeiro login e só precisa digitar o código de novo 1x por dia, no mesmo aparelho. Horário permitido em branco = sem restrição. "Quadro vinculado" conecta o login da pessoa ao quadro fixo dela (o mesmo que aparece em Controle na sua sidebar) — sem isso, "Meu Quadro" e as Atividades do dia dela ficam vazios, mesmo que você já tenha cadastrado atividades para ela.</p>
 
       {pending.length > 0 && (
         <Card className="mb-4 border-amber-500/40">
@@ -287,7 +286,6 @@ export default function Usuarios() {
 
       <Card className="p-4">
         <div className="text-[11px] font-semibold uppercase text-[var(--tx3)] mb-1">Permissões por perfil</div>
-        <p className="text-[11.5px] text-[var(--tx3)] mb-3">Clique num checkmark pra mudar — pede sua senha antes de confirmar, já que isso afeta o que cada perfil pode fazer.</p>
         <div className="grid grid-cols-[1fr_1fr_60px_60px_60px] gap-2 text-[10px] uppercase text-[var(--tx3)] mb-1 px-1">
           <div>Ação</div><div>Descrição</div><div className="text-center">Admin</div><div className="text-center">Equipe</div><div className="text-center">Consulta</div>
         </div>
