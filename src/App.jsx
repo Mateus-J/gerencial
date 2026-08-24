@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard'
 import Saldos from './pages/Saldos'
 import Fundos from './pages/Fundos'
 import TaxaAdministracao from './pages/TaxaAdministracao'
+import FipCustodia from './pages/FipCustodia'
+import FipAdministracao from './pages/FipAdministracao'
 import PortalSaldos from './pages/PortalSaldos'
 import MultasJuros from './pages/MultasJuros'
 import HomeOffice from './pages/HomeOffice'
@@ -33,6 +35,8 @@ const PAGES = {
   saldos: { component: Saldos, title: 'Saldos', subtitle: 'Conta lastros' },
   fundos: { component: Fundos, title: 'Fundos', subtitle: 'Base de referência' },
   'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração', adminOnly: true },
+  'fip-custodia': { component: FipCustodia, title: 'Taxa de Custódia — FIPs' },
+  'fip-administracao': { component: FipAdministracao, title: 'Taxa de Administração — FIPs' },
   'portal-saldos': { component: PortalSaldos, title: 'Portal Saldos' },
   'multas-juros': { component: MultasJuros, title: 'Multas e Juros', subtitle: 'Cálculo base Selic' },
   'home-office': { component: HomeOffice, title: 'Home Office', subtitle: 'Escala da equipe' },

@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Wallet, Percent, Landmark, AlertTriangle,
   Home, CalendarDays, Users, ShieldCheck, Settings, ChevronDown, LogOut, History, Building2,
-  LayoutGrid, User, Lock,
+  LayoutGrid, User, Lock, Layers,
 } from 'lucide-react'
 import { COLABORADORES } from '../hooks/useBoard'
 import logoId from '../assets/logo-id.png'
@@ -21,6 +21,13 @@ const NAV = [
       { id: 'taxa-administracao', label: 'Taxa de Administração', icon: Percent, adminOnly: true },
       { id: 'portal-saldos', label: 'Portal Saldos', icon: Landmark },
       { id: 'multas-juros', label: 'Multas e Juros', icon: AlertTriangle, badge: true },
+    ],
+  },
+  {
+    group: 'Área FIP',
+    items: [
+      { id: 'fip-custodia', label: 'Taxa de Custódia', icon: Layers },
+      { id: 'fip-administracao', label: 'Taxa de Administração', icon: Percent },
     ],
   },
   {

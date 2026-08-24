@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { Plus, X, Search, CheckCircle2, Paperclip, Wallet, Check, Trash2, Info } from 'lucide-react'
+import { Plus, X, Search, CheckCircle2, Paperclip, Wallet, Check, Trash2, Info, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import KpiCard from '../components/KpiCard'
@@ -139,6 +140,39 @@ export default function ControlesInternos() {
   // nunca misturar números/controles de contas diferentes na mesma tela.
   const itemsDaConta = useMemo(() => items.filter((i) => i.contaId === contaAtual), [items, contaAtual])
 
+  function exportExcel() {
+    if (!rows.length) { toast.error('Nenhum dado para exportar.'); return }
+    const headers = ['ID', 'Pago por', 'Destinatário', 'Tipo', 'Reembolsável', 'Recebido', 'Motivo', 'Valor', 'Data pagamento', 'Saldo após', 'Anexo']
+    const ANEXO_COL = headers.length - 1
+    const dataRows = rows.map((r) => [
+      r.numero ? String(r.numero).padStart(4, '0') : '',
+      r.pagoPor || '',
+      r.fundo || '',
+      r.tipo === 'credito' ? 'Crédito' : 'Débito',
+      r.reembolsavel === false ? 'Não' : 'Sim',
+      r.reembolsavel === false ? 'N/A' : (r.recebido ? 'Sim' : 'Não'),
+      r.motivo || '',
+      (r.tipo === 'credito' ? 1 : -1) * Number(r.valor || 0),
+      r.data ? new Date(r.data + 'T00:00:00').toLocaleDateString('pt-BR') : '',
+      saldoPorItem.has(r.id) ? saldoPorItem.get(r.id).depois : '',
+      r.anexoUrl ? 'Abrir anexo' : '',
+    ])
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+    // Transforma a célula "Abrir anexo" num hyperlink de verdade (com clique
+    // já indo pro formato de download direto do Drive, quando aplicável).
+    rows.forEach((r, i) => {
+      if (r.anexoUrl) {
+        const ref = XLSX.utils.encode_cell({ r: i + 1, c: ANEXO_COL })
+        ws[ref] = { t: 's', v: 'Abrir anexo', l: { Target: toDownloadLink(r.anexoUrl), Tooltip: r.anexoNome || 'Abrir anexo' } }
+      }
+    })
+    ws['!cols'] = [{ wch: 8 }, { wch: 20 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 36 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 13 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Controles Internos')
+    XLSX.writeFile(wb, `controles_internos_${(contaAtualNome || 'conta').replace(/[^\w-]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    toast.success('Excel exportado!')
+  }
+
   const rows = useMemo(() => itemsDaConta.filter((i) =>
     (i.fundo || '').toLowerCase().includes(q.toLowerCase()) || (i.motivo || '').toLowerCase().includes(q.toLowerCase()) || (i.pagoPor || '').toLowerCase().includes(q.toLowerCase())
   ), [itemsDaConta, q])
@@ -190,6 +224,9 @@ export default function ControlesInternos() {
         actions={
           <div className="flex items-center gap-2">
             <ContaSwitcher contas={contas} contaAtual={contaAtual} onSelect={selectConta} onCreate={addConta} onRemove={removeConta} />
+            <button onClick={exportExcel} className="flex items-center gap-1.5 border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[12.5px] text-[var(--tx2)] hover:bg-[var(--sur2)]">
+              <Download size={14} /> Exportar Excel
+            </button>
             <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-id-dark hover:bg-id-mid text-white rounded-lg px-3 py-1.5 text-[12.5px] font-medium">
               <Plus size={14} /> Novo lançamento
             </button>
