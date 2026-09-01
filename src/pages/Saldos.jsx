@@ -43,7 +43,11 @@ function matchNome(nomeExt, lista) {
     if (!tokLiq.length || !tokExt.length) return false
     if (tokLiq[0] !== tokExt[0]) return false
     const common = tokExt.filter((t) => tokLiq.includes(t))
-    return common.length >= 2
+    // Exige 2 palavras em comum quando há 2+ disponíveis (evita falso
+    // positivo tipo VOCATUS/GYMCRED) — mas fundos com nome de uma palavra só
+    // (SQUID, SUN, CANAAN...) só têm 1 token distintivo pra dar, então basta
+    // esse bater (já garantido pela checagem de tokLiq[0]===tokExt[0] acima).
+    return common.length >= Math.min(2, tokExt.length)
   })
   return r || null
 }
