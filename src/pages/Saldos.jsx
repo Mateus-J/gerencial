@@ -37,18 +37,24 @@ function matchNome(nomeExt, lista) {
   })
   if (r) return r
   const tokens = (s) => s.split(' ').filter((w) => w.length > 2 && !STOPWORDS.has(w))
-  r = lista.find((c) => {
-    const tokLiq = tokens(c.nome.toUpperCase().replace(/\s+/g, ' ').trim())
-    const tokExt = tokens(ne)
-    if (!tokLiq.length || !tokExt.length) return false
-    if (tokLiq[0] !== tokExt[0]) return false
-    const common = tokExt.filter((t) => tokLiq.includes(t))
-    // Exige 2 palavras em comum quando há 2+ disponíveis (evita falso
-    // positivo tipo VOCATUS/GYMCRED) — mas fundos com nome de uma palavra só
-    // (SQUID, SUN, CANAAN...) só têm 1 token distintivo pra dar, então basta
-    // esse bater (já garantido pela checagem de tokLiq[0]===tokExt[0] acima).
-    return common.length >= Math.min(2, tokExt.length)
-  })
+  const tokExt = tokens(ne)
+  if (tokExt.length) {
+    const candidatos = lista.filter((c) => {
+      const tokLiq = tokens(c.nome.toUpperCase().replace(/\s+/g, ' ').trim())
+      if (!tokLiq.length || tokLiq[0] !== tokExt[0]) return false
+      const common = tokExt.filter((t) => tokLiq.includes(t))
+      // Exige 2 palavras em comum quando há 2+ disponíveis (evita falso
+      // positivo tipo VOCATUS/GYMCRED) — fundos com nome de uma palavra só
+      // (SQUID, SUN, CANAAN...) só têm 1 token distintivo pra dar, então
+      // basta esse bater.
+      return common.length >= Math.min(2, tokExt.length)
+    })
+    // Se mais de um fundo bate com o mesmo token distintivo (ex.: "DASI
+    // FIDC" e "DASI FIM" — ambos viram só "DASI" depois de tirar as
+    // palavras genéricas), é ambíguo demais pra decidir sozinho. Prefere
+    // não casar a arriscar creditar/debitar o fundo errado.
+    if (candidatos.length === 1) return candidatos[0]
+  }
   return r || null
 }
 

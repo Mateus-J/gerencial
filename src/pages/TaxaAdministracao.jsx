@@ -11,7 +11,11 @@ import { PageHeader, Card } from '../components/PageShell'
 import { useToast } from '../components/Toast'
 
 const DOC_REF = () => doc(db, 'controle', 'taxa_adm')
+const FIP_DOC_REF = () => doc(db, 'controle', 'fip_taxas')
+const FIP_CADASTRO_REF = () => doc(db, 'controle', 'fip_cadastro')
 const TA_C = ['#8FB352', '#38bdf8', '#a78bfa', '#f59e0b', '#2dd4bf', '#f87171', '#0ea5e9', '#84cc16', '#ec4899', '#eab308']
+const onlyDigits = (s) => (s || '').toString().replace(/\D/g, '')
+const norm = (s) => (s || '').toString().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 
 const taFmt = (v) => { v = Number(v) || 0; return 'R$ ' + (v >= 1e6 ? (v / 1e6).toFixed(2).replace('.', ',') + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1).replace('.', ',') + 'K' : v.toFixed(0)) }
 const taFull = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
@@ -50,6 +54,8 @@ export default function TaxaAdministracao() {
   const [sortCol, setSortCol] = useState('val')
   const [sortAsc, setSortAsc] = useState(false)
   const [selected, setSelected] = useState(new Set())
+  const [fipParsed, setFipParsed] = useState([])
+  const [fipCadastro, setFipCadastro] = useState({})
   const fileRef = useRef(null)
 
   useEffect(() => {
@@ -64,8 +70,25 @@ export default function TaxaAdministracao() {
       })
       .catch((e) => console.warn('taLoad err', e))
       .finally(() => mounted && setLoading(false))
+    // Lê os FIPs administrados pela própria ID CTVM (não Horizon) — esses
+    // entram aqui, na tela geral, junto com os fundos comuns. Somente
+    // leitura: a edição de verdade acontece na tela Área FIP.
+    getDoc(FIP_DOC_REF()).then((snap) => { if (mounted && snap.exists()) setFipParsed(snap.data().parsed || []) }).catch((e) => console.warn('taFipLoad err', e))
+    getDoc(FIP_CADASTRO_REF()).then((snap) => { if (mounted && snap.exists()) setFipCadastro(snap.data().map || {}) }).catch((e) => console.warn('taFipCadastroLoad err', e))
     return () => { mounted = false }
   }, [])
+
+  // Fundos FIP onde o Administrador é a própria ID CTVM (não a Horizon) —
+  // esses valores de ADM entram na planilha geral, não ficam separados na
+  // Área FIP.
+  const fipAdmRows = useMemo(() => fipParsed
+    .filter((r) => norm(fipCadastro[onlyDigits(r.cnpj)]?.administrador).includes('ID CTVM'))
+    .map((r) => ({
+      fundo: r.fundo, gestor: r.gestor, classif: r.classificacao, cnpj: r.cnpj, conta: r.conta,
+      mesRef: r.mesRef, status: r.status, val: r.valorAdm, _fromFip: true,
+    })), [fipParsed, fipCadastro])
+
+  const combined = useMemo(() => recalc([...(data?.parsed || []), ...fipAdmRows]), [data, fipAdmRows])
 
   async function persist(next) {
     setData(next)
@@ -137,12 +160,11 @@ export default function TaxaAdministracao() {
     reader.readAsArrayBuffer(file)
   }
 
-  const gestores = useMemo(() => [...new Set((data?.parsed || []).map((r) => r.gestor).filter((g) => g && g !== '0'))].sort(), [data])
-  const classes = useMemo(() => [...new Set((data?.parsed || []).map((r) => r.classif).filter((c) => c && c !== '0'))].sort(), [data])
+  const gestores = useMemo(() => [...new Set(combined.parsed.map((r) => r.gestor).filter((g) => g && g !== '0'))].sort(), [combined])
+  const classes = useMemo(() => [...new Set(combined.parsed.map((r) => r.classif).filter((c) => c && c !== '0'))].sort(), [combined])
 
   const filtered = useMemo(() => {
-    if (!data) return []
-    return data.parsed.filter((r) => {
+    return combined.parsed.filter((r) => {
       if (mode === 'mes' && r.mesRef !== selMes) return false
       if (fGestor && r.gestor !== fGestor) return false
       if (fClassif && r.classif !== fClassif) return false
@@ -150,24 +172,26 @@ export default function TaxaAdministracao() {
       if (fFundo && !r.fundo.toLowerCase().includes(fFundo.toLowerCase())) return false
       return true
     })
-  }, [data, mode, selMes, fGestor, fClassif, fStatus, fFundo])
+  }, [combined, mode, selMes, fGestor, fClassif, fStatus, fFundo])
 
   function editRow(ri, field, val) {
+    if (ri < 0 || !data) return
     const parsed = data.parsed.map((r, i) => (i === ri ? { ...r, [field]: field === 'val' ? parseFloat(val) || 0 : val } : r))
     persist(recalc(parsed))
   }
   function deleteRow(ri) {
+    if (ri < 0 || !data) return
     const parsed = data.parsed.filter((_, i) => i !== ri)
     persist(recalc(parsed))
   }
   function addRow() {
-    const mes = mode === 'mes' ? selMes : data.lastMes || ''
-    const parsed = [{ fundo: 'Novo Fundo', gestor: '', classif: '', mesRef: mes, status: 'PENDENTE', val: 0 }, ...data.parsed]
+    const mes = mode === 'mes' ? selMes : data?.lastMes || ''
+    const parsed = [{ fundo: 'Novo Fundo', gestor: '', classif: '', mesRef: mes, status: 'PENDENTE', val: 0 }, ...(data?.parsed || [])]
     persist(recalc(parsed))
     toast.success('Registro adicionado!')
   }
   function bulkDelete() {
-    if (!selected.size) return
+    if (!selected.size || !data) return
     if (!confirm(`Excluir ${selected.size} registro(s) selecionado(s)?`)) return
     const n = selected.size
     const parsed = data.parsed.filter((_, i) => !selected.has(i))
@@ -191,7 +215,7 @@ export default function TaxaAdministracao() {
   }
 
   const sortedRows = useMemo(() => {
-    const rows = filtered.map((r) => ({ ...r, _ri: data.parsed.indexOf(r) }))
+    const rows = filtered.map((r) => ({ ...r, _ri: r._fromFip ? -1 : (data?.parsed?.indexOf(r) ?? -1) }))
     rows.sort((a, b) => {
       const va = sortCol === 'val' ? a.val : (a[sortCol] || '').toLowerCase()
       const vb = sortCol === 'val' ? b.val : (b[sortCol] || '').toLowerCase()
@@ -209,7 +233,7 @@ export default function TaxaAdministracao() {
     )
   }
 
-  if (!data) {
+  if (!data && !fipAdmRows.length) {
     return (
       <div>
         <PageHeader
@@ -234,7 +258,7 @@ export default function TaxaAdministracao() {
   const pago = rows.filter((r) => r.status === 'PAGO').reduce((a, r) => a + r.val, 0)
   const pend = rows.filter((r) => r.status === 'PENDENTE').reduce((a, r) => a + r.val, 0)
   const pct = total > 0 ? parseFloat(((pago / total) * 100).toFixed(2)) : 0
-  const mo = data.monthly
+  const mo = combined.monthly
   const cur = mo[mo.length - 1]
   const prev = mo.length >= 2 ? mo[mo.length - 2] : null
   const growth = prev ? (((cur.total - prev.total) / prev.total) * 100).toFixed(1) : '0'
@@ -273,7 +297,7 @@ export default function TaxaAdministracao() {
         <button onClick={() => setMode('all')} className={`text-[11px] px-3 py-1 rounded-full border ${mode === 'all' ? 'bg-id-dark border-id-dark' : 'border-[var(--bdr)] text-[var(--tx3)]'}`}>Período completo</button>
         <button onClick={() => setMode('mes')} className={`text-[11px] px-3 py-1 rounded-full border ${mode === 'mes' ? 'bg-id-dark border-id-dark' : 'border-[var(--bdr)] text-[var(--tx3)]'}`}>Só um mês</button>
         <div className="flex gap-1 flex-wrap">
-          {[...data.months].reverse().slice(0, 18).map((m) => (
+          {[...combined.months].reverse().slice(0, 18).map((m) => (
             <button key={m} onClick={() => { setSelMes(m); setMode('mes') }} className={`text-[10.5px] font-mono px-2 py-0.5 rounded-full border ${selMes === m && mode === 'mes' ? 'bg-sky-500 border-sky-500' : 'border-[var(--bdr)] text-[var(--tx3)]'}`}>{m}</button>
           ))}
         </div>
@@ -404,19 +428,35 @@ export default function TaxaAdministracao() {
             </thead>
             <tbody>
               {sortedRows.map((r) => (
-                <tr key={r._ri} className="border-b border-[var(--bdr)]/60 text-[12px] hover:bg-[var(--sur2)]/60">
-                  <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={selected.has(r._ri)} onChange={() => toggleSelect(r._ri)} /></td>
-                  <td className="px-2 py-1.5"><input defaultValue={r.fundo} onBlur={(e) => editRow(r._ri, 'fundo', e.target.value)} className="bg-transparent w-full outline-none" /></td>
-                  <td className="px-2 py-1.5"><input defaultValue={r.gestor} onBlur={(e) => editRow(r._ri, 'gestor', e.target.value)} className="bg-transparent w-full outline-none" /></td>
-                  <td className="px-2 py-1.5"><input defaultValue={r.classif} onBlur={(e) => editRow(r._ri, 'classif', e.target.value)} className="bg-transparent w-full outline-none" /></td>
-                  <td className="px-2 py-1.5"><input defaultValue={r.mesRef} onBlur={(e) => editRow(r._ri, 'mesRef', e.target.value)} className="bg-transparent w-16 font-mono outline-none" /></td>
-                  <td className="px-2 py-1.5 text-right"><input defaultValue={r.val.toFixed(2)} onBlur={(e) => editRow(r._ri, 'val', e.target.value)} className="bg-transparent w-20 text-right font-mono outline-none" /></td>
-                  <td className="px-2 py-1.5">
-                    <select defaultValue={r.status} onChange={(e) => editRow(r._ri, 'status', e.target.value)} className="bg-transparent text-[11px]">
-                      <option>PAGO</option><option>PENDENTE</option>
-                    </select>
+                <tr key={r._fromFip ? 'fip-' + r.cnpj + '-' + r.mesRef : 'n' + r._ri} className="border-b border-[var(--bdr)]/60 text-[12px] hover:bg-[var(--sur2)]/60">
+                  <td className="px-2 py-1.5 text-center">
+                    {r._fromFip ? <span title="Vem da Área FIP — edite lá" className="text-[9px] font-semibold text-id-light border border-id-mid/40 rounded px-1 py-0.5">FIP</span> : <input type="checkbox" checked={selected.has(r._ri)} onChange={() => toggleSelect(r._ri)} />}
                   </td>
-                  <td className="px-2 py-1.5 text-center"><button onClick={() => deleteRow(r._ri)} className="text-[var(--tx3)] hover:text-red-400">✕</button></td>
+                  {r._fromFip ? (
+                    <>
+                      <td className="px-2 py-1.5 text-[var(--tx2)]">{r.fundo}</td>
+                      <td className="px-2 py-1.5 text-[var(--tx2)]">{r.gestor}</td>
+                      <td className="px-2 py-1.5 text-[var(--tx2)]">{r.classif}</td>
+                      <td className="px-2 py-1.5 font-mono text-[var(--tx2)]">{r.mesRef}</td>
+                      <td className="px-2 py-1.5 text-right font-mono text-[var(--tx2)]">{r.val.toFixed(2)}</td>
+                      <td className="px-2 py-1.5 text-[11px] text-[var(--tx3)]">{r.status}</td>
+                      <td className="px-2 py-1.5 text-center text-[var(--tx4)]" title="Excluir na Área FIP">—</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-2 py-1.5"><input defaultValue={r.fundo} onBlur={(e) => editRow(r._ri, 'fundo', e.target.value)} className="bg-transparent w-full outline-none" /></td>
+                      <td className="px-2 py-1.5"><input defaultValue={r.gestor} onBlur={(e) => editRow(r._ri, 'gestor', e.target.value)} className="bg-transparent w-full outline-none" /></td>
+                      <td className="px-2 py-1.5"><input defaultValue={r.classif} onBlur={(e) => editRow(r._ri, 'classif', e.target.value)} className="bg-transparent w-full outline-none" /></td>
+                      <td className="px-2 py-1.5"><input defaultValue={r.mesRef} onBlur={(e) => editRow(r._ri, 'mesRef', e.target.value)} className="bg-transparent w-16 font-mono outline-none" /></td>
+                      <td className="px-2 py-1.5 text-right"><input defaultValue={r.val.toFixed(2)} onBlur={(e) => editRow(r._ri, 'val', e.target.value)} className="bg-transparent w-20 text-right font-mono outline-none" /></td>
+                      <td className="px-2 py-1.5">
+                        <select defaultValue={r.status} onChange={(e) => editRow(r._ri, 'status', e.target.value)} className="bg-transparent text-[11px]">
+                          <option>PAGO</option><option>PENDENTE</option>
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5 text-center"><button onClick={() => deleteRow(r._ri)} className="text-[var(--tx3)] hover:text-red-400">✕</button></td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>

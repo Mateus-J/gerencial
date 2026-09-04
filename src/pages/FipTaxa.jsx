@@ -14,7 +14,13 @@ import { useToast } from '../components/Toast'
 // vêm da mesma planilha e representam o mesmo conjunto de lançamentos, só
 // que cada tela foca e soma uma coluna de valor diferente.
 const DOC_REF = () => doc(db, 'controle', 'fip_taxas')
+// Cadastro dos FIPs (CNPJ → Administrador/Custodiante/Gestor/Situação) — é
+// o que define quem realmente cobra custódia/administração de cada fundo.
+const CADASTRO_REF = () => doc(db, 'controle', 'fip_cadastro')
 const FIP_C = ['#8FB352', '#38bdf8', '#a78bfa', '#f59e0b', '#2dd4bf', '#f87171', '#0ea5e9', '#84cc16', '#ec4899', '#eab308']
+
+const norm = (s) => (s || '').toString().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+const onlyDigits = (s) => (s || '').toString().replace(/\D/g, '')
 
 const fFmt = (v) => { v = Number(v) || 0; return 'R$ ' + (v >= 1e6 ? (v / 1e6).toFixed(2).replace('.', ',') + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1).replace('.', ',') + 'K' : v.toFixed(0)) }
 const fFull = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
@@ -55,6 +61,8 @@ function parseNum(v) {
 export default function FipTaxa({ campo, title }) {
   const toast = useToast()
   const [parsed, setParsed] = useState(null)
+  const [cadastro, setCadastro] = useState({})
+  const [cadastroImportedAt, setCadastroImportedAt] = useState(null)
   const [loading, setLoading] = useState(true)
   const [importedAt, setImportedAt] = useState(null)
   const [mode, setMode] = useState('all')
@@ -68,6 +76,7 @@ export default function FipTaxa({ campo, title }) {
   const [selected, setSelected] = useState(new Set())
   const [detailRow, setDetailRow] = useState(null)
   const fileRef = useRef(null)
+  const cadastroFileRef = useRef(null)
 
   const valField = campo === 'custodia' ? 'valorCustodia' : 'valorAdm'
 
@@ -84,8 +93,58 @@ export default function FipTaxa({ campo, title }) {
       })
       .catch((e) => console.warn('fipLoad err', e))
       .finally(() => mounted && setLoading(false))
+    getDoc(CADASTRO_REF())
+      .then((snap) => { if (mounted && snap.exists()) { setCadastro(snap.data().map || {}); setCadastroImportedAt(snap.data().importedAt || null) } })
+      .catch((e) => console.warn('fipCadastroLoad err', e))
     return () => { mounted = false }
   }, [])
+
+  function handleImportCadastro(file) {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+        const hdrIdx = raw.findIndex((r) => String(r[0] || '').toLowerCase().includes('cnpj'))
+        if (hdrIdx < 0) { toast.error('Não encontrei a coluna CNPJ no cadastro.'); return }
+        const headerRow = raw[hdrIdx].map((h) => String(h || '').toLowerCase().trim())
+        const findCol = (...kw) => { for (let i = 0; i < headerRow.length; i++) if (kw.some((k) => headerRow[i].includes(k))) return i; return -1 }
+        const idx = {
+          cnpj: (() => { const i = findCol('cnpj'); return i >= 0 ? i : 0 })(),
+          nome: (() => { const i = findCol('nome do fundo', 'nome'); return i >= 0 ? i : 1 })(),
+          classificacao: (() => { const i = findCol('classificaç'); return i >= 0 ? i : 5 })(),
+          administrador: (() => { const i = findCol('administrador'); return i >= 0 ? i : 6 })(),
+          custodiante: (() => { const i = findCol('custodiante'); return i >= 0 ? i : 7 })(),
+          gestor: (() => { const i = findCol('gestor'); return i >= 0 ? i : 8 })(),
+          situacao: (() => { const i = findCol('situaç'); return i >= 0 ? i : 9 })(),
+        }
+        const map = {}
+        raw.slice(hdrIdx + 1).forEach((r) => {
+          const cnpjRaw = String(r[idx.cnpj] || '').trim()
+          const cnpjKey = onlyDigits(cnpjRaw)
+          if (!cnpjKey) return
+          map[cnpjKey] = {
+            cnpj: cnpjRaw,
+            nome: String(r[idx.nome] || '').trim(),
+            classificacao: String(r[idx.classificacao] || '').trim(),
+            administrador: String(r[idx.administrador] || '').trim(),
+            custodiante: String(r[idx.custodiante] || '').trim(),
+            gestor: String(r[idx.gestor] || '').trim(),
+            situacao: String(r[idx.situacao] || '').trim(),
+          }
+        })
+        if (!Object.keys(map).length) { toast.error('Nenhum CNPJ válido encontrado no cadastro.'); return }
+        const now = new Date().toLocaleString('pt-BR')
+        await setDoc(CADASTRO_REF(), { map, importedAt: now }, { merge: false })
+        setCadastro(map)
+        setCadastroImportedAt(now)
+        toast.success(`Cadastro importado: ${Object.keys(map).length} fundos.`)
+      } catch (err) { console.error(err); toast.error('Erro: ' + err.message) }
+    }
+    reader.readAsArrayBuffer(file)
+  }
 
   async function persist(nextParsed) {
     setParsed(nextParsed)
@@ -189,6 +248,16 @@ export default function FipTaxa({ campo, title }) {
   const filtered = useMemo(() => {
     if (!parsed) return []
     return parsed.filter((r) => {
+      const cad = cadastro[onlyDigits(r.cnpj)]
+      // Classificação vem do CADASTRO (Administrador/Custodiante reais por
+      // fundo), não da planilha de lançamentos — que pode vir com a coluna
+      // errada. Sem cadastro pra aquele CNPJ, o registro fica de fora (mais
+      // seguro que assumir uma classificação incerta).
+      if (campo === 'custodia') {
+        if (!cad || !norm(cad.custodiante).includes('ID CTVM')) return false
+      } else {
+        if (!cad || !norm(cad.administrador).includes('HORIZON')) return false
+      }
       if (mode === 'mes' && r.mesRef !== selMes) return false
       if (fGestor && r.gestor !== fGestor) return false
       if (fSituacao && r.situacaoFundo !== fSituacao) return false
@@ -196,7 +265,7 @@ export default function FipTaxa({ campo, title }) {
       if (fFundo && !r.fundo.toLowerCase().includes(fFundo.toLowerCase())) return false
       return true
     })
-  }, [parsed, mode, selMes, fGestor, fSituacao, fStatus, fFundo])
+  }, [parsed, cadastro, campo, mode, selMes, fGestor, fSituacao, fStatus, fFundo])
 
   function editRow(ri, field, val) {
     const isNum = field === valField
@@ -269,6 +338,10 @@ export default function FipTaxa({ campo, title }) {
           title={title}
           actions={
             <>
+              <input ref={cadastroFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleImportCadastro(e.target.files[0])} />
+              <button onClick={() => cadastroFileRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
+                <Upload size={13} /> Importar cadastro FIPs
+              </button>
               <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleImport(e.target.files[0])} />
               <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 text-[12px] bg-id-dark hover:bg-id-mid rounded-lg px-3 py-1.5 font-medium">
                 <Upload size={13} /> Importar planilha
@@ -276,10 +349,17 @@ export default function FipTaxa({ campo, title }) {
             </>
           }
         />
+        {!Object.keys(cadastro).length && (
+          <p className="text-[11.5px] text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3">
+            Sem o cadastro dos FIPs (CNPJ → Administrador/Custodiante) importado, nada aparece aqui — é ele que define o que é custódia da ID CTVM e o que é administração da Horizon.
+          </p>
+        )}
         <Card className="p-10 text-center text-[var(--tx3)]">Nenhum dado importado ainda. Importe a planilha de custódia dos FIPs (.xlsx) para começar.</Card>
       </div>
     )
   }
+
+  const semCadastro = parsed.filter((r) => !cadastro[onlyDigits(r.cnpj)]).length
 
   const rows = filtered
   const total = rows.reduce((a, r) => a + r[valField], 0)
@@ -314,6 +394,10 @@ export default function FipTaxa({ campo, title }) {
         title={title}
         actions={
           <>
+            <input ref={cadastroFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleImportCadastro(e.target.files[0])} />
+            <button onClick={() => cadastroFileRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
+              <Upload size={13} /> Cadastro FIPs
+            </button>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleImport(e.target.files[0])} />
             <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 text-[12px] border border-[var(--bdr)] rounded-lg px-3 py-1.5 text-[var(--tx2)] hover:bg-[var(--sur2)]">
               <Upload size={13} /> Importar planilha
@@ -324,6 +408,12 @@ export default function FipTaxa({ campo, title }) {
           </>
         }
       />
+      {semCadastro > 0 && (
+        <p className="text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-1.5 mb-3">
+          {semCadastro} lançamento(s) sem cadastro (CNPJ não encontrado) — não entram em nenhuma das duas telas até você importar/atualizar o cadastro dos FIPs.
+          {cadastroImportedAt && <span className="text-[var(--tx4)]"> · cadastro importado em {cadastroImportedAt}</span>}
+        </p>
+      )}
 
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <button onClick={() => setMode('all')} className={`text-[11px] px-3 py-1 rounded-full border ${mode === 'all' ? 'bg-id-dark border-id-dark' : 'border-[var(--bdr)] text-[var(--tx3)]'}`}>Período completo</button>
