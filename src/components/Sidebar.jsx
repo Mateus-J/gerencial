@@ -66,27 +66,30 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
 
   return (
     <aside
-      className={`h-full shrink-0 bg-[var(--sur)] border-r border-[var(--bdr)] flex flex-col transition-all duration-150 ${
-        collapsed ? 'w-[64px]' : 'w-[220px]'
+      className={`h-full shrink-0 bg-[var(--sur)]/80 backdrop-blur-xl border-r border-[var(--bdr)] flex flex-col transition-[width] duration-200 ${
+        collapsed ? 'w-[64px]' : 'w-[236px]'
       }`}
     >
-      <div className="h-[50px] flex items-center justify-center gap-1 px-2.5 border-b border-[var(--bdr)] shrink-0">
-        <img src={logoId} alt="ID" className="w-5 h-5 object-contain shrink-0 self-center" />
+      <div className={`h-[60px] flex items-center gap-2.5 border-b border-[var(--bdr)] shrink-0 ${collapsed ? 'justify-center px-2' : 'px-4'}`}>
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-id-light/25 to-id-dark/10 border border-id-mid/30 flex items-center justify-center shrink-0">
+          <img src={logoId} alt="ID" className="w-[18px] h-[18px] object-contain" />
+        </div>
         {!collapsed && (
-          <span className="font-display font-semibold text-[12px] leading-none truncate self-center">
-            Gerencial Liquidação
-          </span>
+          <div className="min-w-0 leading-tight">
+            <div className="font-display font-semibold text-[13px] truncate">Gerencial</div>
+            <div className="text-[10.5px] text-[var(--tx3)] truncate">Liquidação · ID</div>
+          </div>
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+      <nav className="flex-1 overflow-y-auto py-4 px-2.5 space-y-5">
         {navGroups.map((group) => {
           const visibleItems = group.items.filter((item) => (!item.adminOnly || isAdmin) && (!item.ownerOnly || isOwner))
           if (!visibleItems.length) return null
           return (
           <div key={group.group}>
             {!collapsed && (
-              <div className="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--tx3)]">
+              <div className="px-2.5 mb-1.5 text-[9.5px] font-semibold tracking-[.14em] uppercase text-[var(--tx4)]">
                 {group.group}
               </div>
             )}
@@ -100,12 +103,14 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
                     key={item.id}
                     onClick={() => onNavigate(item.id)}
                     title={collapsed ? item.label : undefined}
-                    className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12.5px] transition-colors
+                    className={`group relative w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[12.5px] transition-colors
+                      ${collapsed ? 'justify-center' : ''}
                       ${isActive
-                        ? 'bg-id-dark/20 text-id-light border border-id-dark/40'
-                        : 'text-[var(--tx2)] hover:bg-[var(--sur2)] hover:text-[var(--tx)] border border-transparent'}`}
+                        ? 'bg-gradient-to-r from-id-mid/20 to-id-mid/5 text-id-dark dark:text-id-light font-medium'
+                        : 'text-[var(--tx2)] hover:bg-[var(--sur2)] hover:text-[var(--tx)]'}`}
                   >
-                    <Icon size={15} className="shrink-0" />
+                    {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-id-light" />}
+                    <Icon size={16} strokeWidth={isActive ? 2.2 : 1.8} className="shrink-0" />
                     {!collapsed && <span className="truncate flex-1 text-left">{item.label}</span>}
                     {!collapsed && count > 0 && (
                       <span className="text-[10px] font-mono bg-id-mid/30 text-id-light px-1.5 py-0.5 rounded-full">
@@ -130,8 +135,8 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
       </button>
 
       {user && (
-        <div className="border-t border-[var(--bdr)] p-2.5 flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-id-mid/30 text-id-light flex items-center justify-center text-[11px] font-semibold shrink-0">
+        <div className={`m-2 rounded-xl bg-[var(--sur2)]/70 border border-[var(--bdr)] p-2 flex items-center gap-2 ${collapsed ? 'flex-col' : ''}`}>
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-id-light to-id-dark text-white flex items-center justify-center text-[11px] font-semibold shrink-0 shadow-sm">
             {user.initials}
           </div>
           {!collapsed && (

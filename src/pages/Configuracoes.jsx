@@ -47,6 +47,13 @@ export default function Configuracoes() {
         const snap = await getDoc(doc(db, 'controle', col))
         bundle[col] = snap.exists() ? snap.data() : null
       }
+      // Taxa ADM fica dividida em um documento por mês (taxa_adm__AAAA_MM)
+      const shards = {}
+      for (const id of bundle.taxa_adm?.shards || []) {
+        const snap = await getDoc(doc(db, 'controle', 'taxa_adm__' + id))
+        if (snap.exists()) shards[id] = snap.data()
+      }
+      bundle.taxa_adm__meses = shards
       const date = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-')
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
       const a = document.createElement('a')
@@ -73,6 +80,9 @@ export default function Configuracoes() {
         setBusy(true)
         for (const k of keys) {
           if (parsed[k] != null) await setDoc(doc(db, 'controle', k), parsed[k], { merge: false })
+        }
+        for (const [id, data] of Object.entries(parsed.taxa_adm__meses || {})) {
+          await setDoc(doc(db, 'controle', 'taxa_adm__' + id), data, { merge: false })
         }
         toast.success(`${keys.length} coleções restauradas com sucesso!`)
       } catch (err) {
