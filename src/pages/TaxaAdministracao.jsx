@@ -15,19 +15,26 @@ import { useAuth } from '../context/AuthContext'
 import { useIsDark, chartTheme } from '../hooks/useIsDark'
 import {
   ensureIds, cleanRow, recalc, parseWorkbook, mergeImport, newId, parseNum, onlyDigits, norm, sortKey,
-  fmtShort, fmtFull, brDate, todayISO, rowsToSheetData, TEMPLATE_HEADERS,
+  fmtShort, fmtFull, brDate, todayISO, rowsToSheetData, TEMPLATE_HEADERS, TAXAS, TAXA_KEYS, sumTaxas,
+  SHARD_PREFIX, shardOf, partition,
 } from '../lib/taxaAdm'
 
 const DOC_REF = () => doc(db, 'controle', 'taxa_adm')
+const SHARD_REF = (id) => doc(db, 'controle', SHARD_PREFIX + id)
 const FIP_DOC_REF = () => doc(db, 'controle', 'fip_taxas')
 const FIP_CADASTRO_REF = () => doc(db, 'controle', 'fip_cadastro')
 const PALETTE = ['#8FB352', '#38bdf8', '#a78bfa', '#f59e0b', '#2dd4bf', '#f87171', '#0ea5e9', '#84cc16', '#ec4899', '#eab308']
 const PAGE_SIZE = 50
 const FIELD_LABEL = {
   fundo: 'Fundo', gestor: 'Gestor', classif: 'Classificação', cnpj: 'CNPJ', conta: 'Conta', mesRef: 'Mês',
-  status: 'Status', val: 'Valor', vencimento: 'Vencimento', dataPagamento: 'Pagamento', obs: 'Observação',
+  status: 'Status', val: 'Valor total', vencimento: 'Vencimento', dataPagamento: 'Pagamento', obs: 'Observação',
+  ajuste: 'Ajuste', dataReceita: 'Data da receita', saldo: 'Saldo',
+  ...Object.fromEntries(TAXAS.map((t) => [t.key, t.label])),
 }
+const MONEY_FIELDS = ['val', 'saldo', ...TAXA_KEYS]
+const DATE_FIELDS = ['vencimento', 'dataPagamento', 'dataReceita']
 
+const fmtMoney = (v) => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const isOverdue = (r) => r.status !== 'PAGO' && r.vencimento && r.vencimento < todayISO()
 const mesToInput = (m) => (/^\d{2}\.\d{4}$/.test(m || '') ? m.slice(3) + '-' + m.slice(0, 2) : '')
 const inputToMes = (v) => (/^\d{4}-\d{2}$/.test(v || '') ? v.slice(5) + '.' + v.slice(0, 4) : '')
@@ -50,8 +57,11 @@ export default function TaxaAdministracao() {
   const who = currentUser?.name || currentUser?.username || ''
   const ct = chartTheme(useIsDark())
 
-  const [docData, setDocData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [meta, setMeta] = useState(null) // controle/taxa_adm (lista de meses, quem alterou…)
+  const [shardRows, setShardRows] = useState({}) // { 'AAAA_MM': [lançamentos] }
+  const [loadedShards, setLoadedShards] = useState(() => new Set())
+  const [metaLoaded, setMetaLoaded] = useState(false)
+  const shardUnsubs = useRef({})
   const [live, setLive] = useState('connecting') // connecting | ok | offline
   const [saving, setSaving] = useState(0)
   const [fipParsed, setFipParsed] = useState([])
@@ -68,32 +78,63 @@ export default function TaxaAdministracao() {
   const [selected, setSelected] = useState(new Set())
   const [editing, setEditing] = useState(null) // linha em edição, ou {} pra novo lançamento
   const [preview, setPreview] = useState(null) // { rows, skipped, fileName }
+  const [view, setView] = useState('geral') // geral | taxas
+  const [fTaxa, setFTaxa] = useState('')
   const fileRef = useRef(null)
   const [, tick] = useState(0)
 
   // Tudo em tempo real: qualquer pessoa que marcar um pagamento, mudar um
-  // valor ou importar a planilha atualiza a tela de todos na hora.
+  // valor ou importar a planilha atualiza a tela de todos na hora. O índice
+  // diz quais meses existem; cada mês tem o próprio documento/listener.
   useEffect(() => {
     const unsub = onSnapshot(DOC_REF(), { includeMetadataChanges: true }, (snap) => {
       setLive(snap.metadata.fromCache ? 'offline' : 'ok')
-      if (!snap.metadata.hasPendingWrites) setDocData(snap.exists() ? snap.data() : null)
-      setLoading(false)
-    }, (e) => { console.warn('taLoad err', e); setLive('offline'); setLoading(false) })
+      setMeta(snap.exists() ? snap.data() : null)
+      setMetaLoaded(true)
+    }, (e) => { console.warn('taLoad err', e); setLive('offline'); setMetaLoaded(true) })
     // FIPs administrados pela própria ID CTVM entram aqui (somente leitura —
     // a edição acontece na Área FIP).
     const unsubFip = onSnapshot(FIP_DOC_REF(), (snap) => setFipParsed(snap.exists() ? snap.data().parsed || [] : []), (e) => console.warn('taFipLoad err', e))
     const unsubCad = onSnapshot(FIP_CADASTRO_REF(), (snap) => setFipCadastro(snap.exists() ? snap.data().map || {} : {}), (e) => console.warn('taFipCadastroLoad err', e))
     const t = setInterval(() => tick((x) => x + 1), 30000)
-    return () => { unsub(); unsubFip(); unsubCad(); clearInterval(t) }
+    const subs = shardUnsubs.current
+    return () => { unsub(); unsubFip(); unsubCad(); clearInterval(t); Object.values(subs).forEach((u) => u()) }
   }, [])
 
-  const rows = useMemo(() => ensureIds(docData?.parsed || []), [docData])
+  const shardIds = useMemo(() => meta?.shards || [], [meta])
+  useEffect(() => {
+    const subs = shardUnsubs.current
+    shardIds.forEach((id) => {
+      if (subs[id]) return
+      subs[id] = onSnapshot(SHARD_REF(id), (snap) => {
+        setShardRows((prev) => ({ ...prev, [id]: snap.exists() ? snap.data().rows || [] : [] }))
+        setLoadedShards((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
+      }, (e) => { console.warn('taShardLoad err', id, e); setLoadedShards((prev) => new Set(prev).add(id)) })
+    })
+    Object.keys(subs).forEach((id) => {
+      if (shardIds.includes(id)) return
+      subs[id](); delete subs[id]
+      setShardRows((prev) => { const n = { ...prev }; delete n[id]; return n })
+    })
+  }, [shardIds])
+
+  // Só a primeira carga mostra o esqueleto; meses novos chegando depois (ex.:
+  // após importar) entram sem piscar a tela.
+  const [ready, setReady] = useState(false)
+  const allLoaded = metaLoaded && shardIds.every((id) => loadedShards.has(id))
+  useEffect(() => { if (allLoaded) setReady(true) }, [allLoaded])
+  const loading = !ready
+  const legacyRows = Array.isArray(meta?.parsed) ? meta.parsed : null
+  const rows = useMemo(() => {
+    const fromShards = Object.keys(shardRows).sort().flatMap((id) => shardRows[id])
+    return legacyRows ? [...ensureIds(legacyRows), ...fromShards] : fromShards
+  }, [shardRows, legacyRows])
 
   const fipAdmRows = useMemo(() => fipParsed
     .filter((r) => norm(fipCadastro[onlyDigits(r.cnpj)]?.administrador).includes('ID CTVM'))
     .map((r) => ({
       id: 'fip-' + onlyDigits(r.cnpj) + '-' + r.mesRef, fundo: r.fundo, gestor: r.gestor, classif: r.classificacao,
-      cnpj: r.cnpj, conta: r.conta, mesRef: r.mesRef, status: r.status, val: Number(r.valorAdm) || 0, _fromFip: true,
+      cnpj: r.cnpj, conta: r.conta, mesRef: r.mesRef, status: r.status, val: Number(r.valorAdm) || 0, adm: Number(r.valorAdm) || 0, _fromFip: true,
     })), [fipParsed, fipCadastro])
 
   const combined = useMemo(() => recalc([...rows, ...fipAdmRows]), [rows, fipAdmRows])
@@ -101,19 +142,48 @@ export default function TaxaAdministracao() {
   // Toda gravação passa por aqui: aplica na tela na hora (otimista) e grava
   // numa transação em cima da versão MAIS RECENTE do servidor — assim duas
   // pessoas editando ao mesmo tempo não apagam a alteração uma da outra.
-  // `fn` precisa ser pura (a transação pode rodar mais de uma vez).
-  async function mutate(fn, { msg, extra, action } = {}) {
-    setDocData((prev) => ({ ...(prev || {}), parsed: fn(ensureIds(prev?.parsed || [])) }))
+  // `scope` = meses envolvidos (só esses documentos são lidos/gravados);
+  // sem scope, a base inteira. `fn` precisa ser pura (a transação pode repetir).
+  async function mutate(fn, { msg, extra, action, scope } = {}) {
+    setShardRows(partition(fn(rows)))
+    if (legacyRows) setMeta((m) => ({ ...(m || {}), parsed: undefined }))
     setSaving((s) => s + 1)
     try {
       await runTransaction(db, async (tx) => {
-        const snap = await tx.get(DOC_REF())
-        const cur = snap.exists() ? snap.data() : {}
-        const next = fn(ensureIds(cur.parsed || [])).map(cleanRow)
+        const idxSnap = await tx.get(DOC_REF())
+        const idx = idxSnap.exists() ? idxSnap.data() : {}
+        const legacy = Array.isArray(idx.parsed) ? ensureIds(idx.parsed) : null
+        const known = new Set(idx.shards || [])
+        const before = {}
+        const readShards = async (ids) => {
+          const todo = ids.filter((id) => known.has(id) && !(id in before))
+          const snaps = await Promise.all(todo.map((id) => tx.get(SHARD_REF(id))))
+          snaps.forEach((sn, i) => { before[todo[i]] = sn.exists() ? sn.data().rows || [] : [] })
+        }
+        await readShards(legacy || !scope ? [...known] : [...new Set(scope)])
+        let parts
+        // Se a alteração jogou um lançamento pra um mês que ainda não foi lido,
+        // lê esse mês também e refaz — nunca grava um mês sem conhecer o conteúdo.
+        for (let round = 0; round < 3; round++) {
+          const cur = [...(legacy || []), ...Object.values(before).flat()]
+          parts = partition(fn(cur).map(cleanRow))
+          const missing = Object.keys(parts).filter((id) => known.has(id) && !(id in before))
+          if (!missing.length) break
+          await readShards(missing)
+        }
+        const shards = new Set(known)
+        new Set([...Object.keys(before), ...Object.keys(parts)]).forEach((id) => {
+          const nextRows = parts[id] || []
+          if (!legacy && JSON.stringify(nextRows) === JSON.stringify(before[id] || [])) return
+          if (nextRows.length) { tx.set(SHARD_REF(id), { mes: id, rows: nextRows }); shards.add(id) }
+          else { if (known.has(id)) tx.delete(SHARD_REF(id)); shards.delete(id) }
+        })
         tx.set(DOC_REF(), {
-          ...recalc(next),
-          importedAt: cur.importedAt ?? null,
-          importedBy: cur.importedBy ?? null,
+          schema: 2,
+          shards: [...shards].sort(),
+          importedAt: idx.importedAt ?? null,
+          importedBy: idx.importedBy ?? null,
+          importFile: idx.importFile ?? null,
           ...(extra || {}),
           updatedAt: Date.now(),
           updatedBy: who,
@@ -128,11 +198,22 @@ export default function TaxaAdministracao() {
     }
   }
 
+  const scopeOf = (list, ...mesRefs) => [...new Set([...list.map((r) => shardOf(r.mesRef)), ...mesRefs.filter(Boolean).map(shardOf)])]
+
   const stamp = () => ({ updatedAt: Date.now(), updatedBy: who })
 
   function updateRow(id, patch, msg) {
     const st = stamp()
-    mutate((list) => list.map((r) => (r.id === id ? { ...r, ...patch, ...st } : r)), { msg })
+    const row = rows.find((r) => r.id === id)
+    if (!row) return
+    mutate((list) => list.map((r) => (r.id === id ? { ...r, ...patch, ...st } : r)), { msg, scope: scopeOf([row], patch.mesRef) })
+  }
+  // Editar uma taxa: se o total batia com a soma das taxas, o total acompanha.
+  function updateTaxa(row, key, value) {
+    const next = { ...row, [key]: value }
+    const patch = { [key]: value }
+    if (Math.abs(sumTaxas(row) - (Number(row.val) || 0)) < 0.01) patch.val = sumTaxas(next)
+    updateRow(row.id, patch)
   }
   function setStatus(ids, status) {
     const set = new Set(ids)
@@ -140,22 +221,24 @@ export default function TaxaAdministracao() {
     const today = todayISO()
     mutate((list) => list.map((r) => (set.has(r.id)
       ? { ...r, status, dataPagamento: status === 'PAGO' ? r.dataPagamento || today : '', ...st }
-      : r)), { msg: ids.length > 1 ? `${ids.length} lançamentos marcados como ${status.toLowerCase()}.` : undefined })
+      : r)), { msg: ids.length > 1 ? `${ids.length} lançamentos marcados como ${status.toLowerCase()}.` : undefined, scope: scopeOf(rows.filter((r) => set.has(r.id))) })
   }
   function addRow(row) {
     const full = { ...row, id: newId(), ...stamp() }
-    mutate((list) => [full, ...list], { msg: 'Lançamento incluído.' })
+    mutate((list) => [full, ...list], { msg: 'Lançamento incluído.', scope: scopeOf([], full.mesRef) })
   }
   function deleteRows(ids) {
     const set = new Set(ids)
     const removed = rows.filter((r) => set.has(r.id))
     if (!removed.length) return
     setSelected(new Set())
+    const scope = scopeOf(removed)
     mutate((list) => list.filter((r) => !set.has(r.id)), {
       msg: `${removed.length} lançamento(s) excluído(s).`,
+      scope,
       action: {
         label: 'Desfazer',
-        onClick: () => mutate((list) => [...removed.filter((r) => !list.some((x) => x.id === r.id)), ...list], { msg: 'Exclusão desfeita.' }),
+        onClick: () => mutate((list) => [...removed.filter((r) => !list.some((x) => x.id === r.id)), ...list], { msg: 'Exclusão desfeita.', scope }),
       },
     })
   }
@@ -181,30 +264,35 @@ export default function TaxaAdministracao() {
     setSelected(new Set())
     mutate((list) => mergeImport(list, incoming, { replace, who }).rows, {
       extra: { importedAt: new Date().toLocaleString('pt-BR'), importedBy: who, importFile: fileName },
-      msg: `Planilha aplicada: ${r.added.length} novo(s), ${r.updated.length} atualizado(s)${replace ? `, ${r.removed.length} removido(s)` : ''}.`,
+      msg: `Planilha aplicada: ${r.added.length} novo(s), ${r.updated.length} atualizado(s), ${r.unchanged} sem mudança${replace ? `, ${r.removed.length} removido(s)` : ''}.`,
     })
   }
 
   const gestores = useMemo(() => [...new Set(combined.parsed.map((r) => r.gestor).filter((g) => g && g !== '0'))].sort(), [combined])
   const classes = useMemo(() => [...new Set(combined.parsed.map((r) => r.classif).filter((c) => c && c !== '0'))].sort(), [combined])
 
-  const filtered = useMemo(() => {
+  // `filtered` = tudo que passa nos filtros; `filteredAllMes` ignora só o mês
+  // (alimenta os gráficos de evolução).
+  const { filtered, filteredAllMes } = useMemo(() => {
     const qq = norm(q)
-    return combined.parsed.filter((r) => {
-      if (selMes && r.mesRef !== selMes) return false
+    const qd = onlyDigits(q)
+    const all = combined.parsed.filter((r) => {
       if (fGestor && r.gestor !== fGestor) return false
       if (fClassif && r.classif !== fClassif) return false
       if (fStatus === 'VENCIDO' ? !isOverdue(r) : fStatus && r.status !== fStatus) return false
-      if (qq && !norm(r.fundo).includes(qq) && !onlyDigits(r.cnpj).includes(onlyDigits(q) || '\u0000') && !norm(r.gestor).includes(qq)) return false
+      if (fTaxa && !(Number(r[fTaxa]) > 0)) return false
+      if (qq && !norm(r.fundo).includes(qq) && !(qd && onlyDigits(r.cnpj).includes(qd)) && !norm(r.gestor).includes(qq) && !norm(r.ajuste).includes(qq)) return false
       return true
     })
-  }, [combined, selMes, fGestor, fClassif, fStatus, q])
+    return { filteredAllMes: all, filtered: selMes ? all.filter((r) => r.mesRef === selMes) : all }
+  }, [combined, selMes, fGestor, fClassif, fStatus, fTaxa, q])
 
   const sortedRows = useMemo(() => {
     const out = [...filtered]
     out.sort((a, b) => {
       let va, vb
-      if (sortCol === 'val') { va = a.val; vb = b.val }
+      if (MONEY_FIELDS.includes(sortCol)) { va = Number(a[sortCol]) || 0; vb = Number(b[sortCol]) || 0 }
+      else if (sortCol === 'somaTaxas') { va = sumTaxas(a); vb = sumTaxas(b) }
       else if (sortCol === 'mesRef') { va = sortKey(a.mesRef); vb = sortKey(b.mesRef) }
       else if (sortCol === 'updatedAt') { va = a.updatedAt || 0; vb = b.updatedAt || 0 }
       else { va = (a[sortCol] || '').toString().toLowerCase(); vb = (b[sortCol] || '').toString().toLowerCase() }
@@ -213,7 +301,8 @@ export default function TaxaAdministracao() {
     return out
   }, [filtered, sortCol, sortAsc])
 
-  useEffect(() => { setPage(0) }, [selMes, fGestor, fClassif, fStatus, q, sortCol, sortAsc])
+  useEffect(() => { setPage(0) }, [selMes, fGestor, fClassif, fStatus, fTaxa, q, sortCol, sortAsc, view])
+  const previewDiff = useMemo(() => (preview ? mergeImport(rows, preview.rows, { replace: preview.replace, who }) : null), [preview, rows, who])
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE))
   const pageRows = sortedRows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
 
@@ -226,7 +315,7 @@ export default function TaxaAdministracao() {
     XLSX.writeFile(wb, `${name}_${todayISO()}.xlsx`)
   }
   function downloadTemplate() {
-    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ['FUNDO EXEMPLO FIDC', 'Gestora X', 'FIDC', '00.000.000/0001-00', '12345-6', currentMes(), 1500, 'PENDENTE', '', '', '']])
+    const ws = XLSX.utils.json_to_sheet(rowsToSheetData([{ fundo: 'FUNDO EXEMPLO FIDC', gestor: 'Gestora X', classif: 'FIDC', cnpj: '00.000.000/0001-00', conta: '12345', mesRef: currentMes(), status: 'PENDENTE', val: 1500, adm: 1000, custodia: 500 }]), { header: TEMPLATE_HEADERS })
     ws['!cols'] = TEMPLATE_HEADERS.map(() => ({ wch: 20 }))
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Modelo')
@@ -251,8 +340,8 @@ export default function TaxaAdministracao() {
         </span>
         {live === 'ok' ? (saving ? 'Salvando…' : 'Ao vivo') : live === 'offline' ? 'Sem conexão — exibindo cópia local' : 'Conectando…'}
       </span>
-      {docData?.updatedAt && <span>Última alteração {docData.updatedBy ? `por ${docData.updatedBy} ` : ''}{timeAgo(docData.updatedAt)}</span>}
-      {docData?.importedAt && <span>· Planilha importada em {docData.importedAt}{docData.importedBy ? ` por ${docData.importedBy}` : ''}</span>}
+      {meta?.updatedAt && <span>Última alteração {meta.updatedBy ? `por ${meta.updatedBy} ` : ''}{timeAgo(meta.updatedAt)}</span>}
+      {meta?.importedAt && <span>· Planilha importada em {meta.importedAt}{meta.importedBy ? ` por ${meta.importedBy}` : ''}</span>}
     </div>
   )
 
@@ -277,7 +366,7 @@ export default function TaxaAdministracao() {
       {preview && (
         <ImportPreview
           preview={preview}
-          diff={mergeImport(rows, preview.rows, { replace: preview.replace, who })}
+          diff={previewDiff}
           onToggleReplace={() => setPreview((p) => ({ ...p, replace: !p.replace }))}
           onCancel={() => setPreview(null)}
           onConfirm={confirmImport}
@@ -341,6 +430,18 @@ export default function TaxaAdministracao() {
   const clsDist = clsAll.length > 7 ? [...clsAll.slice(0, 6), { name: 'Outros', value: clsAll.slice(6).reduce((a, c) => a + c.value, 0) }] : clsAll
   const chartMonths = mo.slice(-14)
 
+  // ---- base segregada por taxa ----
+  const taxTotals = TAXAS.map((t) => ({ ...t, value: filtered.reduce((a, r) => a + (Number(r[t.key]) || 0), 0) }))
+  const taxSum = taxTotals.reduce((a, t) => a + t.value, 0)
+  const taxMonthly = (() => {
+    const m = {}
+    filteredAllMes.forEach((r) => {
+      const e = (m[r.mesRef] ||= { mes: r.mesRef })
+      TAXA_KEYS.forEach((k) => { e[k] = (e[k] || 0) + (Number(r[k]) || 0) })
+    })
+    return Object.values(m).sort((a, b) => sortKey(a.mes) - sortKey(b.mes)).slice(-14)
+  })()
+
   const selectedIds = [...selected]
   const allPageSelectable = pageRows.filter((r) => !r._fromFip)
   const allPageChecked = allPageSelectable.length > 0 && allPageSelectable.every((r) => selected.has(r.id))
@@ -351,16 +452,22 @@ export default function TaxaAdministracao() {
     <div>
       <PageHeader eyebrow="Operacional" title="Taxa de Administração" meta={liveMeta} actions={headerActions} />
 
+      <div className="inline-flex p-1 mb-3 rounded-xl bg-[var(--sur2)] border border-[var(--bdr)]">
+        {[['geral', 'Visão geral'], ['taxas', 'Base segregada por taxa']].map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${view === k ? 'bg-[var(--sur)] text-[var(--tx)] shadow-card' : 'text-[var(--tx3)] hover:text-[var(--tx)]'}`}>{l}</button>
+        ))}
+      </div>
+
       {/* Filtros */}
       <Card className="p-3 mb-4">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mb-1">
           <button onClick={() => setSelMes('')} className={`chip shrink-0 ${!selMes ? 'chip-on' : ''}`}>Período completo</button>
           <span className="w-px h-5 bg-[var(--bdr)] mx-1 shrink-0" />
-          {[...combined.months].reverse().slice(0, 24).map((m) => (
+          {[...combined.months].reverse().map((m) => (
             <button key={m} onClick={() => setSelMes(selMes === m ? '' : m)} className={`chip shrink-0 font-mono ${selMes === m ? 'chip-on' : ''}`}>{m}</button>
           ))}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_2fr] gap-2 mt-3">
+        <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_2fr] gap-2 mt-3">
           <select value={fGestor} onChange={(e) => setFGestor(e.target.value)} className="field">
             <option value="">Todos os gestores</option>{gestores.map((g) => <option key={g}>{g}</option>)}
           </select>
@@ -370,6 +477,9 @@ export default function TaxaAdministracao() {
           <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="field">
             <option value="">Todos os status</option><option value="PAGO">Pago</option><option value="PENDENTE">Pendente</option><option value="VENCIDO">Vencido</option>
           </select>
+          <select value={fTaxa} onChange={(e) => setFTaxa(e.target.value)} className="field">
+            <option value="">Todas as taxas</option>{TAXAS.map((t) => <option key={t.key} value={t.key}>Com {t.label}</option>)}
+          </select>
           <div className="relative col-span-2 md:col-span-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tx4)]" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar fundo, gestor ou CNPJ…" className="field pl-9" />
@@ -377,6 +487,51 @@ export default function TaxaAdministracao() {
         </div>
       </Card>
 
+      {view === 'taxas' && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
+            {taxTotals.map((t) => (
+              <Card key={t.key} className="p-0">
+                <button onClick={() => setFTaxa(fTaxa === t.key ? '' : t.key)} className={`w-full h-full text-left px-4 py-3.5 rounded-2xl transition-colors hover:bg-[var(--sur2)]/40 ${fTaxa === t.key ? 'ring-2 ring-id-mid/50' : ''}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: t.color }} />
+                    <span className="text-[10.5px] font-semibold tracking-widest uppercase text-[var(--tx3)]">{t.label}</span>
+                  </div>
+                  <div className="font-display text-[18px] font-semibold tracking-tight mt-2">{fmtShort(t.value)}</div>
+                  <div className="text-[11px] text-[var(--tx3)]">{taxSum ? ((t.value / taxSum) * 100).toFixed(1).replace('.', ',') : '0'}% das taxas</div>
+                  <div className="h-1 mt-2 rounded-full bg-[var(--sur2)] overflow-hidden"><div className="h-full rounded-full" style={{ width: (taxSum ? (t.value / taxSum) * 100 : 0) + '%', background: t.color }} /></div>
+                </button>
+              </Card>
+            ))}
+            <Card className="px-4 py-3.5">
+              <div className="text-[10.5px] font-semibold tracking-widest uppercase text-[var(--tx3)]">Soma das taxas</div>
+              <div className="font-display text-[18px] font-semibold tracking-tight mt-2">{fmtShort(taxSum)}</div>
+              <div className="text-[11px] text-[var(--tx3)]">Total cobrado {fmtShort(total)}</div>
+            </Card>
+          </div>
+          <Card className="p-4 mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div className="text-[12.5px] font-semibold">Taxas por mês</div>
+              <div className="flex flex-wrap gap-3 text-[11px] text-[var(--tx3)]">
+                {TAXAS.map((t) => <span key={t.key} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: t.color }} />{t.label}</span>)}
+              </div>
+            </div>
+            <div className="h-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={taxMonthly} barCategoryGap="22%">
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
+                  <XAxis dataKey="mes" tick={{ fontSize: 10.5, fill: ct.axis }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10.5, fill: ct.axis }} tickFormatter={(v) => fmtShort(v).replace('R$ ', '')} axisLine={false} tickLine={false} width={48} />
+                  <Tooltip formatter={(v, n) => [fmtFull(v), TAXAS.find((t) => t.key === n)?.label || n]} cursor={{ fill: ct.grid, opacity: 0.5 }} {...tip} />
+                  {TAXAS.map((t, i) => <Bar key={t.key} dataKey={t.key} stackId="t" fill={t.color} radius={i === TAXAS.length - 1 ? [4, 4, 0, 0] : 0} onClick={(d) => setSelMes(d?.payload?.mes ?? d?.mes ?? '')} className="cursor-pointer" />)}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {view === 'geral' && (<>
       {/* KPIs */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] gap-3 mb-3">
         <Card className="p-5 relative overflow-hidden">
@@ -459,12 +614,13 @@ export default function TaxaAdministracao() {
         <RankCard title="Maiores valores em aberto" tone="amber" items={topDevedores} empty="Nenhum valor em aberto no período 🎉" onPick={(n) => setQ(n)} />
         <RankCard title="Maiores gestores (total cobrado)" tone="green" items={topGestores} empty="Sem gestores no período" onPick={(n) => setFGestor(n)} />
       </div>
+      </>)}
 
       {/* Tabela */}
       <Card className="overflow-hidden">
         <div className="px-4 py-3 border-b border-[var(--bdr)] flex flex-wrap items-center gap-2">
           <div className="text-[12.5px] font-semibold mr-auto">
-            Lançamentos <span className="text-[var(--tx3)] font-normal">· {sortedRows.length} registro(s)</span>
+            {view === 'taxas' ? 'Base segregada' : 'Lançamentos'} <span className="text-[var(--tx3)] font-normal">· {sortedRows.length.toLocaleString('pt-BR')} registro(s)</span>
           </div>
           {selected.size > 0 ? (
             <div className="flex flex-wrap items-center gap-2 animate-fade-up">
@@ -480,14 +636,17 @@ export default function TaxaAdministracao() {
           )}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[980px]">
+          <table className={`w-full text-left ${view === 'taxas' ? 'min-w-[1240px]' : 'min-w-[980px]'}`}>
             <thead>
               <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] bg-[var(--sur2)]/50">
                 <th className="pl-4 pr-1 py-2.5 w-8">
                   <input type="checkbox" checked={allPageChecked} onChange={() => setSelected((s) => { const n = new Set(s); allPageSelectable.forEach((r) => { if (allPageChecked) n.delete(r.id); else n.add(r.id) }); return n })} className="accent-[#6B9A52]" />
                 </th>
-                {[['fundo', 'Fundo'], ['gestor', 'Gestor'], ['classif', 'Classif.'], ['mesRef', 'Mês'], ['vencimento', 'Vencimento'], ['val', 'Valor', 'text-right'], ['status', 'Status'], ['updatedAt', 'Atualizado']].map(([c, l, cls]) => (
-                  <th key={c} className={`px-2 py-2.5 font-semibold cursor-pointer select-none hover:text-[var(--tx)] ${cls || ''}`} onClick={() => { if (sortCol === c) setSortAsc(!sortAsc); else { setSortCol(c); setSortAsc(!['val', 'updatedAt', 'mesRef'].includes(c)) } }}>
+                {(view === 'taxas'
+                  ? [['fundo', 'Fundo'], ['mesRef', 'Mês'], ...TAXAS.map((t) => [t.key, t.label, 'text-right']), ['somaTaxas', 'Soma taxas', 'text-right'], ['val', 'Total', 'text-right'], ['status', 'Status']]
+                  : [['fundo', 'Fundo'], ['gestor', 'Gestor'], ['classif', 'Classif.'], ['mesRef', 'Mês'], ['vencimento', 'Vencimento'], ['val', 'Valor', 'text-right'], ['status', 'Status'], ['updatedAt', 'Atualizado']]
+                ).map(([c, l, cls]) => (
+                  <th key={c} className={`px-2 py-2.5 font-semibold cursor-pointer select-none hover:text-[var(--tx)] whitespace-nowrap ${cls || ''}`} onClick={() => { if (sortCol === c) setSortAsc(!sortAsc); else { setSortCol(c); setSortAsc(![...MONEY_FIELDS, 'somaTaxas', 'updatedAt', 'mesRef'].includes(c)) } }}>
                     {l}{sortCol === c ? (sortAsc ? ' ↑' : ' ↓') : ''}
                   </th>
                 ))}
@@ -506,33 +665,36 @@ export default function TaxaAdministracao() {
                     </td>
                     <td className="px-2 py-2 max-w-[320px]">
                       <button disabled={r._fromFip} onClick={() => setEditing(r)} className="text-left w-full disabled:cursor-default">
-                        <div className="font-medium truncate" title={r.fundo}>{r.fundo}</div>
+                        <div className="font-medium truncate" title={r.fundo}>{r.fundo}{r.ajuste && <span className="ml-1.5 text-[9.5px] font-semibold uppercase rounded px-1 py-0.5 bg-sky-500/12 text-sky-600 dark:text-sky-400 align-middle">{r.ajuste}</span>}</div>
                         {(r.cnpj || r.obs) && <div className="text-[10.5px] text-[var(--tx3)] truncate" title={r.obs}>{r.cnpj}{r.cnpj && r.obs ? ' · ' : ''}{r.obs}</div>}
                       </button>
                     </td>
+                    {view === 'taxas' ? (<>
+                    <td className="px-2 py-2 font-mono text-[11.5px] text-[var(--tx2)]">{r.mesRef}</td>
+                    {TAXA_KEYS.map((k) => (
+                      <td key={k} className="px-1 py-2 text-right">
+                        {r._fromFip ? <span className="font-mono text-[var(--tx2)]">{fmtMoney(r[k])}</span> : <MoneyInput value={Number(r[k]) || 0} onCommit={(v) => updateTaxa(r, k, v)} width="w-[104px]" dim />}
+                      </td>
+                    ))}
+                    <td className={`px-2 py-2 text-right font-mono ${sumTaxas(r) > 0 && Math.abs(sumTaxas(r) - r.val) > 0.01 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--tx3)]'}`} title={sumTaxas(r) > 0 && Math.abs(sumTaxas(r) - r.val) > 0.01 ? 'A soma das taxas é diferente do total cobrado' : undefined}>{fmtMoney(sumTaxas(r))}</td>
+                    <td className="px-2 py-2 text-right font-mono font-medium">{fmtMoney(r.val)}</td>
+                    </>) : (<>
                     <td className="px-2 py-2 text-[var(--tx2)] max-w-[160px] truncate" title={r.gestor}>{r.gestor || '—'}</td>
                     <td className="px-2 py-2 text-[var(--tx2)]">{r.classif || '—'}</td>
                     <td className="px-2 py-2 font-mono text-[11.5px] text-[var(--tx2)]">{r.mesRef}</td>
                     <td className={`px-2 py-2 font-mono text-[11.5px] ${isOverdue(r) ? 'text-red-500 font-medium' : 'text-[var(--tx3)]'}`}>{r.vencimento ? brDate(r.vencimento) : '—'}</td>
                     <td className="px-2 py-2 text-right">
                       {r._fromFip ? <span className="font-mono text-[var(--tx2)]">{fmtFull(r.val)}</span> : (
-                        <input
-                          key={r.id + ':' + r.val}
-                          defaultValue={r.val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          onFocus={(e) => e.target.select()}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { e.target.value = r.val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }); e.target.blur() } }}
-                          onBlur={(e) => { const v = Math.round(parseNum(e.target.value) * 100) / 100; if (Math.abs(v - r.val) > 0.004) updateRow(r.id, { val: v }) }}
-                          className="w-[120px] text-right font-mono bg-transparent rounded-md px-1.5 py-1 outline-none border border-transparent hover:border-[var(--bdr)] focus:border-id-mid focus:bg-[var(--sur)]"
-                          title="Clique para editar o valor"
-                        />
+                        <MoneyInput value={r.val} onCommit={(v) => updateRow(r.id, { val: v })} />
                       )}
                     </td>
+                    </>)}
                     <td className="px-2 py-2">
                       <StatusPill row={r} onToggle={r._fromFip ? null : () => setStatus([r.id], r.status === 'PAGO' ? 'PENDENTE' : 'PAGO')} />
                     </td>
-                    <td className="px-2 py-2 text-[10.5px] text-[var(--tx3)] whitespace-nowrap">
+                    {view === 'geral' && <td className="px-2 py-2 text-[10.5px] text-[var(--tx3)] whitespace-nowrap">
                       {r.updatedAt ? <span title={new Date(r.updatedAt).toLocaleString('pt-BR')}>{r.updatedBy ? r.updatedBy.split(' ')[0] + ' · ' : ''}{timeAgo(r.updatedAt)}</span> : '—'}
-                    </td>
+                    </td>}
                     <td className="px-2 py-2">
                       {!r._fromFip && (
                         <div className="flex justify-end gap-0.5 opacity-60 group-hover:opacity-100">
@@ -545,9 +707,21 @@ export default function TaxaAdministracao() {
                 )
               })}
               {!pageRows.length && (
-                <tr><td colSpan={10} className="px-4 py-10 text-center text-[12.5px] text-[var(--tx3)]">Nenhum lançamento com esses filtros.</td></tr>
+                <tr><td colSpan={14} className="px-4 py-10 text-center text-[12.5px] text-[var(--tx3)]">Nenhum lançamento com esses filtros.</td></tr>
               )}
             </tbody>
+            {view === 'taxas' && sortedRows.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-[var(--bdr)] bg-[var(--sur2)]/50 text-[11.5px] font-semibold">
+                  <td />
+                  <td className="px-2 py-2.5" colSpan={2}>Total do filtro</td>
+                  {taxTotals.map((t) => <td key={t.key} className="px-2 py-2.5 text-right font-mono">{fmtMoney(t.value)}</td>)}
+                  <td className="px-2 py-2.5 text-right font-mono">{fmtMoney(taxSum)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono">{fmtMoney(total)}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
         {pageCount > 1 && (
@@ -572,6 +746,21 @@ const TONES = {
   amber: { icon: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', value: 'text-amber-600 dark:text-amber-400', bar: 'bg-amber-400' },
   red: { icon: 'bg-red-500/15 text-red-600 dark:text-red-400', value: 'text-red-600 dark:text-red-400', bar: 'bg-red-400' },
   neutral: { icon: 'bg-[var(--sur2)] text-[var(--tx3)]', value: 'text-[var(--tx)]', bar: 'bg-[var(--tx4)]' },
+}
+
+// Valor editável direto na tabela: Enter salva, Esc desfaz.
+function MoneyInput({ value, onCommit, width = 'w-[120px]', dim }) {
+  return (
+    <input
+      key={value}
+      defaultValue={fmtMoney(value)}
+      onFocus={(e) => e.target.select()}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { e.target.value = fmtMoney(value); e.target.blur() } }}
+      onBlur={(e) => { const v = Math.round(parseNum(e.target.value) * 100) / 100; if (Math.abs(v - (Number(value) || 0)) > 0.004) onCommit(v) }}
+      className={`${width} text-right font-mono bg-transparent rounded-md px-1.5 py-1 outline-none border border-transparent hover:border-[var(--bdr)] focus:border-id-mid focus:bg-[var(--sur)] ${dim && !value ? 'text-[var(--tx4)]' : ''}`}
+      title="Clique para editar"
+    />
+  )
 }
 
 function StatCard({ icon: Icon, tone = 'neutral', label, value, sub, onClick }) {
@@ -674,7 +863,10 @@ function EditDrawer({ row, allRows, gestores, classes, defaultMes, onClose, onSa
     mesRef: row.mesRef || defaultMes, status: row.status || 'PENDENTE',
     val: row.val != null ? row.val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
     vencimento: row.vencimento || '', dataPagamento: row.dataPagamento || '', obs: row.obs || '',
+    dataReceita: row.dataReceita || '', ajuste: row.ajuste || '',
+    ...Object.fromEntries(TAXA_KEYS.map((k) => [k, row[k] ? Number(row[k]).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''])),
   }))
+  const somaTaxas = TAXA_KEYS.reduce((a, k) => a + parseNum(f[k]), 0)
   const [err, setErr] = useState('')
   const fundos = useMemo(() => [...new Set(allRows.map((r) => r.fundo))].sort(), [allRows])
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
@@ -695,16 +887,18 @@ function EditDrawer({ row, allRows, gestores, classes, defaultMes, onClose, onSa
 
   function submit(e) {
     e.preventDefault()
-    const val = Math.round(parseNum(f.val) * 100) / 100
+    const val = Math.round((String(f.val).trim() ? parseNum(f.val) : somaTaxas) * 100) / 100
     if (!f.fundo.trim()) return setErr('Informe o fundo.')
     if (!/^\d{2}\.\d{4}$/.test(f.mesRef)) return setErr('Informe o mês de referência.')
     if (val < 0) return setErr('Valor inválido.')
-    const dup = allRows.find((r) => r.id !== row.id && norm(r.fundo) === norm(f.fundo) && r.mesRef === f.mesRef)
-    if (dup && !confirm(`Já existe um lançamento de ${f.fundo} em ${f.mesRef}. Salvar mesmo assim?`)) return
+    // Nunca duplicar: mesmo fundo + mês (+ mesmo ajuste) já existente bloqueia.
+    const dup = allRows.find((r) => r.id !== row.id && norm(r.fundo) === norm(f.fundo) && r.mesRef === f.mesRef && norm(r.ajuste) === norm(f.ajuste))
+    if (dup) return setErr(`Já existe um lançamento de ${dup.fundo} em ${f.mesRef}${f.ajuste ? ' (' + f.ajuste + ')' : ''}. Edite o existente ou informe um ajuste diferente.`)
     onSave({
       fundo: f.fundo.trim(), gestor: f.gestor.trim(), classif: f.classif.trim(), cnpj: f.cnpj.trim(), conta: f.conta.trim(),
-      mesRef: f.mesRef, status: f.status, val, vencimento: f.vencimento,
+      mesRef: f.mesRef, ajuste: f.ajuste.trim(), status: f.status, val, vencimento: f.vencimento, dataReceita: f.dataReceita,
       dataPagamento: f.status === 'PAGO' ? f.dataPagamento || todayISO() : '', obs: f.obs.trim(),
+      ...Object.fromEntries(TAXA_KEYS.map((k) => [k, Math.round(parseNum(f[k]) * 100) / 100])),
     })
   }
 
@@ -740,14 +934,37 @@ function EditDrawer({ row, allRows, gestores, classes, defaultMes, onClose, onSa
             <datalist id="ta-fundos">{fundos.map((x) => <option key={x} value={x} />)}</datalist>
           </div>
 
+          <div className="rounded-xl border border-[var(--bdr)] p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="label mb-0">Taxas segregadas (R$)</span>
+              <button type="button" disabled={!somaTaxas} onClick={() => setF((x) => ({ ...x, val: somaTaxas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }))} className="text-[11px] text-id-dark dark:text-id-light hover:underline disabled:opacity-40">Usar soma ({fmtFull(somaTaxas)}) como total</button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {TAXAS.map((t) => (
+                <div key={t.key}>
+                  <div className="text-[10.5px] text-[var(--tx3)] mb-1 flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm" style={{ background: t.color }} />{t.label}</div>
+                  <input value={f[t.key]} onChange={set(t.key)} inputMode="decimal" placeholder="0,00" className="field font-mono text-right py-1.5" />
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Valor (R$) *</label>
+              <label className="label">Valor total (R$) *</label>
               <input value={f.val} onChange={set('val')} inputMode="decimal" placeholder="0,00" className="field font-mono text-right" />
             </div>
             <div>
               <label className="label">Mês de referência *</label>
               <input type="month" value={mesToInput(f.mesRef)} onChange={(e) => setF((x) => ({ ...x, mesRef: inputToMes(e.target.value) }))} className="field" />
+            </div>
+            <div>
+              <label className="label">Data da receita</label>
+              <input type="date" value={f.dataReceita} onChange={set('dataReceita')} className="field" />
+            </div>
+            <div>
+              <label className="label">Ajuste / correção</label>
+              <input value={f.ajuste} onChange={set('ajuste')} className="field" placeholder="Ex.: CORREÇÃO REGULAMENTO" />
             </div>
             <div>
               <label className="label">Vencimento</label>
@@ -806,7 +1023,7 @@ function EditDrawer({ row, allRows, gestores, classes, defaultMes, onClose, onSa
 function ImportPreview({ preview, diff, onToggleReplace, onCancel, onConfirm }) {
   const [tab, setTab] = useState(diff.updated.length ? 'updated' : 'added')
   const nothing = !diff.added.length && !diff.updated.length && !(preview.replace && diff.removed.length)
-  const fmtVal = (k, v) => (k === 'val' ? fmtFull(v) : k === 'vencimento' || k === 'dataPagamento' ? brDate(v) || '—' : v || '—')
+  const fmtVal = (k, v) => (MONEY_FIELDS.includes(k) ? fmtFull(v) : DATE_FIELDS.includes(k) ? brDate(v) || '—' : v || '—')
   const tabs = [['updated', 'Atualizados', diff.updated.length], ['added', 'Novos', diff.added.length], ...(preview.replace ? [['removed', 'Removidos', diff.removed.length]] : [])]
 
   return (
@@ -816,7 +1033,7 @@ function ImportPreview({ preview, diff, onToggleReplace, onCancel, onConfirm }) 
           <span className="w-9 h-9 rounded-xl bg-id-mid/15 text-id-dark dark:text-id-light flex items-center justify-center"><FileSpreadsheet size={18} /></span>
           <div className="min-w-0 flex-1">
             <div className="font-display font-semibold text-[15px]">Conferir importação</div>
-            <div className="text-[11.5px] text-[var(--tx3)] truncate">{preview.fileName} · aba “{preview.sheet}” · {preview.rows.length} linha(s) lidas{preview.skipped ? ` · ${preview.skipped} ignorada(s) sem mês/valor` : ''}</div>
+            <div className="text-[11.5px] text-[var(--tx3)] truncate">{preview.fileName} · aba “{preview.sheet}” · {preview.rows.length.toLocaleString('pt-BR')} lançamento(s) lidos{preview.skipped ? ` · ${preview.skipped.toLocaleString('pt-BR')} linha(s) sem mês ou sem nenhum valor ignoradas` : ''}</div>
           </div>
           <button onClick={onCancel} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:bg-[var(--sur2)]"><X size={16} /></button>
         </div>
@@ -847,7 +1064,7 @@ function ImportPreview({ preview, diff, onToggleReplace, onCancel, onConfirm }) 
         <div className="flex-1 overflow-y-auto px-5 py-3 min-h-[160px]">
           {tab === 'updated' && diff.updated.slice(0, 200).map(({ row, changes }) => (
             <div key={row.id} className="py-2 border-b border-[var(--bdr)]/60 last:border-0">
-              <div className="text-[12px] font-medium truncate">{row.fundo} <span className="font-mono text-[var(--tx3)] font-normal">· {row.mesRef}</span></div>
+              <div className="text-[12px] font-medium truncate">{row.fundo} <span className="font-mono text-[var(--tx3)] font-normal">· {row.mesRef}{row.ajuste ? ' · ' + row.ajuste : ''}</span></div>
               <div className="flex flex-wrap gap-1.5 mt-1">
                 {changes.map((c) => (
                   <span key={c.field} className="text-[11px] rounded-md bg-[var(--sur2)] px-1.5 py-0.5">
@@ -878,7 +1095,7 @@ function ImportPreview({ preview, diff, onToggleReplace, onCancel, onConfirm }) 
         </div>
 
         <div className="px-5 py-3.5 border-t border-[var(--bdr)] flex items-center gap-2">
-          <span className="text-[11.5px] text-[var(--tx3)] mr-auto">{nothing ? 'A planilha não traz nenhuma mudança.' : 'A alteração aparece na hora para toda a equipe.'}</span>
+          <span className="text-[11.5px] text-[var(--tx3)] mr-auto">{nothing ? 'A planilha não traz nenhuma mudança — a base já está igual.' : 'Nada é duplicado: o que já existe e está igual fica como está, o que mudou é atualizado.'}</span>
           <button onClick={onCancel} className="btn">Cancelar</button>
           <button onClick={onConfirm} disabled={nothing} className="btn btn-primary"><CheckCircle2 size={14} /> Aplicar planilha</button>
         </div>

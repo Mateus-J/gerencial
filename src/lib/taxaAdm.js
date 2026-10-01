@@ -4,11 +4,23 @@
 import * as XLSX from 'xlsx'
 
 export const STATUS = ['PAGO', 'PENDENTE']
+// As 5 taxas que compõem a receita — guardadas separadas em cada lançamento
+export const TAXAS = [
+  { key: 'adm', label: 'ADM', color: '#8FB352' },
+  { key: 'custodia', label: 'Custódia', color: '#38bdf8' },
+  { key: 'controladoria', label: 'Controladoria', color: '#a78bfa' },
+  { key: 'escrituracao', label: 'Escrituração', color: '#f59e0b' },
+  { key: 'distribuicao', label: 'Distribuição', color: '#2dd4bf' },
+]
+export const TAXA_KEYS = TAXAS.map((t) => t.key)
+const NUM_FIELDS = ['val', 'saldo', ...TAXA_KEYS]
 // Campos que a planilha/edição pode preencher em cada lançamento
-export const FIELDS = ['fundo', 'gestor', 'classif', 'cnpj', 'conta', 'mesRef', 'status', 'val', 'vencimento', 'dataPagamento', 'obs']
+export const FIELDS = ['fundo', 'gestor', 'classif', 'cnpj', 'conta', 'mesRef', 'ajuste', 'status', 'val', ...TAXA_KEYS, 'dataReceita', 'vencimento', 'dataPagamento', 'saldo', 'obs']
 // Campos que só sobrescrevem o valor existente se vierem preenchidos na planilha
 // (pra uma reimportação não apagar observação/data digitada à mão no site).
-const SOFT_FIELDS = ['gestor', 'classif', 'cnpj', 'conta', 'vencimento', 'dataPagamento', 'obs']
+const SOFT_FIELDS = ['gestor', 'classif', 'cnpj', 'conta', 'dataReceita', 'vencimento', 'dataPagamento', 'obs']
+const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100
+export const sumTaxas = (r) => round2(TAXA_KEYS.reduce((a, k) => a + (Number(r[k]) || 0), 0))
 
 export const onlyDigits = (s) => (s || '').toString().replace(/\D/g, '')
 export const norm = (s) => (s || '').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
@@ -75,10 +87,27 @@ export function ensureIds(rows) {
 }
 
 // Remove `undefined` (o Firestore rejeita a gravação inteira se aparecer um)
+// e deixa de fora campos vazios/zerados pra manter os documentos pequenos.
 export function cleanRow(r) {
   const out = {}
-  Object.entries(r).forEach(([k, v]) => { if (v !== undefined && !k.startsWith('_')) out[k] = v })
-  out.val = Number(out.val) || 0
+  Object.entries(r).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === '' || k.startsWith('_')) return
+    if (NUM_FIELDS.includes(k)) { v = round2(v); if (!v && k !== 'val') return }
+    out[k] = v
+  })
+  out.val = round2(out.val)
+  return out
+}
+
+// ---- armazenamento por mês ----
+// A base inteira não cabe num documento só do Firestore (limite de 1 MB), então
+// cada mês de referência vira um documento `controle/taxa_adm__AAAA_MM`, e o
+// `controle/taxa_adm` guarda só a lista de meses e quem alterou por último.
+export const SHARD_PREFIX = 'taxa_adm__'
+export const shardOf = (mesRef) => (/^\d{2}\.\d{4}$/.test(mesRef || '') ? mesRef.slice(3) + '_' + mesRef.slice(0, 2) : 'sem_mes')
+export function partition(rows) {
+  const out = {}
+  rows.forEach((r) => { (out[shardOf(r.mesRef)] ||= []).push(r) })
   return out
 }
 
@@ -118,93 +147,152 @@ export function parseWorkbook(buffer) {
   }
   const col = (fallback, kws, exclude) => { const i = findCol(kws, exclude); return i >= 0 ? i : fallback }
   const idx = {
+    dataReceita: col(0, ['data da receita']),
+    vencimento: col(1, ['data prevista', 'vencimento']),
+    adm: col(2, ['receita: adm', 'adm'], ['data']),
+    custodia: col(3, ['custodia']),
+    controladoria: col(4, ['controladoria']),
+    distribuicao: col(5, ['distribui']),
+    escrituracao: col(6, ['escritura']),
     fundo: col(7, ['a que se refere', 'despesa paga', 'nome do fundo', 'fundo'], ['conta', 'cnpj']),
+    conta: col(8, ['conta do fundo', 'conta']),
     gestor: col(9, ['gestor']),
     classif: col(10, ['classifica']),
     cnpj: col(11, ['cnpj']),
-    conta: col(8, ['conta do fundo', 'conta']),
     val: col(12, ['valor total', 'valor']),
+    saldo: findCol(['saldo']),
+    obs: findCol(['observ', 'obs']),
+    dataPagamento: col(16, ['data de pgto', 'pgto', 'data do pagamento', 'data pagamento', 'data de pagamento', 'pago em']),
     status: col(17, ['status', 'situacao']),
     mesRef: col(18, ['mes referencia', 'mes ref', 'competencia', 'referencia']),
-    vencimento: findCol(['vencimento']),
-    dataPagamento: findCol(['data do pagamento', 'data pagamento', 'data de pagamento', 'pago em', 'dt pagamento']),
-    obs: findCol(['observ', 'obs']),
+    ajuste: findCol(['ajuste']),
   }
   const get = (r, k) => (idx[k] >= 0 ? r[idx[k]] : '')
+  const txt = (r, k) => String(get(r, k) ?? '').trim()
+
+  // Algumas linhas vêm sem o nome do fundo, só com CNPJ — usa o nome que
+  // aparece em outra linha com o mesmo CNPJ.
+  const nameByCnpj = {}
+  raw.slice(hdrIdx + 1).forEach((r) => { const c = onlyDigits(get(r, 'cnpj')); const f = txt(r, 'fundo'); if (c && f && !nameByCnpj[c]) nameByCnpj[c] = f })
 
   const rows = []
   let skipped = 0
   raw.slice(hdrIdx + 1).forEach((r) => {
-    const fundo = String(get(r, 'fundo') || '').trim()
-    if (!fundo) return
-    const mesRef = toMesRef(get(r, 'mesRef'))
-    const val = parseNum(get(r, 'val'))
-    if (!mesRef || val <= 0) { skipped++; return }
+    const cnpj = txt(r, 'cnpj')
+    const fundo = txt(r, 'fundo') || nameByCnpj[onlyDigits(cnpj)] || ''
+    if (!fundo && !onlyDigits(cnpj)) return
+    // Mês de referência: quando a coluna traz um texto (ex.: "CORREÇÃO
+    // REGULAMENTO"), o lançamento é um ajuste — o texto vira o "ajuste" e o
+    // mês sai da data da receita / prevista / pagamento.
+    const mesCell = get(r, 'mesRef')
+    let mesRef = toMesRef(mesCell)
+    let ajuste = txt(r, 'ajuste')
+    if (!mesRef) {
+      if (!ajuste && String(mesCell).trim()) ajuste = String(mesCell).trim()
+      mesRef = toMesRef(get(r, 'dataReceita')) || toMesRef(get(r, 'vencimento')) || toMesRef(get(r, 'dataPagamento'))
+    }
+    const taxas = {}
+    TAXA_KEYS.forEach((k) => { taxas[k] = round2(parseNum(get(r, k))) })
+    const soma = sumTaxas(taxas)
+    let val = round2(parseNum(get(r, 'val')))
+    if (val <= 0 && soma > 0) val = soma
+    if (!mesRef || (val <= 0 && soma <= 0)) { skipped++; return }
     const dataPagamento = toISODate(get(r, 'dataPagamento'))
+    const saldoCell = get(r, 'saldo')
     rows.push({
-      fundo,
-      gestor: String(get(r, 'gestor') || '').trim(),
-      classif: String(get(r, 'classif') || '').trim(),
-      cnpj: String(get(r, 'cnpj') || '').trim(),
-      conta: String(get(r, 'conta') || '').trim(),
+      fundo: fundo || 'CNPJ ' + cnpj,
+      gestor: txt(r, 'gestor').replace(/^0$/, ''),
+      classif: txt(r, 'classif').replace(/^0$/, ''),
+      cnpj,
+      conta: txt(r, 'conta').replace(/^0$/, ''),
       mesRef,
+      ajuste,
       status: normStatus(get(r, 'status'), dataPagamento),
-      val: Math.round(val * 100) / 100,
+      val,
+      ...taxas,
+      dataReceita: toISODate(get(r, 'dataReceita')),
       vencimento: toISODate(get(r, 'vencimento')),
       dataPagamento,
-      obs: String(get(r, 'obs') || '').trim(),
+      saldo: typeof saldoCell === 'number' ? round2(saldoCell) : 0,
+      obs: txt(r, 'obs').replace(/^0$/, ''),
     })
   })
   return { rows, skipped, sheet: wb.SheetNames[0] }
 }
 
-export const TEMPLATE_HEADERS = ['Fundo', 'Gestor', 'Classificação', 'CNPJ', 'Conta do Fundo', 'Mês Referência', 'Valor Total', 'Status', 'Vencimento', 'Data Pagamento', 'Observação']
+export const TEMPLATE_HEADERS = ['Data da receita', 'Data prevista do recebimento', 'ADM', 'Custódia', 'Controladoria', 'Distribuição', 'Escrituração', 'Fundo', 'Conta do Fundo', 'Gestor', 'Classificação', 'CNPJ do Fundo', 'Valor Total', 'Saldos', 'Observação', 'Data de pgto', 'Status', 'Mês Referência', 'Ajuste']
 
 export function rowsToSheetData(rows) {
   return rows.map((r) => ({
-    Fundo: r.fundo, Gestor: r.gestor || '', 'Classificação': r.classif || '', CNPJ: r.cnpj || '', 'Conta do Fundo': r.conta || '',
-    'Mês Referência': r.mesRef, 'Valor Total': Number(r.val) || 0, Status: r.status,
-    Vencimento: brDate(r.vencimento), 'Data Pagamento': brDate(r.dataPagamento), 'Observação': r.obs || '',
+    'Data da receita': brDate(r.dataReceita), 'Data prevista do recebimento': brDate(r.vencimento),
+    ADM: Number(r.adm) || 0, 'Custódia': Number(r.custodia) || 0, Controladoria: Number(r.controladoria) || 0,
+    'Distribuição': Number(r.distribuicao) || 0, 'Escrituração': Number(r.escrituracao) || 0,
+    Fundo: r.fundo, 'Conta do Fundo': r.conta || '', Gestor: r.gestor || '', 'Classificação': r.classif || '', 'CNPJ do Fundo': r.cnpj || '',
+    'Valor Total': Number(r.val) || 0, Saldos: Number(r.saldo) || 0, 'Observação': r.obs || '',
+    'Data de pgto': brDate(r.dataPagamento), Status: r.status, 'Mês Referência': r.mesRef, Ajuste: r.ajuste || '',
   }))
 }
 
-const keyByFundo = (r) => norm(r.fundo) + '|' + (r.mesRef || '')
-const keyByCnpj = (r) => (onlyDigits(r.cnpj) ? onlyDigits(r.cnpj) + '|' + (r.mesRef || '') : null)
+// Identidade de um lançamento: fundo + CNPJ + mês (+ o tipo de ajuste, quando
+// for uma correção lançada no mesmo mês).
+const tag = (r) => (r.mesRef || '') + '|' + norm(r.ajuste)
+const keyFull = (r) => onlyDigits(r.cnpj) + '|' + norm(r.fundo) + '|' + tag(r)
+const keyCnpj = (r) => (onlyDigits(r.cnpj) ? onlyDigits(r.cnpj) + '|' + tag(r) : null)
+const keyNome = (r) => norm(r.fundo) + '|' + tag(r)
 
-// Aplica as linhas da planilha sobre a base atual: atualiza quem já existe
-// (mesmo CNPJ+mês, ou mesmo nome+mês) e inclui o resto. Devolve também o
-// resumo das mudanças para a pré-visualização.
+const same = (f, a, b) => (NUM_FIELDS.includes(f) ? Math.abs(round2(a) - round2(b)) < 0.005 : String(a ?? '') === String(b ?? ''))
+
+// Aplica as linhas da planilha sobre a base atual sem nunca duplicar:
+//  - o que já existe e está igual fica como está;
+//  - o que existe e mudou é atualizado (só os campos diferentes);
+//  - o que não existe é incluído.
+// A busca é em 3 passadas: fundo+CNPJ+mês, depois só CNPJ+mês (fundo que mudou
+// de nome) e por último só nome+mês (linha sem CNPJ). Se a mesma chave aparece
+// N vezes na planilha, casa com as N primeiras da base — reimportar o mesmo
+// arquivo nunca cria nada novo.
 export function mergeImport(existing, incoming, { replace = false, who = '' } = {}) {
-  const byCnpj = new Map()
-  const byFundo = new Map()
-  existing.forEach((r, i) => {
-    const kc = keyByCnpj(r); if (kc && !byCnpj.has(kc)) byCnpj.set(kc, i)
-    const kf = keyByFundo(r); if (!byFundo.has(kf)) byFundo.set(kf, i)
+  const used = new Set()
+  const match = new Array(incoming.length).fill(-1)
+  const passes = [keyFull, keyCnpj, keyNome]
+  passes.forEach((keyFn) => {
+    const pool = new Map()
+    existing.forEach((r, i) => {
+      if (used.has(i)) return
+      const k = keyFn(r); if (!k) return
+      if (!pool.has(k)) pool.set(k, [])
+      pool.get(k).push(i)
+    })
+    incoming.forEach((nr, j) => {
+      if (match[j] >= 0) return
+      const k = keyFn(nr); if (!k) return
+      const list = pool.get(k)
+      while (list && list.length) {
+        const i = list.shift()
+        if (!used.has(i)) { used.add(i); match[j] = i; break }
+      }
+    })
   })
+
   const merged = [...existing]
-  const touched = new Set()
   const added = []
   const updated = []
   let unchanged = 0
   const now = Date.now()
 
-  incoming.forEach((nr) => {
-    const kc = keyByCnpj(nr)
-    let i = kc && byCnpj.has(kc) ? byCnpj.get(kc) : undefined
-    if (i === undefined && byFundo.has(keyByFundo(nr))) i = byFundo.get(keyByFundo(nr))
-    if (i === undefined || touched.has(i)) {
+  incoming.forEach((nr, j) => {
+    const i = match[j]
+    if (i < 0) {
       const row = { id: newId(), ...nr, updatedAt: now, updatedBy: who }
       merged.push(row); added.push(row)
       return
     }
-    touched.add(i)
     const old = merged[i]
     const next = { ...old }
     const changes = []
     FIELDS.forEach((f) => {
       const v = nr[f]
       if (SOFT_FIELDS.includes(f) && (v === '' || v === undefined)) return
-      if (f === 'val' ? Math.abs((Number(old.val) || 0) - v) > 0.004 : (old[f] ?? '') !== v) {
+      if (!same(f, old[f], v)) {
         changes.push({ field: f, from: old[f] ?? '', to: v })
         next[f] = v
       }
@@ -219,9 +307,8 @@ export function mergeImport(existing, incoming, { replace = false, who = '' } = 
   let removed = []
   let result = merged
   if (replace) {
-    const existingCount = existing.length
-    removed = existing.filter((_, i) => !touched.has(i))
-    result = merged.filter((r, i) => i >= existingCount || touched.has(i))
+    removed = existing.filter((_, i) => !used.has(i))
+    result = merged.filter((_, i) => i >= existing.length || used.has(i))
   }
   return { rows: result, added, updated, unchanged, removed }
 }
