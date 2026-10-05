@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
-import { Upload, Download, Trash2, Plus, Info, X } from 'lucide-react'
-import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  PieChart, Pie, Cell,
-} from 'recharts'
+import { Upload, Download, Trash2, Plus, Info, X, CheckCircle2, Clock } from 'lucide-react'
+import { StackedTimeChart, DonutChart } from '../components/charts/Charts'
+import { useChartTheme, STATUS_COLORS } from '../components/charts/theme'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { useToast } from '../components/Toast'
@@ -17,7 +15,6 @@ const DOC_REF = () => doc(db, 'controle', 'fip_taxas')
 // Cadastro dos FIPs (CNPJ → Administrador/Custodiante/Gestor/Situação) — é
 // o que define quem realmente cobra custódia/administração de cada fundo.
 const CADASTRO_REF = () => doc(db, 'controle', 'fip_cadastro')
-const FIP_C = ['#8FB352', '#38bdf8', '#a78bfa', '#f59e0b', '#2dd4bf', '#f87171', '#0ea5e9', '#84cc16', '#ec4899', '#eab308']
 
 const norm = (s) => (s || '').toString().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 const onlyDigits = (s) => (s || '').toString().replace(/\D/g, '')
@@ -60,6 +57,7 @@ function parseNum(v) {
 
 export default function FipTaxa({ campo, title }) {
   const toast = useToast()
+  const chartTheme = useChartTheme()
   const [parsed, setParsed] = useState(null)
   const [cadastro, setCadastro] = useState({})
   const [cadastroImportedAt, setCadastroImportedAt] = useState(null)
@@ -385,7 +383,9 @@ export default function FipTaxa({ campo, title }) {
   }
   const topDevedores = agg('fundo', 'PENDENTE')
   const topPagadores = agg('fundo', 'PAGO')
-  const situacaoDist = agg('situacaoFundo').filter((c) => c.name)
+  const situacaoAll = agg('situacaoFundo').filter((c) => c.name)
+  const situacaoDist = situacaoAll.length > 6 ? [...situacaoAll.slice(0, 5), { name: 'Outros', value: situacaoAll.slice(5).reduce((a, c) => a + c.value, 0) }] : situacaoAll
+  const flow = monthly.map((m) => ({ mes: m.mes, pago: m.pago, pend: Math.max(0, m.total - m.pago) }))
 
   return (
     <div>
@@ -468,29 +468,14 @@ export default function FipTaxa({ campo, title }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
-        <Card className="p-4 lg:col-span-2 h-[280px]">
-          <div className="text-[11px] font-medium text-[var(--tx3)] mb-2">Evolução mensal</div>
-          <ResponsiveContainer width="100%" height="90%">
-            <LineChart data={monthly}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2e38" />
-              <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#64748b' }} />
-              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={fFmt} />
-              <Tooltip formatter={(v) => fFull(v)} contentStyle={{ background: '#171a21', border: '1px solid #2a2e38', fontSize: 12 }} />
-              <Line type="monotone" dataKey="total" stroke="#8FB352" strokeWidth={2.5} dot={{ r: 2 }} />
-              <Line type="monotone" dataKey="pago" stroke="#38bdf8" strokeWidth={2} dot={{ r: 2 }} />
-            </LineChart>
-          </ResponsiveContainer>
+        <Card className="p-4 lg:col-span-2">
+          <div className="text-[13px] font-semibold font-display mb-1">Evolução mensal</div>
+          <StackedTimeChart id="fipflow" data={flow} format={fFull} height={260} selected={mode === 'mes' ? selMes : ''} onSelect={(m) => { setSelMes(m); setMode('mes') }}
+            series={[{ key: 'pago', label: 'Recebido', color: STATUS_COLORS.good, icon: CheckCircle2 }, { key: 'pend', label: 'Em aberto', color: STATUS_COLORS.warning, icon: Clock }]} />
         </Card>
-        <Card className="p-4 h-[280px]">
-          <div className="text-[11px] font-medium text-[var(--tx3)] mb-2">Por situação do fundo</div>
-          <ResponsiveContainer width="100%" height="90%">
-            <PieChart>
-              <Pie data={situacaoDist} dataKey="value" nameKey="name" innerRadius={45} outerRadius={70}>
-                {situacaoDist.map((_, i) => <Cell key={i} fill={FIP_C[i % FIP_C.length]} />)}
-              </Pie>
-              <Tooltip formatter={(v) => fFull(v)} contentStyle={{ background: '#171a21', border: '1px solid #2a2e38', fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
+        <Card className="p-4">
+          <div className="text-[13px] font-semibold font-display mb-1">Por situação do fundo</div>
+          <DonutChart data={situacaoDist} colors={chartTheme.series} format={fFmt} />
         </Card>
       </div>
 

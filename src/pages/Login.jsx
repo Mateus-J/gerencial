@@ -87,18 +87,24 @@ export default function Login() {
   }
 
   return (
-    <div className="h-screen w-screen flex items-center justify-center bg-[var(--bg)]">
+    <div className="h-screen w-screen flex items-center justify-center">
       <div className="w-full max-w-[380px] px-6">
-        <div className="flex items-center gap-0.5 justify-center mb-8">
-          <img src={logoId} alt="ID" className="w-11 h-11 object-contain" />
-          <span className="font-display font-semibold text-[17px]">Gerencial Liquidação</span>
+        <div className="flex flex-col items-center gap-3 mb-8">
+          <div className="relative w-14 h-14 rounded-2xl glass flex items-center justify-center">
+            <div className="absolute inset-0 rounded-2xl bg-id-light/20 blur-xl" />
+            <img src={logoId} alt="ID" className="relative w-8 h-8 object-contain" />
+          </div>
+          <div className="text-center">
+            <div className="font-display font-semibold text-[19px] tracking-tight">Gerencial Liquidação</div>
+            <div className="text-[10.5px] font-mono uppercase tracking-[.25em] text-[var(--tx3)] mt-1">ID · Serviços Financeiros</div>
+          </div>
         </div>
 
         {logoutReason && mode !== 'blocked' && (
           <p className="text-[11.5px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3 text-center">{logoutReason}</p>
         )}
 
-        <div className="bg-[var(--sur)] border border-[var(--bdr)] rounded-xl p-6 shadow-card">
+        <div className="glass rounded-2xl p-6">
           {mode === 'blocked' ? (
             <div className="text-center py-2">
               <Clock size={26} className="mx-auto text-[var(--tx4)] mb-3" />
@@ -115,7 +121,7 @@ export default function Login() {
               <label className="block text-[11px] text-[var(--tx3)] mb-1">Código de 6 dígitos</label>
               <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[16px] tracking-[6px] text-center outline-none focus:border-id-mid" autoFocus />
               {error && <p className="text-[11.5px] text-red-400 mt-2">{error}</p>}
-              <button disabled={busy} type="submit" className="w-full bg-id-dark hover:bg-id-mid rounded-lg py-2.5 text-[13px] font-medium mt-4 disabled:opacity-50">
+              <button disabled={busy} type="submit" className="btn btn-primary w-full justify-center py-2.5 text-[13px] mt-4 disabled:opacity-50">
                 {busy ? 'Confirmando…' : 'Confirmar e entrar'}
               </button>
             </form>
@@ -126,7 +132,7 @@ export default function Login() {
               <p className="text-[12px] text-[var(--tx3)] mb-4">Digite o código de 6 dígitos do seu app autenticador.</p>
               <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[16px] tracking-[6px] text-center outline-none focus:border-id-mid" autoFocus />
               {error && <p className="text-[11.5px] text-red-400 mt-2">{error}</p>}
-              <button disabled={busy} type="submit" className="w-full bg-id-dark hover:bg-id-mid rounded-lg py-2.5 text-[13px] font-medium mt-4 disabled:opacity-50">
+              <button disabled={busy} type="submit" className="btn btn-primary w-full justify-center py-2.5 text-[13px] mt-4 disabled:opacity-50">
                 {busy ? 'Verificando…' : 'Entrar'}
               </button>
             </form>
@@ -148,7 +154,7 @@ export default function Login() {
 
               {error && <p className="text-[11.5px] text-red-400 mt-2">{error}</p>}
 
-              <button disabled={busy} type="submit" className="w-full bg-id-dark hover:bg-id-mid rounded-lg py-2.5 text-[13px] font-medium mt-4 disabled:opacity-50">
+              <button disabled={busy} type="submit" className="btn btn-primary w-full justify-center py-2.5 text-[13px] mt-4 disabled:opacity-50">
                 {busy ? 'Entrando…' : 'Entrar'}
               </button>
 
@@ -175,7 +181,7 @@ export default function Login() {
 
               {error && <p className="text-[11.5px] text-red-400 mt-2">{error}</p>}
 
-              <button disabled={busy} type="submit" className="w-full bg-id-dark hover:bg-id-mid rounded-lg py-2.5 text-[13px] font-medium mt-4 disabled:opacity-50">
+              <button disabled={busy} type="submit" className="btn btn-primary w-full justify-center py-2.5 text-[13px] mt-4 disabled:opacity-50">
                 {busy ? 'Enviando…' : 'Solicitar acesso'}
               </button>
 

@@ -39,7 +39,7 @@ function PresenceAvatars({ users }) {
 
 export default function Topbar({ title, subtitle, status, dark, onToggleDark, search, onSearch, presence = [] }) {
   return (
-    <header className="h-[60px] shrink-0 border-b border-[var(--bdr)] bg-[var(--sur)]/70 backdrop-blur-xl flex items-center gap-3 px-6 sticky top-0 z-20">
+    <header className="h-[60px] shrink-0 border-b border-[var(--bdr)] bg-[var(--glass)] backdrop-blur-xl flex items-center gap-3 px-6 sticky top-0 z-20">
       <div className="min-w-0 flex items-center gap-2 text-[12.5px]">
         {subtitle && <span className="text-[var(--tx3)] truncate hidden sm:inline">{subtitle}</span>}
         {subtitle && <span className="text-[var(--tx4)] hidden sm:inline">/</span>}

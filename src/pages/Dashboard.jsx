@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'
 import { Plus, X, Building2, AlertTriangle, History as HistoryIcon, Info } from 'lucide-react'
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts'
+import { StackedTimeChart } from '../components/charts/Charts'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import KpiCard from '../components/KpiCard'
@@ -192,22 +192,12 @@ export default function Dashboard() {
 
       {weeklyData.some((w) => w.concluidas > 0) && (
         <Card className="p-4 mb-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--tx3)] mb-2">
-            <HistoryIcon size={12} /> Concluídas por semana (últimas 8 semanas)
+          <div className="flex items-center gap-1.5 text-[13px] font-semibold font-display mb-2">
+            <HistoryIcon size={13} className="text-id-light" /> Concluídas por semana <span className="text-[11px] font-sans font-normal text-[var(--tx3)]">· últimas 8 semanas</span>
           </div>
-          <div className="h-[140px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--bdr)" vertical={false} />
-                <XAxis dataKey="semana" tick={{ fontSize: 10, fill: 'var(--tx3)' }} axisLine={false} tickLine={false} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: 'var(--tx3)' }} axisLine={false} tickLine={false} width={24} />
-                <Tooltip contentStyle={{ background: 'var(--sur)', border: '1px solid var(--bdr)', fontSize: 12, borderRadius: 8 }} />
-                <Bar dataKey="concluidas" name="Concluídas" radius={[4, 4, 0, 0]}>
-                  {weeklyData.map((_, i) => <Cell key={i} fill="#8FB352" />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+<StackedTimeChart id="wk" kind="bar" xKey="semana" data={weeklyData} height={170} keep={99}
+            series={[{ key: 'concluidas', label: 'Concluídas', color: '#8FB352' }]}
+            format={(v) => Math.round(v) + (Math.round(v) === 1 ? ' concluída' : ' concluídas')} yFormat={(v) => Math.round(v)} />
         </Card>
       )}
 

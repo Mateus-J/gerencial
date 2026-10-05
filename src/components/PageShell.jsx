@@ -3,11 +3,11 @@ export function PageHeader({ eyebrow, title, description, meta, actions }) {
     <div className="flex flex-wrap items-end justify-between gap-3 mb-5 animate-fade-up">
       <div className="min-w-0">
         {eyebrow && (
-          <div className="text-[10.5px] font-semibold tracking-[.16em] uppercase text-id-dark dark:text-id-light mb-1">
-            {eyebrow}
+          <div className="flex items-center gap-2 text-[10.5px] font-mono font-medium tracking-[.22em] uppercase text-id-dark dark:text-id-light mb-1.5">
+            <span className="w-4 h-px bg-current opacity-70" />{eyebrow}
           </div>
         )}
-        <h2 className="font-display text-[22px] font-semibold tracking-tight">{title}</h2>
+        <h2 className="font-display text-[26px] font-semibold tracking-tight bg-gradient-to-r from-[var(--tx)] to-[var(--tx2)] bg-clip-text text-transparent">{title}</h2>
         {description && <p className="text-[12.5px] text-[var(--tx3)] mt-0.5">{description}</p>}
         {meta && <div className="mt-2">{meta}</div>}
       </div>
@@ -18,7 +18,7 @@ export function PageHeader({ eyebrow, title, description, meta, actions }) {
 
 export function Card({ children, className = '', ...rest }) {
   return (
-    <div className={`bg-[var(--sur)] border border-[var(--bdr)] rounded-2xl shadow-card ${className}`} {...rest}>
+    <div className={`glass rounded-2xl ${className}`} {...rest}>
       {children}
     </div>
   )

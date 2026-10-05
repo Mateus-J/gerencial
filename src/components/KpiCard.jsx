@@ -1,3 +1,4 @@
+import AnimatedNumber from './AnimatedNumber'
 const ACCENTS = {
   neutral: 'border-[var(--bdr)]',
   amber: 'border-amber-500/40',
@@ -18,9 +19,9 @@ const VALUE_COLORS = {
 
 export default function KpiCard({ label, value, sub, accent = 'neutral' }) {
   return (
-    <div className={`flex-1 min-w-[150px] bg-[var(--sur)] border ${ACCENTS[accent]} rounded-2xl px-4 py-3.5 shadow-card transition-transform hover:-translate-y-0.5`}>
+    <div className={`glass flex-1 min-w-[150px] ${ACCENTS[accent]} rounded-2xl px-4 py-3.5 transition-transform hover:-translate-y-0.5`}>
       <div className="text-[10.5px] font-semibold tracking-widest uppercase text-[var(--tx3)]">{label}</div>
-      <div className={`font-display text-2xl font-semibold mt-1 ${VALUE_COLORS[accent]}`}>{value}</div>
+      <div className={`font-display text-[26px] font-semibold tracking-tight mt-1 ${VALUE_COLORS[accent]} ${accent !== 'neutral' ? 'glow-text' : ''}`}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : value}</div>
       {sub && <div className="text-[11px] text-[var(--tx3)] mt-0.5">{sub}</div>}
     </div>
   )
