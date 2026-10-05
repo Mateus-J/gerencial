@@ -51,7 +51,7 @@ const PAGES = {
 function AppShell() {
   const { currentUser, loading, logout } = useAuth()
   const [active, setActive] = useState('dashboard')
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024)
   const [dark, setDark] = useState(() => localStorage.getItem('gerencial_theme') === 'dark')
   const [search, setSearch] = useState('')
   const status = useFirebaseStatus()
@@ -145,8 +145,10 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
           onSearch={setSearch}
           presence={presence}
         />
-        <main className="flex-1 overflow-y-auto p-5">
-          {isBoard ? <Quadro slug={boardSlug} ownerName={boardOwnerName} /> : <Page />}
+        <main className="flex-1 overflow-y-auto">
+          <div key={active} className="mx-auto w-full max-w-[1680px] p-4 sm:p-6 animate-fade-up">
+            {isBoard ? <Quadro slug={boardSlug} ownerName={boardOwnerName} /> : <Page />}
+          </div>
         </main>
       </div>
       <PendReminderModal items={pendingItems} onClose={dismiss} />

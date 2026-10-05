@@ -1,22 +1,24 @@
-export function PageHeader({ eyebrow, title, actions }) {
+export function PageHeader({ eyebrow, title, description, meta, actions }) {
   return (
-    <div className="flex items-center justify-between mb-4">
-      <div>
+    <div className="flex flex-wrap items-end justify-between gap-3 mb-5 animate-fade-up">
+      <div className="min-w-0">
         {eyebrow && (
-          <div className="text-[10.5px] font-semibold tracking-widest uppercase text-id-light/80 mb-0.5">
+          <div className="text-[10.5px] font-semibold tracking-[.16em] uppercase text-id-dark dark:text-id-light mb-1">
             {eyebrow}
           </div>
         )}
-        <h2 className="font-display text-xl font-semibold">{title}</h2>
+        <h2 className="font-display text-[22px] font-semibold tracking-tight">{title}</h2>
+        {description && <p className="text-[12.5px] text-[var(--tx3)] mt-0.5">{description}</p>}
+        {meta && <div className="mt-2">{meta}</div>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   )
 }
 
 export function Card({ children, className = '', ...rest }) {
   return (
-    <div className={`bg-[var(--sur)] border border-[var(--bdr)] rounded-xl shadow-card ${className}`} {...rest}>
+    <div className={`bg-[var(--sur)] border border-[var(--bdr)] rounded-2xl shadow-card ${className}`} {...rest}>
       {children}
     </div>
   )
