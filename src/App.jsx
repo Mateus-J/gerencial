@@ -52,7 +52,7 @@ function AppShell() {
   const { currentUser, loading, logout } = useAuth()
   const [active, setActive] = useState('dashboard')
   const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024)
-  const [dark, setDark] = useState(() => localStorage.getItem('gerencial_theme') === 'dark')
+  const [dark, setDark] = useState(() => localStorage.getItem('gerencial_theme') !== 'light')
   const [search, setSearch] = useState('')
   const status = useFirebaseStatus()
 
@@ -62,7 +62,7 @@ function AppShell() {
   }, [dark])
 
   if (loading) {
-    return <div className="h-screen w-screen flex items-center justify-center bg-[var(--bg)] text-[var(--tx3)] text-[13px]">Carregando…</div>
+    return <div className="h-screen w-screen flex items-center justify-center text-[var(--tx3)] text-[13px]">Carregando…</div>
   }
   if (!currentUser) return <Login />
   if (currentUser.role === 'pending') return <PendingApproval />
@@ -121,7 +121,7 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
   }
 
   return (
-    <div className="h-screen w-screen flex bg-[var(--bg)] overflow-hidden">
+    <div className="h-screen w-screen flex overflow-hidden">
       <Sidebar
         active={active}
         onNavigate={setActive}

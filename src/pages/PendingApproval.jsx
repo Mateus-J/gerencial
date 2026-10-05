@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 export default function PendingApproval() {
   const { currentUser, logout } = useAuth()
   return (
-    <div className="h-screen w-screen flex items-center justify-center bg-[var(--bg)]">
+    <div className="h-screen w-screen flex items-center justify-center">
       <div className="w-full max-w-[360px] px-6 text-center">
         <div className="w-14 h-14 rounded-full bg-amber-500/15 flex items-center justify-center mx-auto mb-4">
           <Clock size={22} className="text-amber-400" />

@@ -66,7 +66,7 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
 
   return (
     <aside
-      className={`h-full shrink-0 bg-[var(--sur)]/80 backdrop-blur-xl border-r border-[var(--bdr)] flex flex-col transition-[width] duration-200 ${
+      className={`h-full shrink-0 bg-[var(--glass)] backdrop-blur-xl border-r border-[var(--bdr)] flex flex-col transition-[width] duration-200 ${
         collapsed ? 'w-[64px]' : 'w-[236px]'
       }`}
     >
@@ -89,7 +89,7 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
           return (
           <div key={group.group}>
             {!collapsed && (
-              <div className="px-2.5 mb-1.5 text-[9.5px] font-semibold tracking-[.14em] uppercase text-[var(--tx4)]">
+              <div className="px-2.5 mb-1.5 text-[9.5px] font-mono font-medium tracking-[.2em] uppercase text-[var(--tx4)]">
                 {group.group}
               </div>
             )}
@@ -106,11 +106,11 @@ export default function Sidebar({ active, onNavigate, counts = {}, user, collaps
                     className={`group relative w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[12.5px] transition-colors
                       ${collapsed ? 'justify-center' : ''}
                       ${isActive
-                        ? 'bg-gradient-to-r from-id-mid/20 to-id-mid/5 text-id-dark dark:text-id-light font-medium'
+                        ? 'bg-gradient-to-r from-id-light/20 via-id-mid/10 to-transparent text-id-dark dark:text-id-light font-medium shadow-[inset_0_0_0_1px_rgba(143,179,82,.18)]'
                         : 'text-[var(--tx2)] hover:bg-[var(--sur2)] hover:text-[var(--tx)]'}`}
                   >
-                    {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-id-light" />}
-                    <Icon size={16} strokeWidth={isActive ? 2.2 : 1.8} className="shrink-0" />
+                    {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-id-light shadow-[0_0_10px_2px_rgba(143,179,82,.7)]" />}
+                    <Icon size={16} strokeWidth={isActive ? 2.2 : 1.8} className={`shrink-0 ${isActive ? 'drop-shadow-[0_0_6px_rgba(143,179,82,.8)]' : ''}`} />
                     {!collapsed && <span className="truncate flex-1 text-left">{item.label}</span>}
                     {!collapsed && count > 0 && (
                       <span className="text-[10px] font-mono bg-id-mid/30 text-id-light px-1.5 py-0.5 rounded-full">

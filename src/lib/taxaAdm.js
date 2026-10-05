@@ -6,11 +6,11 @@ import * as XLSX from 'xlsx'
 export const STATUS = ['PAGO', 'PENDENTE']
 // As 5 taxas que compõem a receita — guardadas separadas em cada lançamento
 export const TAXAS = [
-  { key: 'adm', label: 'ADM', color: '#8FB352' },
-  { key: 'custodia', label: 'Custódia', color: '#38bdf8' },
-  { key: 'controladoria', label: 'Controladoria', color: '#a78bfa' },
-  { key: 'escrituracao', label: 'Escrituração', color: '#f59e0b' },
-  { key: 'distribuicao', label: 'Distribuição', color: '#2dd4bf' },
+  { key: 'adm', label: 'ADM', color: '#6a9f3c' },
+  { key: 'custodia', label: 'Custódia', color: '#3987e5' },
+  { key: 'controladoria', label: 'Controladoria', color: '#d95926' },
+  { key: 'escrituracao', label: 'Escrituração', color: '#9085e9' },
+  { key: 'distribuicao', label: 'Distribuição', color: '#d55181' },
 ]
 export const TAXA_KEYS = TAXAS.map((t) => t.key)
 const NUM_FIELDS = ['val', 'saldo', ...TAXA_KEYS]

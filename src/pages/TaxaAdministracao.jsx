@@ -5,14 +5,13 @@ import {
   Upload, Download, Trash2, Plus, Pencil, X, CheckCircle2, Clock, AlertCircle, Search,
   FileSpreadsheet, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Building2, Users, Wallet,
 } from 'lucide-react'
-import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell,
-} from 'recharts'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
-import { useIsDark, chartTheme } from '../hooks/useIsDark'
+import { useChartTheme, STATUS_COLORS } from '../components/charts/theme'
+import { StackedTimeChart, DonutChart, Sparkline } from '../components/charts/Charts'
+import AnimatedNumber from '../components/AnimatedNumber'
 import {
   ensureIds, cleanRow, recalc, parseWorkbook, mergeImport, newId, parseNum, onlyDigits, norm, sortKey,
   fmtShort, fmtFull, brDate, todayISO, rowsToSheetData, TEMPLATE_HEADERS, TAXAS, TAXA_KEYS, sumTaxas,
@@ -23,7 +22,6 @@ const DOC_REF = () => doc(db, 'controle', 'taxa_adm')
 const SHARD_REF = (id) => doc(db, 'controle', SHARD_PREFIX + id)
 const FIP_DOC_REF = () => doc(db, 'controle', 'fip_taxas')
 const FIP_CADASTRO_REF = () => doc(db, 'controle', 'fip_cadastro')
-const PALETTE = ['#8FB352', '#38bdf8', '#a78bfa', '#f59e0b', '#2dd4bf', '#f87171', '#0ea5e9', '#84cc16', '#ec4899', '#eab308']
 const PAGE_SIZE = 50
 const FIELD_LABEL = {
   fundo: 'Fundo', gestor: 'Gestor', classif: 'Classificação', cnpj: 'CNPJ', conta: 'Conta', mesRef: 'Mês',
@@ -55,7 +53,8 @@ export default function TaxaAdministracao() {
   const toast = useToast()
   const { currentUser } = useAuth()
   const who = currentUser?.name || currentUser?.username || ''
-  const ct = chartTheme(useIsDark())
+  const chart = useChartTheme()
+  const TX = TAXAS.map((t, i) => ({ ...t, color: chart.series[i] }))
 
   const [meta, setMeta] = useState(null) // controle/taxa_adm (lista de meses, quem alterou…)
   const [shardRows, setShardRows] = useState({}) // { 'AAAA_MM': [lançamentos] }
@@ -427,11 +426,21 @@ export default function TaxaAdministracao() {
   const topDevedores = agg('fundo', (r) => r.status !== 'PAGO').slice(0, 6)
   const topGestores = agg('gestor').filter((g) => g.name !== '—' && g.name !== '0').slice(0, 6)
   const clsAll = agg('classif').filter((c) => c.name !== '—' && c.name !== '0')
-  const clsDist = clsAll.length > 7 ? [...clsAll.slice(0, 6), { name: 'Outros', value: clsAll.slice(6).reduce((a, c) => a + c.value, 0) }] : clsAll
-  const chartMonths = mo.slice(-14)
+  // Rosca: até 5 classificações com cor própria, o resto vira "Outros" (cinza)
+  const clsDist = clsAll.length > 6 ? [...clsAll.slice(0, 5), { name: 'Outros', value: clsAll.slice(5).reduce((a, c) => a + c.value, 0) }] : clsAll
+  // Fluxo mensal respeitando os filtros (exceto o mês, que vira o destaque)
+  const flowMonthly = (() => {
+    const m = {}
+    filteredAllMes.forEach((r) => {
+      const e = (m[r.mesRef] ||= { mes: r.mesRef, pago: 0, pend: 0 })
+      if (r.status === 'PAGO') e.pago += r.val; else e.pend += r.val
+    })
+    return Object.values(m).sort((a, b) => sortKey(a.mes) - sortKey(b.mes))
+  })()
+  const spark = flowMonthly.slice(-12).map((m) => ({ mes: m.mes, v: m.pago + m.pend }))
 
   // ---- base segregada por taxa ----
-  const taxTotals = TAXAS.map((t) => ({ ...t, value: filtered.reduce((a, r) => a + (Number(r[t.key]) || 0), 0) }))
+  const taxTotals = TX.map((t) => ({ ...t, value: filtered.reduce((a, r) => a + (Number(r[t.key]) || 0), 0) }))
   const taxSum = taxTotals.reduce((a, t) => a + t.value, 0)
   const taxMonthly = (() => {
     const m = {}
@@ -439,22 +448,21 @@ export default function TaxaAdministracao() {
       const e = (m[r.mesRef] ||= { mes: r.mesRef })
       TAXA_KEYS.forEach((k) => { e[k] = (e[k] || 0) + (Number(r[k]) || 0) })
     })
-    return Object.values(m).sort((a, b) => sortKey(a.mes) - sortKey(b.mes)).slice(-14)
+    return Object.values(m).sort((a, b) => sortKey(a.mes) - sortKey(b.mes))
   })()
 
   const selectedIds = [...selected]
   const allPageSelectable = pageRows.filter((r) => !r._fromFip)
   const allPageChecked = allPageSelectable.length > 0 && allPageSelectable.every((r) => selected.has(r.id))
-
-  const tip = { contentStyle: { background: ct.tipBg, border: `1px solid ${ct.tipBdr}`, borderRadius: 12, fontSize: 12, color: ct.tipTx }, labelStyle: { color: ct.tipTx }, itemStyle: { color: ct.tipTx } }
+  const money = (v) => fmtFull(v)
 
   return (
     <div>
       <PageHeader eyebrow="Operacional" title="Taxa de Administração" meta={liveMeta} actions={headerActions} />
 
-      <div className="inline-flex p-1 mb-3 rounded-xl bg-[var(--sur2)] border border-[var(--bdr)]">
+      <div className="inline-flex p-1 mb-3 rounded-xl glass">
         {[['geral', 'Visão geral'], ['taxas', 'Base segregada por taxa']].map(([k, l]) => (
-          <button key={k} onClick={() => setView(k)} className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${view === k ? 'bg-[var(--sur)] text-[var(--tx)] shadow-card' : 'text-[var(--tx3)] hover:text-[var(--tx)]'}`}>{l}</button>
+          <button key={k} onClick={() => setView(k)} className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${view === k ? 'bg-gradient-to-r from-id-light/25 to-id-mid/10 text-[var(--tx)] shadow-[inset_0_0_0_1px_rgba(143,179,82,.35),0_0_16px_-4px_rgba(143,179,82,.5)]' : 'text-[var(--tx3)] hover:text-[var(--tx)]'}`}>{l}</button>
         ))}
       </div>
 
@@ -492,41 +500,29 @@ export default function TaxaAdministracao() {
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
             {taxTotals.map((t) => (
               <Card key={t.key} className="p-0">
-                <button onClick={() => setFTaxa(fTaxa === t.key ? '' : t.key)} className={`w-full h-full text-left px-4 py-3.5 rounded-2xl transition-colors hover:bg-[var(--sur2)]/40 ${fTaxa === t.key ? 'ring-2 ring-id-mid/50' : ''}`}>
+                <button onClick={() => setFTaxa(fTaxa === t.key ? '' : t.key)} className={`w-full h-full text-left px-4 py-3.5 rounded-2xl transition-all hover:bg-[var(--sur2)]/40 ${fTaxa === t.key ? 'ring-1 ring-id-light/60 shadow-[0_0_24px_-6px_rgba(143,179,82,.6)]' : ''}`}>
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: t.color }} />
-                    <span className="text-[10.5px] font-semibold tracking-widest uppercase text-[var(--tx3)]">{t.label}</span>
+                    <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: t.color, boxShadow: `0 0 10px ${t.color}` }} />
+                    <span className="text-[10px] font-mono font-medium tracking-[.16em] uppercase text-[var(--tx3)]">{t.label}</span>
                   </div>
-                  <div className="font-display text-[18px] font-semibold tracking-tight mt-2">{fmtShort(t.value)}</div>
+                  <div className="font-display text-[20px] font-semibold tracking-tight mt-2"><AnimatedNumber value={t.value} format={fmtShort} /></div>
                   <div className="text-[11px] text-[var(--tx3)]">{taxSum ? ((t.value / taxSum) * 100).toFixed(1).replace('.', ',') : '0'}% das taxas</div>
-                  <div className="h-1 mt-2 rounded-full bg-[var(--sur2)] overflow-hidden"><div className="h-full rounded-full" style={{ width: (taxSum ? (t.value / taxSum) * 100 : 0) + '%', background: t.color }} /></div>
+                  <div className="h-1 mt-2 rounded-full bg-[var(--sur2)] overflow-hidden"><div className="h-full rounded-full grow-x" style={{ width: (taxSum ? (t.value / taxSum) * 100 : 0) + '%', background: t.color, boxShadow: `0 0 10px ${t.color}` }} /></div>
                 </button>
               </Card>
             ))}
             <Card className="px-4 py-3.5">
-              <div className="text-[10.5px] font-semibold tracking-widest uppercase text-[var(--tx3)]">Soma das taxas</div>
-              <div className="font-display text-[18px] font-semibold tracking-tight mt-2">{fmtShort(taxSum)}</div>
+              <div className="text-[10px] font-mono font-medium tracking-[.16em] uppercase text-[var(--tx3)]">Soma das taxas</div>
+              <div className="font-display text-[20px] font-semibold tracking-tight mt-2"><AnimatedNumber value={taxSum} format={fmtShort} /></div>
               <div className="text-[11px] text-[var(--tx3)]">Total cobrado {fmtShort(total)}</div>
             </Card>
           </div>
           <Card className="p-4 mb-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div className="text-[12.5px] font-semibold">Taxas por mês</div>
-              <div className="flex flex-wrap gap-3 text-[11px] text-[var(--tx3)]">
-                {TAXAS.map((t) => <span key={t.key} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: t.color }} />{t.label}</span>)}
-              </div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+              <div className="text-[13px] font-semibold font-display">Taxas por mês</div>
+              <div className="text-[11px] text-[var(--tx3)]">Clique numa barra para filtrar o mês · arraste a barra de baixo para navegar</div>
             </div>
-            <div className="h-[260px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={taxMonthly} barCategoryGap="22%">
-                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
-                  <XAxis dataKey="mes" tick={{ fontSize: 10.5, fill: ct.axis }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10.5, fill: ct.axis }} tickFormatter={(v) => fmtShort(v).replace('R$ ', '')} axisLine={false} tickLine={false} width={48} />
-                  <Tooltip formatter={(v, n) => [fmtFull(v), TAXAS.find((t) => t.key === n)?.label || n]} cursor={{ fill: ct.grid, opacity: 0.5 }} {...tip} />
-                  {TAXAS.map((t, i) => <Bar key={t.key} dataKey={t.key} stackId="t" fill={t.color} radius={i === TAXAS.length - 1 ? [4, 4, 0, 0] : 0} onClick={(d) => setSelMes(d?.payload?.mes ?? d?.mes ?? '')} className="cursor-pointer" />)}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <StackedTimeChart id="tx" kind="bar" data={taxMonthly} series={TX} format={money} height={300} selected={selMes} onSelect={(m) => setSelMes(selMes === m ? '' : m)} />
           </Card>
         </>
       )}
@@ -536,8 +532,9 @@ export default function TaxaAdministracao() {
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] gap-3 mb-3">
         <Card className="p-5 relative overflow-hidden">
           <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-id-light/10 blur-2xl" />
-          <div className="text-[10.5px] font-semibold tracking-widest uppercase text-[var(--tx3)]">Total cobrado · {selMes || 'período completo'}</div>
-          <div className="font-display text-[30px] font-semibold tracking-tight mt-1">{fmtFull(total)}</div>
+          <div className="text-[10px] font-mono font-medium tracking-[.16em] uppercase text-[var(--tx3)]">Total cobrado · {selMes || 'período completo'}</div>
+          <div className="font-display text-[30px] leading-tight font-semibold tracking-tight mt-1 whitespace-nowrap"><AnimatedNumber value={total} format={fmtFull} /></div>
+          {spark.length > 2 && <div className="mt-1 -mx-1"><Sparkline id="sp-total" data={spark} height={40} /></div>}
           <div className="mt-3">
             <div className="flex justify-between text-[11px] text-[var(--tx3)] mb-1.5">
               <span>{pct.toFixed(1).replace('.', ',')}% recebido</span>
@@ -549,12 +546,12 @@ export default function TaxaAdministracao() {
               )}
             </div>
             <div className="h-2 rounded-full bg-[var(--sur2)] overflow-hidden flex">
-              <div className="h-full bg-gradient-to-r from-id-mid to-id-light transition-all duration-500" style={{ width: pct + '%' }} />
+              <div className="h-full bg-gradient-to-r from-id-mid to-id-light transition-all duration-700 sweep shadow-[0_0_12px_rgba(143,179,82,.8)]" style={{ width: pct + '%' }} />
             </div>
           </div>
         </Card>
-        <StatCard icon={CheckCircle2} tone="green" label="Recebido" value={fmtFull(pago)} sub={`${filtered.length - countPend} lançamento(s) pagos`} />
-        <StatCard icon={Clock} tone={pend > 0 ? 'amber' : 'neutral'} label="Em aberto" value={fmtFull(pend)} sub={vencido > 0 ? `${fmtShort(vencido)} vencido` : `${countPend} lançamento(s) pendentes`} onClick={() => setFStatus(fStatus === 'PENDENTE' ? '' : 'PENDENTE')} />
+        <StatCard icon={CheckCircle2} tone="green" label="Recebido" value={<AnimatedNumber value={pago} format={fmtFull} />} sub={`${filtered.length - countPend} lançamento(s) pagos`} />
+        <StatCard icon={Clock} tone={pend > 0 ? 'amber' : 'neutral'} label="Em aberto" value={<AnimatedNumber value={pend} format={fmtFull} />} sub={vencido > 0 ? `${fmtShort(vencido)} vencido` : `${countPend} lançamento(s) pendentes`} onClick={() => setFStatus(fStatus === 'PENDENTE' ? '' : 'PENDENTE')} />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <MiniStat icon={Building2} label="Fundos" value={fundosU} />
@@ -566,47 +563,26 @@ export default function TaxaAdministracao() {
       {/* Gráficos */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 mb-4">
         <Card className="p-4 xl:col-span-2">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-[12.5px] font-semibold">Evolução mensal</div>
-            <div className="flex gap-3 text-[11px] text-[var(--tx3)]">
-              <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#8FB352]" />Recebido</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#f59e0b]" />Em aberto</span>
-            </div>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+            <div className="text-[13px] font-semibold font-display">Evolução mensal</div>
+            <div className="text-[11px] text-[var(--tx3)]">Clique no gráfico para filtrar o mês · arraste a barra de baixo para navegar</div>
           </div>
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartMonths} barCategoryGap="22%">
-                <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 10.5, fill: ct.axis }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10.5, fill: ct.axis }} tickFormatter={(v) => fmtShort(v).replace("R$ ", "")} axisLine={false} tickLine={false} width={48} />
-                <Tooltip formatter={(v, n) => [fmtFull(v), n === 'pago' ? 'Recebido' : 'Em aberto']} cursor={{ fill: ct.grid, opacity: 0.5 }} {...tip} />
-                <Bar dataKey="pago" stackId="a" fill="#8FB352" radius={[0, 0, 4, 4]} onClick={(d) => setSelMes(d?.payload?.mes ?? d?.mes ?? "")} className="cursor-pointer" />
-                <Bar dataKey="pend" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} onClick={(d) => setSelMes(d?.payload?.mes ?? d?.mes ?? "")} className="cursor-pointer" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <StackedTimeChart
+            id="flow"
+            data={flowMonthly}
+            series={[
+              { key: 'pago', label: 'Recebido', color: STATUS_COLORS.good, icon: CheckCircle2 },
+              { key: 'pend', label: 'Em aberto', color: STATUS_COLORS.warning, icon: Clock },
+            ]}
+            format={money}
+            height={300}
+            selected={selMes}
+            onSelect={(m) => setSelMes(selMes === m ? '' : m)}
+          />
         </Card>
         <Card className="p-4">
-          <div className="text-[12.5px] font-semibold mb-2">Por classificação</div>
-          <div className="h-[150px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={clsDist} dataKey="value" nameKey="name" innerRadius={44} outerRadius={68} paddingAngle={2} stroke="none">
-                  {clsDist.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-                </Pie>
-                <Tooltip formatter={(v) => fmtFull(v)} {...tip} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="space-y-1 mt-2">
-            {clsDist.map((c, i) => (
-              <button key={c.name} onClick={() => c.name !== 'Outros' && setFClassif(fClassif === c.name ? '' : c.name)} className="w-full flex items-center gap-2 text-[11.5px] hover:bg-[var(--sur2)] rounded-md px-1 py-0.5">
-                <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
-                <span className="truncate flex-1 text-left text-[var(--tx2)]">{c.name}</span>
-                <span className="font-mono text-[var(--tx3)]">{total ? ((c.value / total) * 100).toFixed(0) : 0}%</span>
-              </button>
-            ))}
-          </div>
+          <div className="text-[13px] font-semibold font-display mb-1">Por classificação</div>
+          <DonutChart data={clsDist} colors={chart.series} format={fmtShort} onPick={(n) => n !== 'Outros' && setFClassif(fClassif === n ? '' : n)} />
         </Card>
       </div>
 
@@ -771,9 +747,9 @@ function StatCard({ icon: Icon, tone = 'neutral', label, value, sub, onClick }) 
       <Tag onClick={onClick} className="w-full h-full text-left p-5 rounded-2xl transition-colors hover:bg-[var(--sur2)]/40">
         <div className="flex items-center gap-2">
           <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.icon}`}><Icon size={15} /></span>
-          <span className="text-[10.5px] font-semibold tracking-widest uppercase text-[var(--tx3)]">{label}</span>
+          <span className="text-[10px] font-mono font-medium tracking-[.16em] uppercase text-[var(--tx3)]">{label}</span>
         </div>
-        <div className={`font-display text-[22px] font-semibold tracking-tight mt-3 ${t.value}`}>{value}</div>
+        <div className={`font-display text-[24px] font-semibold tracking-tight mt-3 glow-text ${t.value}`}>{value}</div>
         {sub && <div className="text-[11.5px] text-[var(--tx3)] mt-0.5">{sub}</div>}
       </Tag>
     </Card>
@@ -808,7 +784,7 @@ function RankCard({ title, tone, items, empty, onPick }) {
               <span className={`font-mono ${TONES[tone].value}`}>{fmtShort(f.value)}</span>
             </div>
             <div className="h-1.5 mt-1 rounded-full bg-[var(--sur2)] overflow-hidden">
-              <div className={`h-full rounded-full ${TONES[tone].bar}`} style={{ width: Math.max(3, (f.value / max) * 100) + '%' }} />
+              <div className={`h-full rounded-full grow-x ${TONES[tone].bar}`} style={{ width: Math.max(3, (f.value / max) * 100) + '%', boxShadow: '0 0 10px currentColor' }} />
             </div>
           </button>
         ))}
