@@ -12,7 +12,7 @@
 //
 // Segurança: o navegador só diz QUAIS fundos de QUAL mês enviar. O destino
 // (e-mail do canal cadastrado), o texto (modelo + dados da base) e o registro
-// do envio são resolvidos aqui no servidor, a partir do Firestore. Assim quem
+// do envio (1 por fundo em cada competência) são resolvidos aqui no servidor, a partir do Firestore. Assim quem
 // chamar este endereço por fora não consegue escolher destinatário nem
 // escrever o conteúdo. A chave do Brevo nunca vai para o navegador.
 import { groupByFund, renderMessage, DEFAULT_TEMPLATE } from '../../src/lib/slackNotify.js'
@@ -20,7 +20,6 @@ import { groupByFund, renderMessage, DEFAULT_TEMPLATE } from '../../src/lib/slac
 const FIREBASE = { apiKey: 'AIzaSyAUcVEYwdeq1sfo6P8q8JIodgu0J-akJgI', projectId: 'id-liquidacao' }
 const FS = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents`
 const MAX_KEYS = 50
-const COOLDOWN_MS = 5 * 60 * 1000 // mesmo fundo/mês: no máximo 1 envio a cada 5 min
 // Mesmo nome de documento que o site usa (AAAA_MM)
 const shardOf = (mesRef) => mesRef.slice(3) + '_' + mesRef.slice(0, 2)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -135,7 +134,8 @@ export async function onRequestPost({ request, env }) {
     if (!f) { results.push({ id, ok: false, error: 'Fundo não encontrado nesse mês' }); continue }
     if (!to) { results.push({ id, ok: false, error: 'Canal não cadastrado' }); continue }
     if (!EMAIL_RE.test(to) || !allowedDomain(to, env)) { results.push({ id, ok: false, error: 'Canal fora dos domínios permitidos' }); continue }
-    if (prev?.via === 'brevo' && now - Number(prev.at || 0) < COOLDOWN_MS) { results.push({ id, ok: false, error: 'Enviado há poucos minutos' }); continue }
+    // Cada fundo recebe 1 envio automático por competência
+    if (prev?.via === 'brevo') { results.push({ id, ok: false, error: 'Já enviado nesta competência' }); continue }
     if (lastHour >= maxHour) { results.push({ id, ok: false, error: 'Limite de envios por hora atingido' }); continue }
     const msg = renderMessage(template, f)
     try {
