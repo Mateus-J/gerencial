@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 import { Upload, Download, Trash2, Plus, Info, X, CheckCircle2, Clock } from 'lucide-react'
 import { StackedTimeChart, DonutChart } from '../components/charts/Charts'
 import { useChartTheme, STATUS_COLORS } from '../components/charts/theme'
+import AnimatedNumber from '../components/AnimatedNumber'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { useToast } from '../components/Toast'
@@ -442,7 +443,7 @@ export default function FipTaxa({ campo, title }) {
         <Card className="p-4 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-[3px] bg-id-mid" />
           <div className="text-[10.5px] uppercase text-[var(--tx3)]">Total {campo === 'custodia' ? 'Custódia' : 'Administração'} · {mode === 'mes' ? selMes : 'Período Filtrado'}</div>
-          <div className="font-display text-[32px] font-semibold mt-1">{fFull(total)}</div>
+          <div className="font-display text-[32px] font-semibold mt-1"><AnimatedNumber value={total} format={fFull} /></div>
           <div className="flex gap-3 mt-2 items-baseline text-[12px]">
             <span className={parseFloat(growth) >= 0 ? 'text-id-light' : 'text-red-400'}>{parseFloat(growth) >= 0 ? '↑' : '↓'} {Math.abs(growth)}%</span>
             <span className="text-[var(--tx3)]">vs. {prev ? prev.mes : 'mês anterior'}</span>
@@ -450,21 +451,21 @@ export default function FipTaxa({ campo, title }) {
         </Card>
         <Card className="p-4">
           <div className="text-[10.5px] uppercase text-id-light">✓ Recebido</div>
-          <div className="font-display text-2xl font-semibold text-id-light mt-1">{fFmt(pago)}</div>
+          <div className="font-display text-2xl font-semibold text-id-light mt-1"><AnimatedNumber value={pago} format={fFmt} /></div>
           <div className="text-[11px] text-[var(--tx3)] mt-1">{pct}% do total cobrado</div>
         </Card>
         <Card className="p-4">
           <div className={`text-[10.5px] uppercase ${pend > 0 ? 'text-red-400' : 'text-[var(--tx3)]'}`}>Em Aberto</div>
-          <div className={`font-display text-2xl font-semibold mt-1 ${pend > 0 ? 'text-red-400' : 'text-[var(--tx3)]'}`}>{fFmt(pend)}</div>
+          <div className={`font-display text-2xl font-semibold mt-1 ${pend > 0 ? 'text-red-400' : 'text-[var(--tx3)]'}`}><AnimatedNumber value={pend} format={fFmt} /></div>
           <div className="text-[11px] text-[var(--tx3)] mt-1">{(100 - pct).toFixed(1)}% pendente</div>
         </Card>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Fundos no período</div><div className="font-display text-lg font-semibold">{fundosU}</div></Card>
-        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Gestores ativos</div><div className="font-display text-lg font-semibold">{gestU}</div></Card>
-        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">% Recebido</div><div className={`font-display text-lg font-semibold ${pct >= 90 ? 'text-id-light' : pct >= 75 ? 'text-amber-400' : 'text-red-400'}`}>{pct}%</div></Card>
-        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Ticket médio/fundo</div><div className="font-display text-lg font-semibold">{fundosU > 0 ? fFmt(total / fundosU) : '—'}</div></Card>
+        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Fundos no período</div><div className="font-display text-lg font-semibold"><AnimatedNumber value={fundosU} /></div></Card>
+        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Gestores ativos</div><div className="font-display text-lg font-semibold"><AnimatedNumber value={gestU} /></div></Card>
+        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">% Recebido</div><div className={`font-display text-lg font-semibold ${pct >= 90 ? 'text-id-light' : pct >= 75 ? 'text-amber-400' : 'text-red-400'}`}><AnimatedNumber value={pct} format={(v) => v.toFixed(2) + '%'} /></div></Card>
+        <Card className="p-3"><div className="text-[10px] text-[var(--tx3)] uppercase">Ticket médio/fundo</div><div className="font-display text-lg font-semibold">{fundosU > 0 ? <AnimatedNumber value={total / fundosU} format={fFmt} /> : '—'}</div></Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">

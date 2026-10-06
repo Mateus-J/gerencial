@@ -218,6 +218,15 @@ body::before {
 @keyframes donut-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
 .donut-slice { transform-box: fill-box; transform-origin: center; animation: donut-in .6s cubic-bezier(.22,.8,.24,1) both; }
 
+/* Gráficos de linha/coluna com o mesmo comportamento fluido da rosca:
+   colunas acendem/esmaecem com transição, a linha-guia e o ponto ativo
+   deslizam até o mês em vez de pular. */
+.chart-fluid .recharts-bar-rectangle { transition: opacity .3s ease; }
+.chart-fluid .recharts-bar-rectangle path { transition: fill .3s ease, filter .3s ease; }
+.chart-fluid .recharts-tooltip-cursor { transition: d .22s cubic-bezier(.22,.8,.24,1), x .22s cubic-bezier(.22,.8,.24,1); }
+.chart-fluid .recharts-active-dot circle { transition: cx .22s cubic-bezier(.22,.8,.24,1), cy .22s cubic-bezier(.22,.8,.24,1); }
+.chart-fluid .recharts-legend-item, .chart-fluid .recharts-area-area, .chart-fluid .recharts-area-curve { transition: opacity .3s ease; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

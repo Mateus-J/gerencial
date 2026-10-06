@@ -2,9 +2,9 @@
 // brilho, lavagem em gradiente, barras finas (máx. 24px) com ponta arredondada,
 // grade em fio, tooltip de vidro, legenda que liga/desliga séries e barra de
 // zoom embaixo para navegar pelo período.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ResponsiveContainer, ComposedChart, AreaChart, BarChart, Cell, Area, Bar, Line, XAxis, YAxis,
+  ResponsiveContainer, ComposedChart, AreaChart, BarChart, Area, Bar, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Brush, ReferenceLine,
 } from 'recharts'
 import { NeonDefs, GlassTooltip, LegendToggle } from './ChartKit'
@@ -45,6 +45,17 @@ function ZoomBrush({ t, xKey, len, keep }) {
   )
 }
 
+// Esmaecimento por CSS: a coluna sob o ponteiro acende e as outras apagam com
+// transição (opacity), sem a biblioteca recriar as colunas.
+function BarFocus({ scope, id, api, selIdx }) {
+  const [active, setActive] = useState(-1)
+  useEffect(() => { api.current = setActive; return () => { api.current = null } }, [api])
+  const i = active >= 0 ? active : selIdx
+  if (i < 0) return null
+  const rect = `.${scope} .recharts-bar-rectangles .recharts-bar-rectangle`
+  return <style>{`${rect}{opacity:${active >= 0 ? 0.38 : 0.45}}${rect}:nth-child(${i + 1}){opacity:1}${rect}:nth-child(${i + 1}) path{filter:url(#${id}-glow) brightness(1.15)}`}</style>
+}
+
 /* Séries empilhadas ao longo do tempo, como área (fluxo) ou colunas.
    series: [{ key, label, color, icon? }] */
 export function StackedTimeChart({ data, xKey = 'mes', series, kind = 'area', format, yFormat, height = 300, keep = 14, selected, onSelect, id = 'stk', legend = series.length > 1 }) {
@@ -54,19 +65,27 @@ export function StackedTimeChart({ data, xKey = 'mes', series, kind = 'area', fo
   const names = Object.fromEntries(series.map((s) => [s.key, s.label]))
   const visible = series.filter((s) => !hidden.has(s.key))
   const click = (e) => { const x = e?.activeLabel ?? e?.activePayload?.[0]?.payload?.[xKey]; if (x && onSelect) onSelect(x) }
+  // Coluna sob o ponteiro: ela acende e as outras esmaecem (com transição)
+  // (o estado fica no BarFocus para o gráfico não re-renderizar a cada movimento)
+  const focus = useRef(null)
+  const track = (st) => { const i = st?.activeTooltipIndex; focus.current?.(i == null || i === '' ? -1 : Number(i)) }
   const tooltip = (
     <Tooltip
       cursor={kind === 'area' ? { stroke: t.cursor, strokeWidth: 1 } : { fill: t.band }}
-      content={<GlassTooltip format={format} names={names} footer={visible.length > 1 ? (rows) => <span className="flex justify-between gap-3"><span className="text-[var(--tx3)]">Total</span><span className="font-semibold tabular">{format(rows.reduce((a, r) => a + (Number(r.value) || 0), 0))}</span></span> : undefined} />}
+      isAnimationActive animationDuration={260} animationEasing="ease-out"
+      content={<GlassTooltip format={format} names={names} footer={visible.length > 1 ? (rows) => <span className="flex justify-between gap-3"><span className="text-[var(--tx3)]">Total</span><span className="font-semibold tabular"><AnimatedNumber value={rows.reduce((a, r) => a + (Number(r.value) || 0), 0)} format={format} duration={320} /></span></span> : undefined} />}
     />
   )
+  const scope = 'fx-' + id
+  const selIdx = selected ? data.findIndex((d) => d[xKey] === selected) : -1
   return (
     <div>
       {legend && <div className="mb-3"><LegendToggle items={series} hidden={hidden} onToggle={(k) => setHidden((h) => toggleIn(h, k))} shape={kind === 'area' ? 'line' : 'rect'} /></div>}
       <div style={{ height }}>
+        {kind !== 'area' && <BarFocus scope={scope} id={id} api={focus} selIdx={selIdx} />}
         <ResponsiveContainer width="100%" height="100%">
           {kind === 'area' ? (
-            <ComposedChart key={data.length} data={data} onClick={click} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} className="cursor-crosshair">
+            <ComposedChart key={data.length} data={data} onClick={click} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} className="cursor-crosshair chart-fluid">
               <NeonDefs id={id} colors={colors} />
               <Axes t={t} xKey={xKey} yFormat={yFormat} />
               {tooltip}
@@ -78,16 +97,14 @@ export function StackedTimeChart({ data, xKey = 'mes', series, kind = 'area', fo
               <ZoomBrush t={t} xKey={xKey} len={data.length} keep={keep} />
             </ComposedChart>
           ) : (
-            <BarChart key={data.length} data={data} onClick={click} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="28%">
+            <BarChart key={data.length} data={data} onClick={click} onMouseMove={track} onMouseLeave={() => focus.current?.(-1)} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="28%" className={`chart-fluid ${scope}`}>
               <NeonDefs id={id} colors={colors} />
               <Axes t={t} xKey={xKey} yFormat={yFormat} />
               {tooltip}
               {visible.map((s, i) => (
                 <Bar key={s.key} dataKey={s.key} stackId="1" fill={`url(#${id}-${s.key}-bar)`} maxBarSize={24}
                   stroke={t.surface} strokeWidth={2} radius={i === visible.length - 1 ? [4, 4, 0, 0] : 0}
-                  activeBar={{ fill: s.color, filter: `url(#${id}-glow)` }} className="cursor-pointer" {...ANIM}>
-                  {selected && data.map((d) => <Cell key={d[xKey]} fillOpacity={d[xKey] === selected ? 1 : 0.45} />)}
-                </Bar>
+                  activeBar={false} className="cursor-pointer" {...ANIM} />
               ))}
               <ZoomBrush t={t} xKey={xKey} len={data.length} keep={keep} />
             </BarChart>
@@ -213,7 +230,7 @@ export function LinesChart({ data, xKey = 'mes', series, format, height = 240, k
           <ComposedChart key={data.length} data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <NeonDefs id={id} colors={colors} />
             <Axes t={t} xKey={xKey} />
-            <Tooltip cursor={{ stroke: t.cursor, strokeWidth: 1 }} content={<GlassTooltip format={format} names={names} />} />
+            <Tooltip cursor={{ stroke: t.cursor, strokeWidth: 1 }} isAnimationActive animationDuration={260} animationEasing="ease-out" content={<GlassTooltip format={format} names={names} />} />
             {series.filter((s) => !hidden.has(s.key)).map((s, i) => (
               i === 0
                 ? <Area key={s.key} type="monotone" dataKey={s.key} stroke={s.color} strokeWidth={2} fill={`url(#${id}-${s.key})`} filter={`url(#${id}-glow)`} dot={false} activeDot={{ r: 5, fill: s.color, stroke: t.surface, strokeWidth: 2 }} {...ANIM} />

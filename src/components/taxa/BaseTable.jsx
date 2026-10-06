@@ -4,6 +4,7 @@
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Clock, AlertCircle, Download, Trash2, Plus, X, Pencil, ChevronLeft, ChevronRight, Filter, FilterX } from 'lucide-react'
 import { brDate, sortKey, norm, fmtMoney, isOverdue } from '../../lib/taxaAdm'
+import AnimatedNumber from '../AnimatedNumber'
 
 const COLS = [
   { key: 'dataReceita', label: 'Data da receita', type: 'date' },
@@ -179,7 +180,7 @@ export default function BaseTable({
                 <td className="bg-[var(--sur)] border-t-2 border-[var(--bdr)]" />
                 {COLS.map((c) => (
                   <td key={c.key} className={`px-2 py-2.5 bg-[var(--sur)] border-t-2 border-[var(--bdr)] whitespace-nowrap ${NUMERIC.has(c.type) ? 'text-right font-mono' : 'text-[var(--tx3)]'}`}>
-                    {NUMERIC.has(c.type) ? fmtMoney(totals[c.key]) : c.key === 'fundo' ? `Total (${view.length.toLocaleString('pt-BR')})` : ''}
+                    {NUMERIC.has(c.type) ? <AnimatedNumber value={totals[c.key]} format={fmtMoney} duration={500} /> : c.key === 'fundo' ? <>Total (<AnimatedNumber value={view.length} duration={500} />)</> : ''}
                   </td>
                 ))}
                 <td className="bg-[var(--sur)] border-t-2 border-[var(--bdr)]" />
