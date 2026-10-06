@@ -127,9 +127,25 @@ function arcPath(a0, a1, rOut, rIn) {
   return `M${x0},${y0} A${rOut},${rOut} 0 ${large} 1 ${x1},${y1} L${x2},${y2} A${rIn},${rIn} 0 ${large} 0 ${x3},${y3} Z`
 }
 
-export function DonutChart({ data, format, colors, height = 190, onPick, centerLabel = 'Total' }) {
+// Ocupa o espaço que o card tiver (o card estica até a altura do vizinho): com
+// poucas categorias a rosca cresce, com muitas encolhe — sempre com transição.
+const DONUT_MIN = 150, DONUT_MAX = 300
+export function DonutChart({ data, format, colors, minSize = DONUT_MIN, maxSize = DONUT_MAX, onPick, centerLabel = 'Total' }) {
   const t = useChartTheme()
   const [hover, setHover] = useState(-1)
+  const area = useRef(null)
+  const [size, setSize] = useState(minSize)
+  useEffect(() => {
+    const el = area.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => {
+      const { width, height } = e.contentRect
+      setSize(Math.round(Math.max(110, Math.min(maxSize, width, height))))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [minSize, maxSize])
+  const k = size / DONUT_MIN // escala do texto do centro
   const total = data.reduce((a, d) => a + d.value, 0)
   const cur = hover >= 0 ? data[hover] : null
   const colorOf = (i, d) => (d.name === 'Outros' ? t.other : colors[i % colors.length])
@@ -147,9 +163,12 @@ export function DonutChart({ data, format, colors, height = 190, onPick, centerL
   const ease = 'cubic-bezier(.22,.8,.24,1)'
 
   return (
-    <div>
-      <div className="relative flex items-center justify-center" style={{ height }} onMouseLeave={() => setHover(-1)}>
-        <svg viewBox={`-10 -10 ${DONUT.size + 20} ${DONUT.size + 20}`} className="h-full overflow-visible" role="img" aria-label="Distribuição por classificação">
+    <div className="h-full flex flex-col">
+      {/* a rosca fica por cima (absolute) para não empurrar a altura do card */}
+      <div ref={area} className="relative flex-1 min-h-[220px] lg:min-h-[var(--donut-min)]" style={{ '--donut-min': `${minSize}px` }} onMouseLeave={() => setHover(-1)}>
+        <div className="absolute inset-0 flex items-center justify-center">
+        <svg viewBox={`-10 -10 ${DONUT.size + 20} ${DONUT.size + 20}`} className="overflow-visible" role="img" aria-label="Distribuição por classificação"
+          style={{ width: size, height: size, transition: `width .5s ${ease}, height .5s ${ease}` }}>
           {slices.map(({ d, path, dx, dy }, i) => {
             const on = hover === i
             const dim = hover >= 0 && !on
@@ -175,21 +194,23 @@ export function DonutChart({ data, format, colors, height = 190, onPick, centerL
             )
           })}
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-16">
-          <div key={cur ? cur.name : '_total'} className="text-[9.5px] font-mono uppercase tracking-[.18em] text-[var(--tx3)] truncate max-w-full animate-fade-up">{cur ? cur.name : centerLabel}</div>
-          <div className="font-display text-[15px] font-semibold tracking-tight tabular"><AnimatedNumber value={cur ? cur.value : total} format={format} duration={450} /></div>
+        </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+          <div key={cur ? cur.name : '_total'} className="font-mono uppercase tracking-[.18em] text-[var(--tx3)] truncate animate-fade-up" style={{ fontSize: Math.min(12, 9.5 * k), maxWidth: size * 0.55 }}>{cur ? cur.name : centerLabel}</div>
+          <div className="font-display font-semibold tracking-tight tabular" style={{ fontSize: Math.min(24, 15 * k), transition: 'font-size .5s ease' }}><AnimatedNumber value={cur ? cur.value : total} format={format} duration={450} /></div>
           <div className="text-[11px] text-[var(--tx3)] h-4 transition-opacity duration-300" style={{ opacity: cur ? 1 : 0 }}>
             {cur ? `${total ? ((cur.value / total) * 100).toFixed(1).replace('.', ',') : 0}%` : ''}
           </div>
         </div>
       </div>
-      <div className="space-y-0.5 mt-2">
+      <div className="space-y-0.5 mt-2 shrink-0">
         {data.map((d, i) => (
-          <button key={d.name} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} onFocus={() => setHover(i)} onBlur={() => setHover(-1)} onClick={() => onPick?.(d.name)}
-            className={`w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 transition-all duration-300 ${hover === i ? 'bg-[var(--sur2)] translate-x-1' : 'hover:bg-[var(--sur2)]'} ${hover >= 0 && hover !== i ? 'opacity-60' : ''}`}>
+          <button key={d.name} style={{ animationDelay: `${i * 40}ms` }} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} onFocus={() => setHover(i)} onBlur={() => setHover(-1)} onClick={() => onPick?.(d.name)}
+            className={`animate-fade-up w-full flex items-center gap-2 text-[11.5px] rounded-md px-1.5 py-1 transition-all duration-300 ${hover === i ? 'bg-[var(--sur2)] translate-x-1' : 'hover:bg-[var(--sur2)]'} ${hover >= 0 && hover !== i ? 'opacity-60' : ''}`}>
             <span className="w-2.5 h-2.5 rounded-[3px] shrink-0 transition-shadow duration-300" style={{ background: colorOf(i, d), boxShadow: hover === i ? `0 0 10px ${colorOf(i, d)}` : 'none' }} />
             <span className="truncate flex-1 text-left text-[var(--tx2)]">{d.name}</span>
-            <span className="font-mono text-[var(--tx3)] tabular">{total ? ((d.value / total) * 100).toFixed(0) : 0}%</span>
+            <span className="font-mono text-[var(--tx2)] tabular"><AnimatedNumber value={d.value} format={format} duration={450} /></span>
+            <span className="font-mono text-[var(--tx3)] tabular w-9 text-right">{total ? ((d.value / total) * 100).toFixed(0) : 0}%</span>
           </button>
         ))}
       </div>

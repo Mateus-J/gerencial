@@ -596,9 +596,9 @@ export default function TaxaAdministracao({ readOnly = false, search, onSearch }
             onSelect={(m) => setSelMes(selMes === m ? '' : m)}
           />
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 flex flex-col">
           <div className="text-[13px] font-semibold font-display mb-1">Por classificação</div>
-          <DonutChart data={clsDist} colors={chart.series} format={fmtShort} onPick={(n) => n !== 'Outros' && setFClassif(fClassif === n ? '' : n)} />
+          <div className="flex-1 min-h-0"><DonutChart data={clsDist} colors={chart.series} format={fmtShort} onPick={(n) => n !== 'Outros' && setFClassif(fClassif === n ? '' : n)} /></div>
         </Card>
       </div>
 

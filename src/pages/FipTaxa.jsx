@@ -474,9 +474,9 @@ export default function FipTaxa({ campo, title }) {
           <StackedTimeChart id="fipflow" data={flow} format={fFull} height={260} selected={mode === 'mes' ? selMes : ''} onSelect={(m) => { setSelMes(m); setMode('mes') }}
             series={[{ key: 'pago', label: 'Recebido', color: STATUS_COLORS.good, icon: CheckCircle2 }, { key: 'pend', label: 'Em aberto', color: STATUS_COLORS.warning, icon: Clock }]} />
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 flex flex-col">
           <div className="text-[13px] font-semibold font-display mb-1">Por situação do fundo</div>
-          <DonutChart data={situacaoDist} colors={chartTheme.series} format={fFmt} />
+          <div className="flex-1 min-h-0"><DonutChart data={situacaoDist} colors={chartTheme.series} format={fFmt} /></div>
         </Card>
       </div>
 
