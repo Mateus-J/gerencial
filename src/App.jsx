@@ -34,7 +34,7 @@ const PAGES = {
   dashboard: { component: Dashboard, title: 'Pendências', subtitle: 'Área Liquidação' },
   saldos: { component: Saldos, title: 'Saldos', subtitle: 'Conta lastros' },
   fundos: { component: Fundos, title: 'Fundos', subtitle: 'Base de referência' },
-  'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração', adminOnly: true },
+  'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração', adminOnly: true, search: true },
   'fip-custodia': { component: FipCustodia, title: 'Taxa de Custódia — FIPs' },
   'fip-administracao': { component: FipAdministracao, title: 'Taxa de Administração — FIPs' },
   'portal-saldos': { component: PortalSaldos, title: 'Portal Saldos' },
@@ -102,7 +102,7 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
   const roleLabel = { admin: 'Administrador', user: 'Equipe', consulta: 'Consulta' }[currentUser.role] || currentUser.role
 
   const isBoard = active.startsWith('board:')
-  let Page, title, subtitle, boardSlug, boardOwnerName
+  let Page, title, subtitle, boardSlug, boardOwnerName, searchable
 
   if (isBoard) {
     boardSlug = active.slice('board:'.length)
@@ -118,13 +118,14 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
     Page = page.component
     title = page.title
     subtitle = page.subtitle
+    searchable = !!page.search
   }
 
   return (
     <div className="h-screen w-screen flex overflow-hidden">
       <Sidebar
         active={active}
-        onNavigate={setActive}
+        onNavigate={(a) => { setSearch(''); setActive(a) }}
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         isAdmin={isAdmin}
@@ -142,12 +143,12 @@ function AppShellInner({ active, setActive, collapsed, setCollapsed, dark, setDa
           dark={dark}
           onToggleDark={() => setDark((d) => !d)}
           search={search}
-          onSearch={setSearch}
+          onSearch={searchable ? setSearch : undefined}
           presence={presence}
         />
         <main className="flex-1 overflow-y-auto">
           <div key={active} className="mx-auto w-full max-w-[1680px] p-4 sm:p-6 animate-fade-up">
-            {isBoard ? <Quadro slug={boardSlug} ownerName={boardOwnerName} /> : <Page />}
+            {isBoard ? <Quadro slug={boardSlug} ownerName={boardOwnerName} /> : <Page search={search} onSearch={setSearch} />}
           </div>
         </main>
       </div>

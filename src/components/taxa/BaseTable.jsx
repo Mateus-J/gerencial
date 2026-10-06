@@ -3,7 +3,7 @@
 // totais do que está filtrado e exportação.
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Clock, AlertCircle, Download, Trash2, Plus, X, Pencil, ChevronLeft, ChevronRight, Filter, FilterX } from 'lucide-react'
-import { brDate, sortKey, norm, fmtMoney, isOverdue } from '../../lib/taxaAdm'
+import { brDate, sortKey, norm, fmtMoney, isOverdue, onlyDigits } from '../../lib/taxaAdm'
 import AnimatedNumber from '../AnimatedNumber'
 
 const COLS = [
@@ -61,7 +61,9 @@ export default function BaseTable({
   const activeFilters = Object.entries(filters).filter(([, v]) => v)
   const view = useMemo(() => {
     const fs = Object.entries(filters).filter(([, v]) => v).map(([k, v]) => [COLS.find((c) => c.key === k), norm(v)])
-    const out = rows.filter((r) => fs.every(([c, v]) => (c.type === 'status' ? cellText(r, c) === v : norm(cellText(r, c)).includes(v))))
+    const out = rows.filter((r) => fs.every(([c, v]) => (c.type === 'status' ? cellText(r, c) === v
+      : c.key === 'cnpj' && onlyDigits(v) ? onlyDigits(r.cnpj).includes(onlyDigits(v)) // com ou sem pontuação
+      : norm(cellText(r, c)).includes(v))))
     out.sort((a, b) => compare(a, b, sort.key, sort.asc)
       || compare(a, b, 'mesRef', false) || compare(a, b, 'dataReceita', false) || compare(a, b, 'fundo', true))
     return out
