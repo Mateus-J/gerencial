@@ -9,7 +9,6 @@ const NUM_FIELDS = ['val', 'saldo', ...TAXA_KEYS]
 // Campos que só sobrescrevem o valor existente se vierem preenchidos na planilha
 // (pra uma reimportação não apagar observação/data digitada à mão no site).
 const SOFT_FIELDS = ['gestor', 'classif', 'cnpj', 'conta', 'dataReceita', 'vencimento', 'dataPagamento', 'obs']
-const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100
 
 // "1.234,56" / "1234.56" / 1234.56 → 1234.56
 export function parseNum(v) {
