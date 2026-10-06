@@ -260,3 +260,8 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be used within AuthProvider')
   return ctx
 }
+
+// Igual ao useAuth, mas sem exigir login (usado na página pública de consulta)
+export function useOptionalAuth() {
+  return useContext(AuthContext)
+}
