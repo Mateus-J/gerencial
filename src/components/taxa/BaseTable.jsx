@@ -19,8 +19,6 @@ const COLS = [
   { key: 'classif', label: 'Classificação', type: 'text' },
   { key: 'cnpj', label: 'CNPJ', type: 'text' },
   { key: 'val', label: 'Valor total', type: 'total' },
-  { key: 'saldo', label: 'Saldos', type: 'money' },
-  { key: 'obs', label: 'Observação', type: 'text' },
   { key: 'dataPagamento', label: 'Data de pgto', type: 'date' },
   { key: 'status', label: 'Status', type: 'status' },
   { key: 'mesRef', label: 'Mês referência', type: 'mes' },
@@ -116,7 +114,7 @@ export default function BaseTable({
       </div>
 
       <div className="overflow-auto max-h-[72vh]">
-        <table className="w-full text-left min-w-[2050px] border-separate border-spacing-0">
+        <table className="w-full text-left min-w-[1820px] border-separate border-spacing-0">
           <thead className="sticky top-0 z-10">
             <tr className="text-[10px] font-mono uppercase tracking-wider text-[var(--tx3)] bg-[var(--sur)]">
               <th className="pl-4 pr-1 py-2.5 w-8 border-b border-[var(--bdr)] bg-[var(--sur)]">
