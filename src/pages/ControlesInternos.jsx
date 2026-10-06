@@ -236,10 +236,10 @@ export default function ControlesInternos() {
       <p className="text-[11.5px] text-[var(--tx3)] -mt-2 mb-4">Fluxo de caixa e reembolsos</p>
 
       <div className="flex flex-wrap gap-3 mb-4">
-        <KpiCard label="Total débito" value={fmt(totalDebito)} sub="pago pela ID Corretora" accent="red" />
-        <KpiCard label="Total crédito" value={fmt(totalCredito)} sub="recebido / reembolsado" accent="green" />
-        <KpiCard label="Saldo" value={fmt(saldo)} sub={saldo >= 0 ? 'a favor' : 'a descoberto'} accent="blue" />
-        <KpiCard label="Pendente de recebimento" value={fmt(totalPendente)} sub={`${qtdPendente} em aberto`} accent={qtdPendente > 0 ? 'amber' : 'neutral'} />
+        <KpiCard label="Total débito" value={totalDebito} format={fmt} sub="pago pela ID Corretora" accent="red" />
+        <KpiCard label="Total crédito" value={totalCredito} format={fmt} sub="recebido / reembolsado" accent="green" />
+        <KpiCard label="Saldo" value={saldo} format={fmt} sub={saldo >= 0 ? 'a favor' : 'a descoberto'} accent="blue" />
+        <KpiCard label="Pendente de recebimento" value={totalPendente} format={fmt} sub={`${qtdPendente} em aberto`} accent={qtdPendente > 0 ? 'amber' : 'neutral'} />
       </div>
 
       <Card>

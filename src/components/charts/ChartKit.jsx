@@ -1,6 +1,8 @@
 // Peças compartilhadas dos gráficos (Recharts): cores validadas para os dois
 // temas, brilho, tooltip de vidro e legenda que liga/desliga séries.
 
+import AnimatedNumber from '../AnimatedNumber'
+
 // <defs> com gradiente (lavagem vertical) e brilho para cada cor usada.
 // Uso: <NeonDefs id="evo" colors={{ pago: '#0ca30c' }} /> dentro do gráfico,
 // depois fill={`url(#evo-pago)`} e filter="url(#evo-glow)".
@@ -33,13 +35,13 @@ export function GlassTooltip({ active, payload, label, format = (v) => v, labelF
   if (!active || !payload?.length) return null
   const rows = payload.filter((p) => p.value != null && !p.hide)
   return (
-    <div className="rounded-xl border border-[var(--bdr)] bg-[var(--sur)]/95 backdrop-blur-xl shadow-[var(--shadow-pop)] px-3 py-2.5 min-w-[180px] animate-fade-up">
-      <div className="text-[10px] font-mono uppercase tracking-[.18em] text-[var(--tx3)] mb-1.5">{labelFormat(label)}</div>
+    <div className="rounded-xl border border-[var(--bdr)] bg-[var(--sur)]/95 backdrop-blur-xl shadow-[var(--shadow-pop)] px-3 py-2.5 min-w-[200px] animate-fade-up">
+      <div key={label} className="text-[10px] font-mono uppercase tracking-[.18em] text-[var(--tx3)] mb-1.5 animate-fade-up">{labelFormat(label)}</div>
       <div className="space-y-1">
         {rows.map((p) => (
           <div key={p.dataKey} className="flex items-center gap-2">
             <span className="w-3 h-[3px] rounded-full shrink-0" style={{ background: p.color || p.payload?.fill, boxShadow: `0 0 8px ${p.color || p.payload?.fill}` }} />
-            <span className="font-display font-semibold text-[13px] text-[var(--tx)] tabular">{format(p.value, p)}</span>
+            <span className="font-display font-semibold text-[13px] text-[var(--tx)] tabular"><AnimatedNumber value={Number(p.value) || 0} format={(v) => format(v, p)} duration={320} /></span>
             <span className="text-[11px] text-[var(--tx3)] ml-auto pl-3">{names[p.dataKey] || p.name}</span>
           </div>
         ))}

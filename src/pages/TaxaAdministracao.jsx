@@ -517,7 +517,7 @@ export default function TaxaAdministracao({ readOnly = false }) {
                   </div>
                   <div className="font-display text-[20px] font-semibold tracking-tight mt-2"><AnimatedNumber value={t.value} format={fmtShort} /></div>
                   <div className="text-[11px] text-[var(--tx3)]">{taxSum ? ((t.value / taxSum) * 100).toFixed(1).replace('.', ',') : '0'}% das taxas</div>
-                  <div className="h-1 mt-2 rounded-full bg-[var(--sur2)] overflow-hidden"><div className="h-full rounded-full grow-x" style={{ width: (taxSum ? (t.value / taxSum) * 100 : 0) + '%', background: t.color, boxShadow: `0 0 10px ${t.color}` }} /></div>
+                  <div className="h-1 mt-2 rounded-full bg-[var(--sur2)] overflow-hidden"><div className="h-full rounded-full grow-x transition-[width] duration-700 ease-out" style={{ width: (taxSum ? (t.value / taxSum) * 100 : 0) + '%', background: t.color, boxShadow: `0 0 10px ${t.color}` }} /></div>
                 </button>
               </Card>
             ))}
@@ -567,10 +567,10 @@ export default function TaxaAdministracao({ readOnly = false }) {
           onClick={() => setFStatus(fStatus === 'PENDENTE' ? '' : 'PENDENTE')} hint="Clique para ver só os pendentes" />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <MiniStat icon={Building2} label="Fundos" value={fundosU} />
-        <MiniStat icon={Users} label="Gestores" value={gestU} />
-        <MiniStat icon={Wallet} label="Ticket médio" value={fundosU ? fmtShort(total / fundosU) : '—'} />
-        <MiniStat icon={AlertCircle} label="Vencidos" value={filtered.filter(isOverdue).length} tone={vencido > 0 ? 'red' : undefined} onClick={() => setFStatus(fStatus === 'VENCIDO' ? '' : 'VENCIDO')} />
+        <MiniStat icon={Building2} label="Fundos" value={<AnimatedNumber value={fundosU} />} />
+        <MiniStat icon={Users} label="Gestores" value={<AnimatedNumber value={gestU} />} />
+        <MiniStat icon={Wallet} label="Ticket médio" value={fundosU ? <AnimatedNumber value={total / fundosU} format={fmtShort} /> : '—'} />
+        <MiniStat icon={AlertCircle} label="Vencidos" value={<AnimatedNumber value={filtered.filter(isOverdue).length} />} tone={vencido > 0 ? 'red' : undefined} onClick={() => setFStatus(fStatus === 'VENCIDO' ? '' : 'VENCIDO')} />
       </div>
 
       {/* Gráficos */}
@@ -662,7 +662,7 @@ function StatCard({ icon: Icon, tone = 'neutral', label, value, share, details =
         <div className="mt-auto pt-4">
           {share != null && (
             <div className="h-1.5 rounded-full bg-[var(--sur2)] overflow-hidden mb-3">
-              <div className={`h-full rounded-full grow-x ${t.bar}`} style={{ width: Math.min(100, Math.max(0, share)) + '%' }} />
+              <div className={`h-full rounded-full grow-x transition-[width] duration-700 ease-out ${t.bar}`} style={{ width: Math.min(100, Math.max(0, share)) + '%' }} />
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -696,21 +696,28 @@ function MiniStat({ icon: Icon, label, value, tone, onClick }) {
 
 function RankCard({ title, tone, items, empty, onPick }) {
   const max = items[0]?.value || 1
+  const [hover, setHover] = useState(-1)
   return (
     <Card className="p-4">
       <div className="text-[12.5px] font-semibold mb-3">{title}</div>
-      <div className="space-y-2.5">
-        {items.map((f) => (
-          <button key={f.name} onClick={() => onPick(f.name)} className="w-full text-left group">
-            <div className="flex items-center gap-2 text-[11.5px]">
-              <span className="flex-1 truncate text-[var(--tx2)] group-hover:text-[var(--tx)]">{f.name}</span>
-              <span className={`font-mono ${TONES[tone].value}`}>{fmtShort(f.value)}</span>
-            </div>
-            <div className="h-1.5 mt-1 rounded-full bg-[var(--sur2)] overflow-hidden">
-              <div className={`h-full rounded-full grow-x ${TONES[tone].bar}`} style={{ width: Math.max(3, (f.value / max) * 100) + '%', boxShadow: '0 0 10px currentColor' }} />
-            </div>
-          </button>
-        ))}
+      <div className="space-y-1" onMouseLeave={() => setHover(-1)}>
+        {items.map((f, i) => {
+          const on = hover === i
+          const dim = hover >= 0 && !on
+          return (
+            <button key={f.name} onClick={() => onPick(f.name)} onMouseEnter={() => setHover(i)} onFocus={() => setHover(i)} onBlur={() => setHover(-1)}
+              className={`w-full text-left rounded-lg px-2 py-1.5 transition-all duration-300 ${on ? 'bg-[var(--sur2)] translate-x-1' : ''} ${dim ? 'opacity-45' : ''}`}>
+              <div className="flex items-center gap-2 text-[11.5px]">
+                <span className={`flex-1 truncate transition-colors duration-300 ${on ? 'text-[var(--tx)]' : 'text-[var(--tx2)]'}`}>{f.name}</span>
+                <span className={`font-mono tabular ${TONES[tone].value}`}><AnimatedNumber value={f.value} format={fmtShort} /></span>
+              </div>
+              <div className="h-1.5 mt-1 rounded-full bg-[var(--sur2)] overflow-hidden">
+                <div className={`h-full rounded-full grow-x transition-[width,box-shadow] duration-700 ease-out ${TONES[tone].bar}`}
+                  style={{ width: Math.max(3, (f.value / max) * 100) + '%', boxShadow: on ? '0 0 14px currentColor' : '0 0 6px currentColor' }} />
+              </div>
+            </button>
+          )
+        })}
         {!items.length && <div className="text-[12px] text-[var(--tx3)]">{empty}</div>}
       </div>
     </Card>
