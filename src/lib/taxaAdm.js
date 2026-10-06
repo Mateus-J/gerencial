@@ -264,9 +264,14 @@ export function mergeImport(existing, incoming, { replace = false, who = '' } = 
       if (!pool.has(k)) pool.set(k, [])
       pool.get(k).push(i)
     })
+    // Só CNPJ+mês (fundo que mudou de nome): vale apenas quando o par é único
+    // dos dois lados — vários fundos diferentes dividem o mesmo CNPJ na planilha.
+    const inCount = new Map()
+    if (keyFn === keyCnpj) incoming.forEach((nr, j) => { if (match[j] < 0) { const k = keyFn(nr); if (k) inCount.set(k, (inCount.get(k) || 0) + 1) } })
     incoming.forEach((nr, j) => {
       if (match[j] >= 0) return
       const k = keyFn(nr); if (!k) return
+      if (keyFn === keyCnpj && (inCount.get(k) !== 1 || (pool.get(k) || []).length !== 1)) return
       const list = pool.get(k)
       while (list && list.length) {
         const i = list.shift()

@@ -50,7 +50,7 @@ function compare(a, b, key, asc) {
 }
 
 export default function BaseTable({
-  rows, totalBase, onEdit, onNew, onUpdate, onUpdateTaxa, onSetStatus, onDelete, onExport,
+  rows, totalBase, onEdit, onNew, onUpdate, onUpdateTaxa, onSetStatus, onDelete, onExport, readOnly = false,
 }) {
   const [sort, setSort] = useState({ key: 'mesRef', asc: false })
   const [filters, setFilters] = useState({})
@@ -110,7 +110,7 @@ export default function BaseTable({
             {activeFilters.length > 0 && <button onClick={() => { setFilters({}); setPage(0) }} className="btn btn-sm"><FilterX size={13} /> Limpar</button>}
             <button onClick={() => onExport(view, 'taxas_filtrado')} className="btn btn-sm"><Download size={13} /> Exportar o que está na tela</button>
             <button onClick={() => onExport(null, 'base_taxas_completa')} className="btn btn-sm"><Download size={13} /> Exportar base completa</button>
-            <button onClick={onNew} className="btn btn-sm btn-primary"><Plus size={13} /> Nova linha</button>
+            {!readOnly && <button onClick={onNew} className="btn btn-sm btn-primary"><Plus size={13} /> Nova linha</button>}
           </div>
         )}
       </div>
@@ -120,7 +120,7 @@ export default function BaseTable({
           <thead className="sticky top-0 z-10">
             <tr className="text-[10px] font-mono uppercase tracking-wider text-[var(--tx3)] bg-[var(--sur)]">
               <th className="pl-4 pr-1 py-2.5 w-8 border-b border-[var(--bdr)] bg-[var(--sur)]">
-                <input type="checkbox" checked={allChecked} onChange={() => setSelected((s) => { const n = new Set(s); selectable.forEach((r) => { if (allChecked) n.delete(r.id); else n.add(r.id) }); return n })} className="accent-[#6B9A52]" />
+                {!readOnly && <input type="checkbox" checked={allChecked} onChange={() => setSelected((s) => { const n = new Set(s); selectable.forEach((r) => { if (allChecked) n.delete(r.id); else n.add(r.id) }); return n })} className="accent-[#6B9A52]" />}
               </th>
               {COLS.map((c) => (
                 <th key={c.key} onClick={() => clickSort(c.key)}
@@ -156,12 +156,12 @@ export default function BaseTable({
                 <tr key={r.id + (fresh ? ':' + r.updatedAt : '')} className={`group text-[12px] hover:bg-[var(--sur2)]/70 ${selected.has(r.id) ? 'bg-id-mid/8' : ''} ${fresh ? 'row-flash' : ''}`}>
                   <td className="pl-4 pr-1 py-1.5 border-b border-[var(--bdr)]/70">
                     {r._fromFip
-                      ? <span title="Vem da Área FIP — edite lá" className="text-[9px] font-semibold text-id-dark dark:text-id-light border border-id-mid/40 rounded px-1 py-0.5">FIP</span>
-                      : <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} className="accent-[#6B9A52]" />}
+                      ? <span title="Vem da Área FIP" className="text-[9px] font-semibold text-id-dark dark:text-id-light border border-id-mid/40 rounded px-1 py-0.5">FIP</span>
+                      : !readOnly && <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} className="accent-[#6B9A52]" />}
                   </td>
-                  {COLS.map((c) => <Cell key={c.key} r={r} c={c} onEdit={onEdit} onUpdate={onUpdate} onUpdateTaxa={onUpdateTaxa} onSetStatus={onSetStatus} />)}
+                  {COLS.map((c) => <Cell key={c.key} r={r} c={c} onEdit={onEdit} onUpdate={onUpdate} onUpdateTaxa={onUpdateTaxa} onSetStatus={onSetStatus} readOnly={readOnly} />)}
                   <td className="px-2 py-1.5 border-b border-[var(--bdr)]/70">
-                    {!r._fromFip && (
+                    {!r._fromFip && !readOnly && (
                       <div className="flex justify-end gap-0.5 opacity-50 group-hover:opacity-100">
                         <button onClick={() => onEdit(r)} title="Editar" className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]"><Pencil size={13} /></button>
                         <button onClick={() => onDelete([r.id])} title="Excluir" className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-red-500 hover:bg-red-500/10"><Trash2 size={13} /></button>
@@ -209,16 +209,16 @@ export default function BaseTable({
   )
 }
 
-function Cell({ r, c, onEdit, onUpdate, onUpdateTaxa, onSetStatus }) {
+function Cell({ r, c, onEdit, onUpdate, onUpdateTaxa, onSetStatus, readOnly }) {
   const base = 'px-2 py-1.5 border-b border-[var(--bdr)]/70 whitespace-nowrap'
-  const ro = r._fromFip
+  const ro = r._fromFip || readOnly
   switch (c.type) {
     case 'date':
       return <td className={`${base} font-mono text-[11.5px] ${c.key === 'vencimento' && isOverdue(r) ? 'text-red-500 font-medium' : 'text-[var(--tx2)]'}`}>{brDate(r[c.key]) || '—'}</td>
     case 'tax':
-      return <td className={`${base} text-right`}>{ro ? <span className="font-mono text-[var(--tx2)]">{fmtMoney(r[c.key])}</span> : <MoneyInput value={Number(r[c.key]) || 0} onCommit={(v) => onUpdateTaxa(r, c.key, v)} width="w-[108px]" dim />}</td>
+      return <td className={`${base} text-right`}>{ro ? <span className={`font-mono text-[11.5px] ${r[c.key] ? 'text-[var(--tx2)]' : 'text-[var(--tx4)]'}`}>{fmtMoney(r[c.key])}</span> : <MoneyInput value={Number(r[c.key]) || 0} onCommit={(v) => onUpdateTaxa(r, c.key, v)} width="w-[108px]" dim />}</td>
     case 'total':
-      return <td className={`${base} text-right`}>{ro ? <span className="font-mono">{fmtMoney(r.val)}</span> : <MoneyInput value={r.val} onCommit={(v) => onUpdate(r.id, { val: v })} strong />}</td>
+      return <td className={`${base} text-right`}>{ro ? <span className="font-mono font-semibold text-[11.5px]">{fmtMoney(r.val)}</span> : <MoneyInput value={r.val} onCommit={(v) => onUpdate(r.id, { val: v })} strong />}</td>
     case 'money':
       return <td className={`${base} text-right font-mono text-[11.5px] ${r[c.key] ? 'text-[var(--tx2)]' : 'text-[var(--tx4)]'}`}>{fmtMoney(r[c.key])}</td>
     case 'fundo':

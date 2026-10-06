@@ -2,18 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { doc, onSnapshot, runTransaction } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import {
-  Upload, Download, Trash2, Plus, X, CheckCircle2, Clock, AlertCircle, Search,
+  Upload, Download, Trash2, Plus, X, Link2, CheckCircle2, Clock, AlertCircle, Search,
   FileSpreadsheet, TrendingUp, TrendingDown, Building2, Users, Wallet,
 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { useToast } from '../components/Toast'
-import { useAuth } from '../context/AuthContext'
+import { useOptionalAuth } from '../context/AuthContext'
 import { useChartTheme, STATUS_COLORS } from '../components/charts/theme'
 import { StackedTimeChart, DonutChart, Sparkline } from '../components/charts/Charts'
 import AnimatedNumber from '../components/AnimatedNumber'
 import BaseTable from '../components/taxa/BaseTable'
 import SlackNotify from '../components/taxa/SlackNotify'
+import ShareLinks from '../components/taxa/ShareLinks'
 import {
   ensureIds, cleanRow, recalc, parseWorkbook, mergeImport, newId, parseNum, onlyDigits, norm, sortKey,
   fmtShort, fmtFull, brDate, todayISO, rowsToSheetData, TEMPLATE_HEADERS, TAXAS, TAXA_KEYS, sumTaxas,
@@ -48,9 +49,11 @@ function timeAgo(ts) {
   return new Date(ts).toLocaleDateString('pt-BR')
 }
 
-export default function TaxaAdministracao() {
+// readOnly = página pública de consulta (link para a diretoria): mesmos
+// números e gráficos ao vivo, sem editar, importar nem notificar.
+export default function TaxaAdministracao({ readOnly = false }) {
   const toast = useToast()
-  const { currentUser } = useAuth()
+  const currentUser = useOptionalAuth()?.currentUser
   const who = currentUser?.name || currentUser?.username || ''
   const chart = useChartTheme()
   const TX = TAXAS.map((t, i) => ({ ...t, color: chart.series[i] }))
@@ -71,6 +74,7 @@ export default function TaxaAdministracao() {
   const [fStatus, setFStatus] = useState('')
   const [q, setQ] = useState('')
   const [dragging, setDragging] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const [editing, setEditing] = useState(null) // linha em edição, ou {} pra novo lançamento
   const [preview, setPreview] = useState(null) // { rows, skipped, fileName }
   const [view, setView] = useState('geral') // geral | taxas | slack
@@ -302,8 +306,11 @@ export default function TaxaAdministracao() {
     XLSX.writeFile(wb, 'modelo_taxa_adm.xlsx')
   }
 
-  const headerActions = (
+  const headerActions = readOnly ? (
+    <button onClick={() => exportXlsx(null, 'base_taxas_completa')} className="btn"><Download size={14} /> Exportar base</button>
+  ) : (
     <>
+      <button onClick={() => setSharing(true)} className="btn" title="Gerar link só de leitura desta tela"><Link2 size={14} /> Link de consulta</button>
       <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
       <button onClick={() => fileRef.current?.click()} className="btn" title="Escolha a planilha de controle (.xlsx) — ou arraste o arquivo para a página"><Upload size={14} /> Atualizar base (planilha)</button>
       <button onClick={() => exportXlsx(null, 'base_taxas_completa')} className="btn"><Download size={14} /> Exportar base</button>
@@ -325,8 +332,9 @@ export default function TaxaAdministracao() {
     </div>
   )
 
-  const overlays = (
+  const overlays = readOnly ? null : (
     <>
+      {sharing && <ShareLinks who={who} toast={toast} onClose={() => setSharing(false)} />}
       {editing && (
         <EditDrawer
           row={editing}
@@ -358,7 +366,7 @@ export default function TaxaAdministracao() {
   if (loading) {
     return (
       <div>
-        <PageHeader eyebrow="Operacional" title="Taxa de Administração" />
+        <PageHeader eyebrow={readOnly ? "Consulta · somente leitura" : "Operacional"} title="Taxa de Administração" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[0, 1, 2].map((i) => <Card key={i} className="h-[110px] animate-pulse" />)}
         </div>
@@ -369,15 +377,15 @@ export default function TaxaAdministracao() {
   if (!rows.length && !fipAdmRows.length) {
     return (
       <div>
-        <PageHeader eyebrow="Operacional" title="Taxa de Administração" meta={liveMeta} actions={headerActions} />
+        <PageHeader eyebrow={readOnly ? "Consulta · somente leitura" : "Operacional"} title="Taxa de Administração" meta={liveMeta} actions={headerActions} />
         <Card className="p-12 flex flex-col items-center text-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-id-mid/15 text-id-dark dark:text-id-light flex items-center justify-center"><FileSpreadsheet size={22} /></div>
           <div className="font-display font-semibold text-[15px]">Nenhum lançamento ainda</div>
           <p className="text-[12.5px] text-[var(--tx3)] max-w-[420px]">Importe a planilha de cobranças (.xlsx) ou inclua lançamentos manualmente. Tudo o que for alterado aparece na hora para toda a equipe.</p>
-          <div className="flex gap-2 mt-1">
+          {!readOnly && <div className="flex gap-2 mt-1">
             <button onClick={() => fileRef.current?.click()} className="btn btn-primary"><Upload size={14} /> Importar planilha</button>
             <button onClick={downloadTemplate} className="btn"><Download size={14} /> Baixar modelo</button>
-          </div>
+          </div>}
         </Card>
         {overlays}
       </div>
@@ -443,7 +451,7 @@ export default function TaxaAdministracao() {
   ].filter(Boolean)
   const clearAll = () => { setSelMes(''); setFGestor(''); setFClassif(''); setFStatus(''); setFTaxa(''); setQ('') }
 
-  const dropProps = {
+  const dropProps = readOnly ? {} : {
     onDragOver: (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); setDragging(true) } },
     onDragLeave: (e) => { if (e.currentTarget === e.target) setDragging(false) },
     onDrop: (e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer?.files?.[0]; if (f) handleFile(f) },
@@ -460,10 +468,10 @@ export default function TaxaAdministracao() {
           </div>
         </div>
       )}
-      <PageHeader eyebrow="Operacional" title="Taxa de Administração" meta={liveMeta} actions={headerActions} />
+      <PageHeader eyebrow={readOnly ? "Consulta · somente leitura" : "Operacional"} title="Taxa de Administração" meta={liveMeta} actions={headerActions} />
 
       <div className="inline-flex p-1 mb-3 rounded-xl glass">
-        {[['geral', 'Visão geral'], ['taxas', 'Base segregada por taxa'], ['slack', 'Notificações Slack']].map(([k, l]) => (
+        {[['geral', 'Visão geral'], ['taxas', 'Base segregada por taxa'], ...(readOnly ? [] : [['slack', 'Notificações Slack']])].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${view === k ? 'bg-gradient-to-r from-id-light/25 to-id-mid/10 text-[var(--tx)] shadow-[inset_0_0_0_1px_rgba(143,179,82,.35),0_0_16px_-4px_rgba(143,179,82,.5)]' : 'text-[var(--tx3)] hover:text-[var(--tx)]'}`}>{l}</button>
         ))}
       </div>
@@ -616,10 +624,11 @@ export default function TaxaAdministracao() {
         onSetStatus={setStatus}
         onDelete={deleteRows}
         onExport={(list, name) => exportXlsx(list, name)}
+        readOnly={readOnly}
       />
       </>)}
 
-      {view === 'slack' && <SlackNotify rows={rows} who={who} toast={toast} />}
+      {view === 'slack' && !readOnly && <SlackNotify rows={rows} who={who} toast={toast} />}
 
       {overlays}
     </div>
