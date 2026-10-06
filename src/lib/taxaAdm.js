@@ -31,6 +31,8 @@ export const fmtShort = (v) => { v = Number(v) || 0; return 'R$ ' + (v >= 1e6 ? 
 export const fmtFull = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export const brDate = (iso) => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}` }
 export const todayISO = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+export const fmtMoney = (v) => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+export const isOverdue = (r) => r.status !== 'PAGO' && !!r.vencimento && r.vencimento < todayISO()
 
 // "1.234,56" / "1234.56" / 1234.56 → 1234.56
 export function parseNum(v) {

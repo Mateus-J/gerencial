@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { doc, onSnapshot, runTransaction } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import {
-  Upload, Download, Trash2, Plus, Pencil, X, CheckCircle2, Clock, AlertCircle, Search,
-  FileSpreadsheet, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Building2, Users, Wallet,
+  Upload, Download, Trash2, Plus, X, CheckCircle2, Clock, AlertCircle, Search,
+  FileSpreadsheet, TrendingUp, TrendingDown, Building2, Users, Wallet,
 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
@@ -12,17 +12,18 @@ import { useAuth } from '../context/AuthContext'
 import { useChartTheme, STATUS_COLORS } from '../components/charts/theme'
 import { StackedTimeChart, DonutChart, Sparkline } from '../components/charts/Charts'
 import AnimatedNumber from '../components/AnimatedNumber'
+import BaseTable from '../components/taxa/BaseTable'
+import SlackNotify from '../components/taxa/SlackNotify'
 import {
   ensureIds, cleanRow, recalc, parseWorkbook, mergeImport, newId, parseNum, onlyDigits, norm, sortKey,
   fmtShort, fmtFull, brDate, todayISO, rowsToSheetData, TEMPLATE_HEADERS, TAXAS, TAXA_KEYS, sumTaxas,
-  SHARD_PREFIX, shardOf, partition,
+  SHARD_PREFIX, shardOf, partition, isOverdue,
 } from '../lib/taxaAdm'
 
 const DOC_REF = () => doc(db, 'controle', 'taxa_adm')
 const SHARD_REF = (id) => doc(db, 'controle', SHARD_PREFIX + id)
 const FIP_DOC_REF = () => doc(db, 'controle', 'fip_taxas')
 const FIP_CADASTRO_REF = () => doc(db, 'controle', 'fip_cadastro')
-const PAGE_SIZE = 50
 const FIELD_LABEL = {
   fundo: 'Fundo', gestor: 'Gestor', classif: 'Classificação', cnpj: 'CNPJ', conta: 'Conta', mesRef: 'Mês',
   status: 'Status', val: 'Valor total', vencimento: 'Vencimento', dataPagamento: 'Pagamento', obs: 'Observação',
@@ -32,8 +33,6 @@ const FIELD_LABEL = {
 const MONEY_FIELDS = ['val', 'saldo', ...TAXA_KEYS]
 const DATE_FIELDS = ['vencimento', 'dataPagamento', 'dataReceita']
 
-const fmtMoney = (v) => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const isOverdue = (r) => r.status !== 'PAGO' && r.vencimento && r.vencimento < todayISO()
 const mesToInput = (m) => (/^\d{2}\.\d{4}$/.test(m || '') ? m.slice(3) + '-' + m.slice(0, 2) : '')
 const inputToMes = (v) => (/^\d{4}-\d{2}$/.test(v || '') ? v.slice(5) + '.' + v.slice(0, 4) : '')
 const currentMes = () => { const d = new Date(); return String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear() }
@@ -71,13 +70,10 @@ export default function TaxaAdministracao() {
   const [fClassif, setFClassif] = useState('')
   const [fStatus, setFStatus] = useState('')
   const [q, setQ] = useState('')
-  const [sortCol, setSortCol] = useState('val')
-  const [sortAsc, setSortAsc] = useState(false)
-  const [page, setPage] = useState(0)
-  const [selected, setSelected] = useState(new Set())
+  const [dragging, setDragging] = useState(false)
   const [editing, setEditing] = useState(null) // linha em edição, ou {} pra novo lançamento
   const [preview, setPreview] = useState(null) // { rows, skipped, fileName }
-  const [view, setView] = useState('geral') // geral | taxas
+  const [view, setView] = useState('geral') // geral | taxas | slack
   const [fTaxa, setFTaxa] = useState('')
   const fileRef = useRef(null)
   const [, tick] = useState(0)
@@ -286,26 +282,11 @@ export default function TaxaAdministracao() {
     return { filteredAllMes: all, filtered: selMes ? all.filter((r) => r.mesRef === selMes) : all }
   }, [combined, selMes, fGestor, fClassif, fStatus, fTaxa, q])
 
-  const sortedRows = useMemo(() => {
-    const out = [...filtered]
-    out.sort((a, b) => {
-      let va, vb
-      if (MONEY_FIELDS.includes(sortCol)) { va = Number(a[sortCol]) || 0; vb = Number(b[sortCol]) || 0 }
-      else if (sortCol === 'somaTaxas') { va = sumTaxas(a); vb = sumTaxas(b) }
-      else if (sortCol === 'mesRef') { va = sortKey(a.mesRef); vb = sortKey(b.mesRef) }
-      else if (sortCol === 'updatedAt') { va = a.updatedAt || 0; vb = b.updatedAt || 0 }
-      else { va = (a[sortCol] || '').toString().toLowerCase(); vb = (b[sortCol] || '').toString().toLowerCase() }
-      return (va > vb ? 1 : va < vb ? -1 : 0) * (sortAsc ? 1 : -1)
-    })
-    return out
-  }, [filtered, sortCol, sortAsc])
-
-  useEffect(() => { setPage(0) }, [selMes, fGestor, fClassif, fStatus, fTaxa, q, sortCol, sortAsc, view])
   const previewDiff = useMemo(() => (preview ? mergeImport(rows, preview.rows, { replace: preview.replace, who }) : null), [preview, rows, who])
-  const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE))
-  const pageRows = sortedRows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
-
-  function exportXlsx(list = filtered, name = 'taxa_adm') {
+  // Exporta no mesmo layout da planilha de controle, do mais recente para o
+  // mais antigo. Sem lista = base completa.
+  function exportXlsx(list, name = 'base_taxas') {
+    list = list || [...combined.parsed].sort((a, b) => sortKey(b.mesRef) - sortKey(a.mesRef) || String(b.dataReceita || '').localeCompare(String(a.dataReceita || '')))
     if (!list.length) { toast.error('Nenhum dado para exportar.'); return }
     const ws = XLSX.utils.json_to_sheet(rowsToSheetData(list), { header: TEMPLATE_HEADERS })
     ws['!cols'] = TEMPLATE_HEADERS.map((h) => ({ wch: h === 'Fundo' ? 48 : h === 'Observação' ? 36 : 16 }))
@@ -324,8 +305,8 @@ export default function TaxaAdministracao() {
   const headerActions = (
     <>
       <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
-      <button onClick={() => fileRef.current?.click()} className="btn"><Upload size={14} /> Importar planilha</button>
-      <button onClick={() => exportXlsx()} className="btn"><Download size={14} /> Exportar</button>
+      <button onClick={() => fileRef.current?.click()} className="btn" title="Escolha a planilha de controle (.xlsx) — ou arraste o arquivo para a página"><Upload size={14} /> Atualizar base (planilha)</button>
+      <button onClick={() => exportXlsx(null, 'base_taxas_completa')} className="btn"><Download size={14} /> Exportar base</button>
       <button onClick={() => setEditing({})} className="btn btn-primary"><Plus size={14} /> Novo lançamento</button>
     </>
   )
@@ -451,23 +432,44 @@ export default function TaxaAdministracao() {
     return Object.values(m).sort((a, b) => sortKey(a.mes) - sortKey(b.mes))
   })()
 
-  const selectedIds = [...selected]
-  const allPageSelectable = pageRows.filter((r) => !r._fromFip)
-  const allPageChecked = allPageSelectable.length > 0 && allPageSelectable.every((r) => selected.has(r.id))
   const money = (v) => fmtFull(v)
+  const activeChips = [
+    selMes && [`Mês ${selMes}`, () => setSelMes('')],
+    fGestor && [`Gestor: ${fGestor}`, () => setFGestor('')],
+    fClassif && [`Classificação: ${fClassif}`, () => setFClassif('')],
+    fStatus && [`Status: ${fStatus.toLowerCase()}`, () => setFStatus('')],
+    fTaxa && [`Com ${TAXAS.find((t) => t.key === fTaxa)?.label}`, () => setFTaxa('')],
+    q && [`Busca: “${q}”`, () => setQ('')],
+  ].filter(Boolean)
+  const clearAll = () => { setSelMes(''); setFGestor(''); setFClassif(''); setFStatus(''); setFTaxa(''); setQ('') }
+
+  const dropProps = {
+    onDragOver: (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); setDragging(true) } },
+    onDragLeave: (e) => { if (e.currentTarget === e.target) setDragging(false) },
+    onDrop: (e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer?.files?.[0]; if (f) handleFile(f) },
+  }
 
   return (
-    <div>
+    <div {...dropProps} className="relative">
+      {dragging && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-none">
+          <div className="glass rounded-3xl px-10 py-8 text-center border-2 border-dashed border-id-light/60 shadow-[0_0_60px_-10px_rgba(143,179,82,.7)]">
+            <FileSpreadsheet size={32} className="mx-auto text-id-light mb-2" />
+            <div className="font-display font-semibold text-[16px]">Solte a planilha para atualizar a base</div>
+            <div className="text-[12px] text-[var(--tx3)] mt-1">Você confere o que muda antes de aplicar</div>
+          </div>
+        </div>
+      )}
       <PageHeader eyebrow="Operacional" title="Taxa de Administração" meta={liveMeta} actions={headerActions} />
 
       <div className="inline-flex p-1 mb-3 rounded-xl glass">
-        {[['geral', 'Visão geral'], ['taxas', 'Base segregada por taxa']].map(([k, l]) => (
+        {[['geral', 'Visão geral'], ['taxas', 'Base segregada por taxa'], ['slack', 'Notificações Slack']].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${view === k ? 'bg-gradient-to-r from-id-light/25 to-id-mid/10 text-[var(--tx)] shadow-[inset_0_0_0_1px_rgba(143,179,82,.35),0_0_16px_-4px_rgba(143,179,82,.5)]' : 'text-[var(--tx3)] hover:text-[var(--tx)]'}`}>{l}</button>
         ))}
       </div>
 
       {/* Filtros */}
-      <Card className="p-3 mb-4">
+      {view !== 'slack' && <Card className="p-3 mb-4">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mb-1">
           <button onClick={() => setSelMes('')} className={`chip shrink-0 ${!selMes ? 'chip-on' : ''}`}>Período completo</button>
           <span className="w-px h-5 bg-[var(--bdr)] mx-1 shrink-0" />
@@ -493,7 +495,7 @@ export default function TaxaAdministracao() {
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar fundo, gestor ou CNPJ…" className="field pl-9" />
           </div>
         </div>
-      </Card>
+      </Card>}
 
       {view === 'taxas' && (
         <>
@@ -592,125 +594,32 @@ export default function TaxaAdministracao() {
       </div>
       </>)}
 
-      {/* Tabela */}
-      <Card className="overflow-hidden">
-        <div className="px-4 py-3 border-b border-[var(--bdr)] flex flex-wrap items-center gap-2">
-          <div className="text-[12.5px] font-semibold mr-auto">
-            {view === 'taxas' ? 'Base segregada' : 'Lançamentos'} <span className="text-[var(--tx3)] font-normal">· {sortedRows.length.toLocaleString('pt-BR')} registro(s)</span>
-          </div>
-          {selected.size > 0 ? (
-            <div className="flex flex-wrap items-center gap-2 animate-fade-up">
-              <span className="text-[11.5px] text-[var(--tx3)]">{selected.size} selecionado(s)</span>
-              <button onClick={() => { setStatus(selectedIds, 'PAGO'); setSelected(new Set()) }} className="btn btn-sm"><CheckCircle2 size={13} className="text-id-mid" /> Marcar pago</button>
-              <button onClick={() => { setStatus(selectedIds, 'PENDENTE'); setSelected(new Set()) }} className="btn btn-sm"><Clock size={13} className="text-amber-500" /> Marcar pendente</button>
-              <button onClick={() => exportXlsx(rows.filter((r) => selected.has(r.id)), 'taxa_adm_selecao')} className="btn btn-sm"><Download size={13} /> Exportar</button>
-              <button onClick={() => deleteRows(selectedIds)} className="btn btn-sm btn-danger"><Trash2 size={13} /> Excluir</button>
-              <button onClick={() => setSelected(new Set())} className="btn btn-sm"><X size={13} /></button>
-            </div>
-          ) : (
-            <button onClick={() => setEditing({})} className="btn btn-sm"><Plus size={13} /> Nova linha</button>
-          )}
+      {view !== 'slack' && (<>
+      {/* Filtros ativos — deixa claro quando a tabela não mostra a base inteira */}
+      {activeChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/8 text-[12px] animate-fade-up">
+          <AlertCircle size={14} className="text-amber-500" />
+          <span className="text-[var(--tx2)]">Mostrando <b>{filtered.length.toLocaleString('pt-BR')}</b> de <b>{combined.parsed.length.toLocaleString('pt-BR')}</b> lançamentos. Filtros ativos:</span>
+          {activeChips.map(([label, clear]) => (
+            <button key={label} onClick={clear} className="inline-flex items-center gap-1 rounded-full border border-[var(--bdr)] bg-[var(--sur)] px-2 py-0.5 text-[11.5px] hover:border-red-400/50">{label} <X size={11} /></button>
+          ))}
+          <button onClick={clearAll} className="ml-auto text-[11.5px] font-semibold text-id-dark dark:text-id-light hover:underline">Limpar todos</button>
         </div>
-        <div className="overflow-x-auto">
-          <table className={`w-full text-left ${view === 'taxas' ? 'min-w-[1240px]' : 'min-w-[980px]'}`}>
-            <thead>
-              <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] bg-[var(--sur2)]/50">
-                <th className="pl-4 pr-1 py-2.5 w-8">
-                  <input type="checkbox" checked={allPageChecked} onChange={() => setSelected((s) => { const n = new Set(s); allPageSelectable.forEach((r) => { if (allPageChecked) n.delete(r.id); else n.add(r.id) }); return n })} className="accent-[#6B9A52]" />
-                </th>
-                {(view === 'taxas'
-                  ? [['fundo', 'Fundo'], ['mesRef', 'Mês'], ...TAXAS.map((t) => [t.key, t.label, 'text-right']), ['somaTaxas', 'Soma taxas', 'text-right'], ['val', 'Total', 'text-right'], ['status', 'Status']]
-                  : [['fundo', 'Fundo'], ['gestor', 'Gestor'], ['classif', 'Classif.'], ['mesRef', 'Mês'], ['vencimento', 'Vencimento'], ['val', 'Valor', 'text-right'], ['status', 'Status'], ['updatedAt', 'Atualizado']]
-                ).map(([c, l, cls]) => (
-                  <th key={c} className={`px-2 py-2.5 font-semibold cursor-pointer select-none hover:text-[var(--tx)] whitespace-nowrap ${cls || ''}`} onClick={() => { if (sortCol === c) setSortAsc(!sortAsc); else { setSortCol(c); setSortAsc(![...MONEY_FIELDS, 'somaTaxas', 'updatedAt', 'mesRef'].includes(c)) } }}>
-                    {l}{sortCol === c ? (sortAsc ? ' ↑' : ' ↓') : ''}
-                  </th>
-                ))}
-                <th className="px-2 py-2.5 w-16" />
-              </tr>
-            </thead>
-            <tbody>
-              {pageRows.map((r) => {
-                const fresh = r.updatedAt && Date.now() - r.updatedAt < 6000
-                return (
-                  <tr key={r.id + (fresh ? ':' + r.updatedAt : '')} className={`group border-t border-[var(--bdr)]/70 text-[12px] hover:bg-[var(--sur2)]/60 ${selected.has(r.id) ? 'bg-id-mid/5' : ''} ${fresh ? 'row-flash' : ''}`}>
-                    <td className="pl-4 pr-1 py-2">
-                      {r._fromFip
-                        ? <span title="Vem da Área FIP — edite lá" className="text-[9px] font-semibold text-id-dark dark:text-id-light border border-id-mid/40 rounded px-1 py-0.5">FIP</span>
-                        : <input type="checkbox" checked={selected.has(r.id)} onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n })} className="accent-[#6B9A52]" />}
-                    </td>
-                    <td className="px-2 py-2 max-w-[320px]">
-                      <button disabled={r._fromFip} onClick={() => setEditing(r)} className="text-left w-full disabled:cursor-default">
-                        <div className="font-medium truncate" title={r.fundo}>{r.fundo}{r.ajuste && <span className="ml-1.5 text-[9.5px] font-semibold uppercase rounded px-1 py-0.5 bg-sky-500/12 text-sky-600 dark:text-sky-400 align-middle">{r.ajuste}</span>}</div>
-                        {(r.cnpj || r.obs) && <div className="text-[10.5px] text-[var(--tx3)] truncate" title={r.obs}>{r.cnpj}{r.cnpj && r.obs ? ' · ' : ''}{r.obs}</div>}
-                      </button>
-                    </td>
-                    {view === 'taxas' ? (<>
-                    <td className="px-2 py-2 font-mono text-[11.5px] text-[var(--tx2)]">{r.mesRef}</td>
-                    {TAXA_KEYS.map((k) => (
-                      <td key={k} className="px-1 py-2 text-right">
-                        {r._fromFip ? <span className="font-mono text-[var(--tx2)]">{fmtMoney(r[k])}</span> : <MoneyInput value={Number(r[k]) || 0} onCommit={(v) => updateTaxa(r, k, v)} width="w-[104px]" dim />}
-                      </td>
-                    ))}
-                    <td className={`px-2 py-2 text-right font-mono ${sumTaxas(r) > 0 && Math.abs(sumTaxas(r) - r.val) > 0.01 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--tx3)]'}`} title={sumTaxas(r) > 0 && Math.abs(sumTaxas(r) - r.val) > 0.01 ? 'A soma das taxas é diferente do total cobrado' : undefined}>{fmtMoney(sumTaxas(r))}</td>
-                    <td className="px-2 py-2 text-right font-mono font-medium">{fmtMoney(r.val)}</td>
-                    </>) : (<>
-                    <td className="px-2 py-2 text-[var(--tx2)] max-w-[160px] truncate" title={r.gestor}>{r.gestor || '—'}</td>
-                    <td className="px-2 py-2 text-[var(--tx2)]">{r.classif || '—'}</td>
-                    <td className="px-2 py-2 font-mono text-[11.5px] text-[var(--tx2)]">{r.mesRef}</td>
-                    <td className={`px-2 py-2 font-mono text-[11.5px] ${isOverdue(r) ? 'text-red-500 font-medium' : 'text-[var(--tx3)]'}`}>{r.vencimento ? brDate(r.vencimento) : '—'}</td>
-                    <td className="px-2 py-2 text-right">
-                      {r._fromFip ? <span className="font-mono text-[var(--tx2)]">{fmtFull(r.val)}</span> : (
-                        <MoneyInput value={r.val} onCommit={(v) => updateRow(r.id, { val: v })} />
-                      )}
-                    </td>
-                    </>)}
-                    <td className="px-2 py-2">
-                      <StatusPill row={r} onToggle={r._fromFip ? null : () => setStatus([r.id], r.status === 'PAGO' ? 'PENDENTE' : 'PAGO')} />
-                    </td>
-                    {view === 'geral' && <td className="px-2 py-2 text-[10.5px] text-[var(--tx3)] whitespace-nowrap">
-                      {r.updatedAt ? <span title={new Date(r.updatedAt).toLocaleString('pt-BR')}>{r.updatedBy ? r.updatedBy.split(' ')[0] + ' · ' : ''}{timeAgo(r.updatedAt)}</span> : '—'}
-                    </td>}
-                    <td className="px-2 py-2">
-                      {!r._fromFip && (
-                        <div className="flex justify-end gap-0.5 opacity-60 group-hover:opacity-100">
-                          <button onClick={() => setEditing(r)} title="Editar" className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]"><Pencil size={13} /></button>
-                          <button onClick={() => deleteRows([r.id])} title="Excluir" className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-red-500 hover:bg-red-500/10"><Trash2 size={13} /></button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-              {!pageRows.length && (
-                <tr><td colSpan={14} className="px-4 py-10 text-center text-[12.5px] text-[var(--tx3)]">Nenhum lançamento com esses filtros.</td></tr>
-              )}
-            </tbody>
-            {view === 'taxas' && sortedRows.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-[var(--bdr)] bg-[var(--sur2)]/50 text-[11.5px] font-semibold">
-                  <td />
-                  <td className="px-2 py-2.5" colSpan={2}>Total do filtro</td>
-                  {taxTotals.map((t) => <td key={t.key} className="px-2 py-2.5 text-right font-mono">{fmtMoney(t.value)}</td>)}
-                  <td className="px-2 py-2.5 text-right font-mono">{fmtMoney(taxSum)}</td>
-                  <td className="px-2 py-2.5 text-right font-mono">{fmtMoney(total)}</td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-        {pageCount > 1 && (
-          <div className="px-4 py-2.5 border-t border-[var(--bdr)] flex items-center justify-between text-[11.5px] text-[var(--tx3)]">
-            <span>{page * PAGE_SIZE + 1}–{Math.min(sortedRows.length, (page + 1) * PAGE_SIZE)} de {sortedRows.length}</span>
-            <div className="flex items-center gap-1">
-              <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="btn btn-sm"><ChevronLeft size={13} /></button>
-              <span className="px-2">Página {page + 1} de {pageCount}</span>
-              <button disabled={page >= pageCount - 1} onClick={() => setPage((p) => p + 1)} className="btn btn-sm"><ChevronRight size={13} /></button>
-            </div>
-          </div>
-        )}
-      </Card>
+      )}
+      <BaseTable
+        rows={filtered}
+        totalBase={combined.parsed.length}
+        onEdit={(r) => setEditing(r)}
+        onNew={() => setEditing({})}
+        onUpdate={(id, patch) => updateRow(id, patch)}
+        onUpdateTaxa={updateTaxa}
+        onSetStatus={setStatus}
+        onDelete={deleteRows}
+        onExport={(list, name) => exportXlsx(list, name)}
+      />
+      </>)}
+
+      {view === 'slack' && <SlackNotify rows={rows} who={who} toast={toast} />}
 
       {overlays}
     </div>
@@ -722,21 +631,6 @@ const TONES = {
   amber: { icon: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', value: 'text-amber-600 dark:text-amber-400', bar: 'bg-amber-400' },
   red: { icon: 'bg-red-500/15 text-red-600 dark:text-red-400', value: 'text-red-600 dark:text-red-400', bar: 'bg-red-400' },
   neutral: { icon: 'bg-[var(--sur2)] text-[var(--tx3)]', value: 'text-[var(--tx)]', bar: 'bg-[var(--tx4)]' },
-}
-
-// Valor editável direto na tabela: Enter salva, Esc desfaz.
-function MoneyInput({ value, onCommit, width = 'w-[120px]', dim }) {
-  return (
-    <input
-      key={value}
-      defaultValue={fmtMoney(value)}
-      onFocus={(e) => e.target.select()}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { e.target.value = fmtMoney(value); e.target.blur() } }}
-      onBlur={(e) => { const v = Math.round(parseNum(e.target.value) * 100) / 100; if (Math.abs(v - (Number(value) || 0)) > 0.004) onCommit(v) }}
-      className={`${width} text-right font-mono bg-transparent rounded-md px-1.5 py-1 outline-none border border-transparent hover:border-[var(--bdr)] focus:border-id-mid focus:bg-[var(--sur)] ${dim && !value ? 'text-[var(--tx4)]' : ''}`}
-      title="Clique para editar"
-    />
-  )
 }
 
 function StatCard({ icon: Icon, tone = 'neutral', label, value, sub, onClick }) {
@@ -791,30 +685,6 @@ function RankCard({ title, tone, items, empty, onPick }) {
         {!items.length && <div className="text-[12px] text-[var(--tx3)]">{empty}</div>}
       </div>
     </Card>
-  )
-}
-
-function StatusPill({ row, onToggle }) {
-  const paid = row.status === 'PAGO'
-  const overdue = isOverdue(row)
-  const cls = paid
-    ? 'bg-id-mid/15 text-id-dark dark:text-id-light border-id-mid/30'
-    : overdue ? 'bg-red-500/12 text-red-600 dark:text-red-400 border-red-500/30'
-      : 'bg-amber-500/12 text-amber-700 dark:text-amber-400 border-amber-500/30'
-  const label = paid ? 'Pago' : overdue ? 'Vencido' : row.status === 'PENDENTE' ? 'Pendente' : row.status
-  const Icon = paid ? CheckCircle2 : overdue ? AlertCircle : Clock
-  const title = onToggle
-    ? (paid ? `Pago${row.dataPagamento ? ' em ' + brDate(row.dataPagamento) : ''} — clique para voltar a pendente` : 'Clique para marcar como pago')
-    : undefined
-  return (
-    <button
-      disabled={!onToggle}
-      onClick={onToggle}
-      title={title}
-      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[10.5px] font-semibold transition-transform enabled:hover:scale-105 enabled:active:scale-95 ${cls}`}
-    >
-      <Icon size={11} /> {label}
-    </button>
   )
 }
 
