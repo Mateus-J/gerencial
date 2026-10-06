@@ -1,7 +1,7 @@
 // Padrão de notificação das taxas segregadas para os canais do Slack.
 // Cada canal do Slack tem um endereço de e-mail próprio (Integrações → "Enviar
 // e-mails para este canal"); o e-mail que chega lá vira uma mensagem no canal.
-import { TAXAS, onlyDigits, norm, brDate, fmtFull } from './taxaAdm'
+import { TAXAS, onlyDigits, norm, brDate, fmtFull, SEM_ID } from './taxaAdm'
 
 export const DEFAULT_TEMPLATE = {
   subject: 'Taxas {competencia} · {fundo}',
@@ -44,7 +44,7 @@ export const channelKey = (r) => 'F:' + norm(r.fundo)
 // Junta os lançamentos do mês por fundo (o lançamento normal + ajustes)
 export function groupByFund(rows, mesRef) {
   const g = new Map()
-  rows.filter((r) => r.mesRef === mesRef && !r._fromFip).forEach((r) => {
+  rows.filter((r) => r.mesRef === mesRef && !r._fromFip && r.fundo !== SEM_ID).forEach((r) => {
     const k = channelKey(r)
     if (!g.has(k)) g.set(k, { key: k, mesRef, fundo: r.fundo, cnpj: r.cnpj || '', gestor: r.gestor || '', conta: r.conta || '', rows: [] })
     const e = g.get(k)
