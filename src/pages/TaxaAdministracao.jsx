@@ -51,7 +51,8 @@ function timeAgo(ts) {
 
 // readOnly = página pública de consulta (link para a diretoria): mesmos
 // números e gráficos ao vivo, sem editar, importar nem notificar.
-export default function TaxaAdministracao({ readOnly = false }) {
+// search/onSearch: busca da barra do topo (a mesma do campo da tela)
+export default function TaxaAdministracao({ readOnly = false, search, onSearch }) {
   const toast = useToast()
   const currentUser = useOptionalAuth()?.currentUser
   const who = currentUser?.name || currentUser?.username || ''
@@ -72,7 +73,9 @@ export default function TaxaAdministracao({ readOnly = false }) {
   const [fGestor, setFGestor] = useState('')
   const [fClassif, setFClassif] = useState('')
   const [fStatus, setFStatus] = useState('')
-  const [q, setQ] = useState('')
+  const [qLocal, setQLocal] = useState('')
+  const q = onSearch ? search || '' : qLocal
+  const setQ = onSearch || setQLocal
   const [dragging, setDragging] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [editing, setEditing] = useState(null) // linha em edição, ou {} pra novo lançamento
@@ -274,7 +277,7 @@ export default function TaxaAdministracao({ readOnly = false }) {
   // (alimenta os gráficos de evolução).
   const { filtered, filteredAllMes } = useMemo(() => {
     const qq = norm(q)
-    const qd = onlyDigits(q)
+    const qd = /^[\d./\-\s]+$/.test(q) ? onlyDigits(q) : '' // só quando parece CNPJ
     const all = combined.parsed.filter((r) => {
       if (fGestor && r.gestor !== fGestor) return false
       if (fClassif && r.classif !== fClassif) return false
