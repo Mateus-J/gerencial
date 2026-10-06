@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, AreaChart, BarChart, Area, Bar, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, Brush, ReferenceLine,
+  CartesianGrid, Tooltip, Brush, ReferenceLine, Rectangle,
 } from 'recharts'
 import { NeonDefs, GlassTooltip, LegendToggle } from './ChartKit'
 import { useChartTheme, toggleIn } from './theme'
@@ -46,14 +46,16 @@ function ZoomBrush({ t, xKey, len, keep }) {
 }
 
 // Esmaecimento por CSS: a coluna sob o ponteiro acende e as outras apagam com
-// transição (opacity), sem a biblioteca recriar as colunas.
+// transição (opacity), sem a biblioteca recriar as colunas. Cada coluna leva a
+// classe bx-<posição do ponto em data> (colunas com valor zero não são
+// desenhadas, então contar os elementos desenhados desalinharia).
 function BarFocus({ scope, id, api, selIdx }) {
   const [active, setActive] = useState(-1)
   useEffect(() => { api.current = setActive; return () => { api.current = null } }, [api])
   const i = active >= 0 ? active : selIdx
   if (i < 0) return null
-  const rect = `.${scope} .recharts-bar-rectangles .recharts-bar-rectangle`
-  return <style>{`${rect}{opacity:${active >= 0 ? 0.38 : 0.45}}${rect}:nth-child(${i + 1}){opacity:1}${rect}:nth-child(${i + 1}) path{filter:url(#${id}-glow) brightness(1.15)}`}</style>
+  const bar = `.${scope} .recharts-bar-rectangles path.recharts-rectangle`
+  return <style>{`${bar}{opacity:${active >= 0 ? 0.38 : 0.45}}${bar}.bx-${i}{opacity:1;filter:url(#${id}-glow) brightness(1.15)}`}</style>
 }
 
 /* Séries empilhadas ao longo do tempo, como área (fluxo) ou colunas.
@@ -68,7 +70,9 @@ export function StackedTimeChart({ data, xKey = 'mes', series, kind = 'area', fo
   // Coluna sob o ponteiro: ela acende e as outras esmaecem (com transição)
   // (o estado fica no BarFocus para o gráfico não re-renderizar a cada movimento)
   const focus = useRef(null)
-  const track = (st) => { const i = st?.activeTooltipIndex; focus.current?.(i == null || i === '' ? -1 : Number(i)) }
+  const idxOf = useMemo(() => new Map(data.map((d, i) => [d[xKey], i])), [data, xKey])
+  const track = (st) => focus.current?.(st?.activeLabel != null && idxOf.has(st.activeLabel) ? idxOf.get(st.activeLabel) : -1)
+  const barShape = (p) => <Rectangle {...p} className={`bx-${idxOf.get(p.payload?.[xKey]) ?? 'x'}`} />
   const tooltip = (
     <Tooltip
       cursor={kind === 'area' ? { stroke: t.cursor, strokeWidth: 1 } : { fill: t.band }}
@@ -104,7 +108,7 @@ export function StackedTimeChart({ data, xKey = 'mes', series, kind = 'area', fo
               {visible.map((s, i) => (
                 <Bar key={s.key} dataKey={s.key} stackId="1" fill={`url(#${id}-${s.key}-bar)`} maxBarSize={24}
                   stroke={t.surface} strokeWidth={2} radius={i === visible.length - 1 ? [4, 4, 0, 0] : 0}
-                  activeBar={false} className="cursor-pointer" {...ANIM} />
+                  activeBar={false} shape={barShape} className="cursor-pointer" {...ANIM} />
               ))}
               <ZoomBrush t={t} xKey={xKey} len={data.length} keep={keep} />
             </BarChart>
