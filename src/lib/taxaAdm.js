@@ -13,6 +13,7 @@ export const TAXAS = [
   { key: 'distribuicao', label: 'Distribuição', color: '#d55181' },
 ]
 export const TAXA_KEYS = TAXAS.map((t) => t.key)
+export const SEM_ID = 'SEM IDENTIFICAÇÃO NA PLANILHA'
 const NUM_FIELDS = ['val', 'saldo', ...TAXA_KEYS]
 // Campos que a planilha/edição pode preencher em cada lançamento
 export const FIELDS = ['fundo', 'gestor', 'classif', 'cnpj', 'conta', 'mesRef', 'ajuste', 'status', 'val', ...TAXA_KEYS, 'dataReceita', 'vencimento', 'dataPagamento', 'saldo', 'obs']
@@ -94,10 +95,12 @@ export function cleanRow(r) {
   const out = {}
   Object.entries(r).forEach(([k, v]) => {
     if (v === undefined || v === null || v === '' || k.startsWith('_')) return
-    if (NUM_FIELDS.includes(k)) { v = round2(v); if (!v && k !== 'val') return }
+    // Valores guardados exatamente como na planilha (sem arredondar) — assim
+    // os totais do site batem centavo a centavo com o controle.
+    if (NUM_FIELDS.includes(k)) { v = Number(v) || 0; if (!v && k !== 'val') return }
     out[k] = v
   })
-  out.val = round2(out.val)
+  out.val = Number(out.val) || 0
   return out
 }
 
@@ -134,8 +137,16 @@ export function recalc(parsed) {
 // não achar, cai nas posições do layout original da planilha.
 export function parseWorkbook(buffer) {
   const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+  // A pasta de trabalho pode ter várias abas (Dashboard, DADOS, Saldos…): usa
+  // a primeira que tem o cabeçalho das receitas ("Data da receita" + "Valor total").
+  const isHeader = (r) => String(r[0] || '').toLowerCase().includes('data da receita') && r.some((c) => /valor total/i.test(String(c)))
+  let sheet = wb.SheetNames[0]
+  let raw = null
+  for (const name of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' })
+    if (rows.slice(0, 15).some(isHeader)) { sheet = name; raw = rows; break }
+  }
+  if (!raw) raw = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, defval: '' })
   let hdrIdx = raw.findIndex((r) => String(r[0] || '').toLowerCase().includes('data da receita'))
   if (hdrIdx < 0) hdrIdx = raw.findIndex((r) => r.some((c) => /valor/i.test(String(c))) && r.some((c) => /fundo|refere/i.test(String(c))))
   if (hdrIdx < 0) hdrIdx = 0
@@ -181,8 +192,14 @@ export function parseWorkbook(buffer) {
   let skipped = 0
   raw.slice(hdrIdx + 1).forEach((r) => {
     const cnpj = txt(r, 'cnpj')
-    const fundo = txt(r, 'fundo') || nameByCnpj[onlyDigits(cnpj)] || ''
-    if (!fundo && !onlyDigits(cnpj)) return
+    let fundo = txt(r, 'fundo') || nameByCnpj[onlyDigits(cnpj)] || ''
+    if (!fundo && !onlyDigits(cnpj)) {
+      // Linha sem fundo e sem CNPJ: se tem valor/status, entra (o controle soma
+      // ela nos totais) marcada para alguém identificar; vazia de tudo, ignora.
+      const temAlgo = parseNum(get(r, 'val')) || TAXA_KEYS.some((k) => parseNum(get(r, k))) || txt(r, 'status')
+      if (!temAlgo) return
+      fundo = SEM_ID
+    }
     // Mês de referência: quando a coluna traz um texto (ex.: "CORREÇÃO
     // REGULAMENTO"), o lançamento é um ajuste — o texto vira o "ajuste" e o
     // mês sai da data da receita / prevista / pagamento.
@@ -194,11 +211,11 @@ export function parseWorkbook(buffer) {
       mesRef = toMesRef(get(r, 'dataReceita')) || toMesRef(get(r, 'vencimento')) || toMesRef(get(r, 'dataPagamento'))
     }
     const taxas = {}
-    TAXA_KEYS.forEach((k) => { taxas[k] = round2(parseNum(get(r, k))) })
-    const soma = sumTaxas(taxas)
-    let val = round2(parseNum(get(r, 'val')))
-    if (val <= 0 && soma > 0) val = soma
-    if (!mesRef || (val <= 0 && soma <= 0)) { skipped++; return }
+    TAXA_KEYS.forEach((k) => { taxas[k] = parseNum(get(r, k)) })
+    // Valor total exatamente como está na coluna "Valor Total" do controle
+    // (mesmo zerado) — linhas zeradas entram também, como no controle.
+    const val = parseNum(get(r, 'val'))
+    if (!mesRef) { skipped++; return }
     const dataPagamento = toISODate(get(r, 'dataPagamento'))
     const saldoCell = get(r, 'saldo')
     rows.push({
@@ -215,11 +232,11 @@ export function parseWorkbook(buffer) {
       dataReceita: toISODate(get(r, 'dataReceita')),
       vencimento: toISODate(get(r, 'vencimento')),
       dataPagamento,
-      saldo: typeof saldoCell === 'number' ? round2(saldoCell) : 0,
+      saldo: typeof saldoCell === 'number' ? saldoCell : 0,
       obs: txt(r, 'obs').replace(/^0$/, ''),
     })
   })
-  return { rows, skipped, sheet: wb.SheetNames[0] }
+  return { rows, skipped, sheet }
 }
 
 export const TEMPLATE_HEADERS = ['Data da receita', 'Data prevista do recebimento', 'ADM', 'Custódia', 'Controladoria', 'Distribuição', 'Escrituração', 'Fundo', 'Conta do Fundo', 'Gestor', 'Classificação', 'CNPJ do Fundo', 'Valor Total', 'Saldos', 'Observação', 'Data de pgto', 'Status', 'Mês Referência', 'Ajuste']
@@ -242,7 +259,7 @@ const keyFull = (r) => onlyDigits(r.cnpj) + '|' + norm(r.fundo) + '|' + tag(r)
 const keyCnpj = (r) => (onlyDigits(r.cnpj) ? onlyDigits(r.cnpj) + '|' + tag(r) : null)
 const keyNome = (r) => norm(r.fundo) + '|' + tag(r)
 
-const same = (f, a, b) => (NUM_FIELDS.includes(f) ? Math.abs(round2(a) - round2(b)) < 0.005 : String(a ?? '') === String(b ?? ''))
+const same = (f, a, b) => (NUM_FIELDS.includes(f) ? Math.abs((Number(a) || 0) - (Number(b) || 0)) < 1e-6 : String(a ?? '') === String(b ?? ''))
 
 // Aplica as linhas da planilha sobre a base atual sem nunca duplicar:
 //  - o que já existe e está igual fica como está;
