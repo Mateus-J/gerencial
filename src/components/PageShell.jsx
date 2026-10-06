@@ -7,7 +7,7 @@ export function PageHeader({ eyebrow, title, description, meta, actions }) {
             <span className="w-4 h-px bg-current opacity-70" />{eyebrow}
           </div>
         )}
-        <h2 className="font-display text-[26px] font-semibold tracking-tight bg-gradient-to-r from-[var(--tx)] to-[var(--tx2)] bg-clip-text text-transparent">{title}</h2>
+        <h2 className="font-display text-[26px] font-semibold tracking-tight text-[var(--tx)]">{title}</h2>
         {description && <p className="text-[12.5px] text-[var(--tx3)] mt-0.5">{description}</p>}
         {meta && <div className="mt-2">{meta}</div>}
       </div>
