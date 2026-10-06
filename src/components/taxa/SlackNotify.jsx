@@ -40,6 +40,8 @@ export default function SlackNotify({ rows, who, toast }) {
 
   const curMes = mes || months[0] || ''
   const sentKey = (f) => f.key + '|' + curMes.replace('.', '_')
+  // Envio automático: 1 por fundo em cada competência (o servidor também barra)
+  const autoSent = (f) => cfg.enviados[sentKey(f)]?.via === 'brevo'
   const funds = useMemo(() => groupByFund(rows, curMes), [rows, curMes])
   // Todos os fundos da base (para o cadastro em lote por CNPJ)
   const allFunds = useMemo(() => {
@@ -120,14 +122,14 @@ export default function SlackNotify({ rows, who, toast }) {
   function send(f) {
     const email = cfg.canais[f.key]
     if (!email) { toast.error('Cadastre o e-mail do canal desse fundo primeiro.'); return }
-    if (service.configured) { sendAuto([f]); return }
+    if (service.configured) { if (autoSent(f)) { toast.error('Esse fundo já recebeu o envio desta competência.'); return } sendAuto([f]); return }
     window.location.href = mailtoHref(email, msgOf(f))
     markSent([f], 'mailto')
   }
-  const selList = shown.filter((f) => selected.has(f.key) && cfg.canais[f.key])
-  const pendentesEnvio = shown.filter((f) => cfg.canais[f.key] && !cfg.enviados[sentKey(f)])
+  const selList = shown.filter((f) => selected.has(f.key) && cfg.canais[f.key] && !autoSent(f))
+  const pendentesEnvio = shown.filter((f) => cfg.canais[f.key] && !autoSent(f) && !cfg.enviados[sentKey(f)])
   const toggleSel = (k) => setSelected((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
-  const selectable = shown.filter((f) => cfg.canais[f.key])
+  const selectable = shown.filter((f) => cfg.canais[f.key] && !autoSent(f))
   const allSel = selectable.length > 0 && selectable.every((f) => selected.has(f.key))
   async function copy(f) {
     const m = msgOf(f)
@@ -225,7 +227,7 @@ export default function SlackNotify({ rows, who, toast }) {
                 return (
                   <tr key={f.key} className={`text-[12px] hover:bg-[var(--sur2)]/60 align-top ${selected.has(f.key) ? 'bg-id-mid/8' : ''}`}>
                     <td className="pl-3 pr-1 py-3 border-b border-[var(--bdr)]/70">
-                      {service.configured && cfg.canais[f.key] && <input type="checkbox" checked={selected.has(f.key)} onChange={() => toggleSel(f.key)} className="accent-[#6B9A52]" />}
+                      {service.configured && cfg.canais[f.key] && !autoSent(f) && <input type="checkbox" checked={selected.has(f.key)} onChange={() => toggleSel(f.key)} className="accent-[#6B9A52]" />}
                     </td>
                     <td className="px-3 py-2.5 border-b border-[var(--bdr)]/70 max-w-[280px]">
                       <div className="font-medium truncate" title={f.fundo}>{f.fundo}</div>
@@ -260,7 +262,9 @@ export default function SlackNotify({ rows, who, toast }) {
                       <div className="flex justify-end gap-1">
                         <button onClick={() => setPreview(f)} className="btn btn-sm" title="Pré-visualizar"><Eye size={13} /></button>
                         <button onClick={() => copy(f)} className="btn btn-sm" title="Copiar mensagem"><Copy size={13} /></button>
-                        <button onClick={() => send(f)} disabled={!cfg.canais[f.key] || !!sending} className="btn btn-sm btn-primary" title={!cfg.canais[f.key] ? 'Cadastre o e-mail do canal' : service.configured ? 'Enviar agora para o canal' : 'Abrir e-mail pronto para o canal'}>{service.configured ? <Send size={13} /> : <Mail size={13} />} {sent ? 'Reenviar' : 'Enviar'}</button>
+                        {service.configured && autoSent(f)
+                          ? <span className="btn btn-sm opacity-70 cursor-default" title="Cada fundo recebe 1 envio por competência"><CheckCircle2 size={13} /> Enviado</span>
+                          : <button onClick={() => send(f)} disabled={!cfg.canais[f.key] || !!sending} className="btn btn-sm btn-primary" title={!cfg.canais[f.key] ? 'Cadastre o e-mail do canal' : service.configured ? 'Enviar agora para o canal' : 'Abrir e-mail pronto para o canal'}>{service.configured ? <Send size={13} /> : <Mail size={13} />} {sent ? 'Reenviar' : 'Enviar'}</button>}
                       </div>
                     </td>
                   </tr>
@@ -290,7 +294,7 @@ export default function SlackNotify({ rows, who, toast }) {
           </div>
         </Modal>
       )}
-      {preview && <PreviewModal f={preview} msg={msgOf(preview)} email={cfg.canais[preview.key]} onClose={() => setPreview(null)} onSend={() => { send(preview); setPreview(null) }} toast={toast} auto={service.configured} />}
+      {preview && <PreviewModal f={preview} msg={msgOf(preview)} email={cfg.canais[preview.key]} onClose={() => setPreview(null)} onSend={() => { send(preview); setPreview(null) }} toast={toast} auto={service.configured} done={service.configured && autoSent(preview)} />}
       {editTpl && <TemplateModal tpl={cfg.template} sample={funds[0]} onClose={() => setEditTpl(false)} onSave={(t) => { save((c) => ({ ...c, template: t }), 'Modelo salvo.'); setEditTpl(false) }} />}
       {bulk && <BulkModal funds={allFunds} onClose={() => setBulk(false)} onSave={(map) => { save((c) => ({ ...c, canais: { ...c.canais, ...map } }), `${Object.keys(map).length} canal(is) cadastrado(s).`); setBulk(false) }} />}
     </div>
@@ -328,13 +332,13 @@ function MessageBox({ msg }) {
   )
 }
 
-function PreviewModal({ f, msg, email, onClose, onSend, toast, auto }) {
+function PreviewModal({ f, msg, email, onClose, onSend, toast, auto, done }) {
   return (
     <Modal title={`Mensagem · ${f.fundo}`} onClose={onClose}
       footer={<>
         <span className="text-[11.5px] text-[var(--tx3)] mr-auto truncate">{email ? `Para: ${email}` : 'Sem e-mail de canal cadastrado'}</span>
         <button onClick={async () => { try { await navigator.clipboard.writeText(msg.subject + '\n\n' + msg.body); toast.success('Copiado.') } catch { toast.error('Não consegui copiar.') } }} className="btn btn-sm"><Copy size={13} /> Copiar</button>
-        <button disabled={!email} onClick={onSend} className="btn btn-sm btn-primary"><Send size={13} /> {auto ? 'Enviar agora' : 'Abrir e-mail'}</button>
+        <button disabled={!email || done} onClick={onSend} className="btn btn-sm btn-primary"><Send size={13} /> {done ? 'Já enviado' : auto ? 'Enviar agora' : 'Abrir e-mail'}</button>
       </>}>
       <MessageBox msg={msg} />
     </Modal>
