@@ -29,7 +29,7 @@ export default function SlackNotify({ rows, who, toast }) {
   useEffect(() => {
     fetch('/api/send-email', { headers: { accept: 'application/json' } })
       .then((r) => (r.ok && (r.headers.get('content-type') || '').includes('json') ? r.json() : null))
-      .then((d) => setService({ configured: !!d?.configured, from: d?.from, fromName: d?.fromName, checked: true }))
+      .then((d) => setService({ configured: !!d?.configured, fromName: d?.fromName, checked: true }))
       .catch(() => setService({ configured: false, checked: true }))
   }, [])
 
@@ -83,30 +83,34 @@ export default function SlackNotify({ rows, who, toast }) {
 
   const msgOf = (f) => renderMessage(cfg.template, f)
 
-  // Envio automático: a função do Cloudflare manda pelo Brevo, 25 por vez
+  // Envio automático: a função do Cloudflare monta a mensagem a partir da base,
+  // manda para o canal cadastrado e registra o envio — aqui só vão os fundos.
   async function sendAuto(list) {
     const items = list.filter((f) => cfg.canais[f.key])
     if (!items.length) { toast.error('Nenhum fundo com e-mail de canal cadastrado.'); return }
     setSending({ done: 0, total: items.length })
     const ok = []
     const fails = []
+    const unrecorded = []
     for (let i = 0; i < items.length; i += 25) {
       const chunk = items.slice(i, i + 25)
       try {
         const res = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ messages: chunk.map((f) => ({ id: f.key, to: cfg.canais[f.key], ...msgOf(f) })) }),
+          body: JSON.stringify({ mesRef: curMes, keys: chunk.map((f) => f.key), who }),
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) { chunk.forEach((f) => fails.push([f, data.error || `HTTP ${res.status}`])); continue }
         data.results.forEach((r) => { const f = chunk.find((x) => x.key === r.id); if (!f) return; if (r.ok) ok.push(f); else fails.push([f, r.error]) })
+        if (data.recorded === false) unrecorded.push(...chunk.filter((f) => data.results.some((r) => r.id === f.key && r.ok)))
       } catch {
         chunk.forEach((f) => fails.push([f, 'Falha de conexão']))
       }
       setSending({ done: Math.min(items.length, i + chunk.length), total: items.length })
     }
-    if (ok.length) await markSent(ok, 'brevo')
+    // O servidor já registra o envio; só grava daqui se ele não tiver conseguido
+    if (unrecorded.length) await markSent(unrecorded, 'brevo')
     setSending(null)
     setSelected(new Set())
     if (!fails.length) toast.success(`${ok.length} e-mail(s) enviado(s) para os canais.`)
@@ -182,7 +186,7 @@ export default function SlackNotify({ rows, who, toast }) {
         {service.checked && (service.configured ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-id-mid/30 bg-id-mid/8 px-3 py-2 text-[12px]">
             <Zap size={14} className="text-id-light" />
-            <span>Envio automático ativo — os e-mails saem de <b>{service.fromName}</b> &lt;{service.from}&gt; direto para os canais, sem abrir o seu e-mail.</span>
+            <span>Envio automático ativo — os e-mails saem como <b>{service.fromName}</b> direto para os canais, sem abrir o seu e-mail.</span>
             <div className="ml-auto flex gap-2">
               <button disabled={!selList.length || !!sending} onClick={() => setConfirmSend(selList)} className="btn btn-sm"><Send size={13} /> Enviar selecionados ({selList.length})</button>
               <button disabled={!pendentesEnvio.length || !!sending} onClick={() => setConfirmSend(pendentesEnvio)} className="btn btn-sm btn-primary"><Send size={13} /> Enviar todos ainda não enviados ({pendentesEnvio.length})</button>

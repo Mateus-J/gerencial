@@ -1,7 +1,7 @@
 // Padrão de notificação das taxas segregadas para os canais do Slack.
 // Cada canal do Slack tem um endereço de e-mail próprio (Integrações → "Enviar
 // e-mails para este canal"); o e-mail que chega lá vira uma mensagem no canal.
-import { TAXAS, onlyDigits, norm, brDate, fmtFull, SEM_ID } from './taxaAdm'
+import { TAXAS, onlyDigits, norm, brDate, fmtFull, SEM_ID } from './taxaCore.js'
 
 export const DEFAULT_TEMPLATE = {
   subject: 'Taxas {competencia} · {fundo}',
