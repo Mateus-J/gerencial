@@ -478,7 +478,7 @@ export default function TaxaAdministracao({ readOnly = false }) {
 
       {/* Filtros */}
       {view !== 'slack' && <Card className="p-3 mb-4">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mb-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 -mb-1 scroll-thin">
           <button onClick={() => setSelMes('')} className={`chip shrink-0 ${!selMes ? 'chip-on' : ''}`}>Período completo</button>
           <span className="w-px h-5 bg-[var(--bdr)] mx-1 shrink-0" />
           {[...combined.months].reverse().map((m) => (
@@ -560,8 +560,11 @@ export default function TaxaAdministracao({ readOnly = false }) {
             </div>
           </div>
         </Card>
-        <StatCard icon={CheckCircle2} tone="green" label="Recebido" value={<AnimatedNumber value={pago} format={fmtFull} />} sub={`${filtered.length - countPend} lançamento(s) pagos`} />
-        <StatCard icon={Clock} tone={pend > 0 ? 'amber' : 'neutral'} label="Em aberto" value={<AnimatedNumber value={pend} format={fmtFull} />} sub={vencido > 0 ? `${fmtShort(vencido)} vencido` : `${countPend} lançamento(s) pendentes`} onClick={() => setFStatus(fStatus === 'PENDENTE' ? '' : 'PENDENTE')} />
+        <StatCard icon={CheckCircle2} tone="green" label="Recebido" value={<AnimatedNumber value={pago} format={fmtFull} />} share={pct}
+          details={[['Lançamentos pagos', (filtered.length - countPend).toLocaleString('pt-BR')], ['Média por lançamento', filtered.length - countPend ? fmtShort(pago / (filtered.length - countPend)) : '—']]} />
+        <StatCard icon={Clock} tone={pend > 0 ? 'amber' : 'neutral'} label="Em aberto" value={<AnimatedNumber value={pend} format={fmtFull} />} share={total > 0 ? 100 - pct : 0}
+          details={[['Lançamentos pendentes', countPend.toLocaleString('pt-BR')], ['Vencido', vencido > 0 ? fmtShort(vencido) : 'R$ 0', vencido > 0 ? 'text-red-500' : '']]}
+          onClick={() => setFStatus(fStatus === 'PENDENTE' ? '' : 'PENDENTE')} hint="Clique para ver só os pendentes" />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <MiniStat icon={Building2} label="Fundos" value={fundosU} />
@@ -642,18 +645,35 @@ const TONES = {
   neutral: { icon: 'bg-[var(--sur2)] text-[var(--tx3)]', value: 'text-[var(--tx)]', bar: 'bg-[var(--tx4)]' },
 }
 
-function StatCard({ icon: Icon, tone = 'neutral', label, value, sub, onClick }) {
+// Cartão de número com rodapé: barra de participação no total + detalhes,
+// todos alinhados pelo topo (o botão não centraliza mais o conteúdo).
+function StatCard({ icon: Icon, tone = 'neutral', label, value, share, details = [], onClick, hint }) {
   const t = TONES[tone]
   const Tag = onClick ? 'button' : 'div'
   return (
-    <Card className="p-0">
-      <Tag onClick={onClick} className="w-full h-full text-left p-5 rounded-2xl transition-colors hover:bg-[var(--sur2)]/40">
+    <Card className="p-0 h-full">
+      <Tag onClick={onClick} title={hint} className="w-full h-full text-left p-5 rounded-2xl transition-colors hover:bg-[var(--sur2)]/40 flex flex-col justify-start items-stretch">
         <div className="flex items-center gap-2">
           <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.icon}`}><Icon size={15} /></span>
           <span className="text-[10px] font-mono font-medium tracking-[.16em] uppercase text-[var(--tx3)]">{label}</span>
+          {share != null && <span className="ml-auto text-[11px] font-mono text-[var(--tx3)]">{share.toFixed(1).replace('.', ',')}% do total</span>}
         </div>
-        <div className={`font-display text-[24px] font-semibold tracking-tight mt-3 glow-text ${t.value}`}>{value}</div>
-        {sub && <div className="text-[11.5px] text-[var(--tx3)] mt-0.5">{sub}</div>}
+        <div className={`font-display text-[26px] leading-tight font-semibold tracking-tight mt-3 glow-text whitespace-nowrap ${t.value}`}>{value}</div>
+        <div className="mt-auto pt-4">
+          {share != null && (
+            <div className="h-1.5 rounded-full bg-[var(--sur2)] overflow-hidden mb-3">
+              <div className={`h-full rounded-full grow-x ${t.bar}`} style={{ width: Math.min(100, Math.max(0, share)) + '%' }} />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            {details.map(([k, v, cls]) => (
+              <div key={k} className="min-w-0">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--tx4)] truncate">{k}</div>
+                <div className={`text-[13px] font-semibold tabular truncate ${cls || 'text-[var(--tx2)]'}`}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </Tag>
     </Card>
   )
