@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "firebase": "^12.17.1",
+    "firebase": "^12.19.0",
     "konva": "^10.3.0",
     "lucide-react": "^1.31.0",
     "qrcode": "^1.5.4",
@@ -30,5 +30,8 @@
     "postcss": "^8.5.26",
     "tailwindcss": "^4.3.3",
     "vite": "^8.2.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.5"
   }
 }

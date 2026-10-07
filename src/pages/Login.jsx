@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, ShieldCheck, Clock } from 'lucide-react'
+import { Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import QRCode from 'qrcode'
-import { useAuth, withinAccessWindow, getLastUsername, consumeLogoutReason } from '../context/AuthContext'
+import { useAuth, consumeLogoutReason } from '../context/AuthContext'
 import { otpAuthUrl } from '../lib/totp'
 import logoId from '../assets/logo-id.png'
 
 export default function Login() {
-  const { login, register, verifyTwoFactor, users } = useAuth()
-  const [mode, setMode] = useState('login') // login | register | twofa-setup | twofa-verify | blocked
+  const { login, register } = useAuth()
+  const [mode, setMode] = useState('login') // login | register | twofa-setup | twofa-verify
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -23,10 +23,9 @@ export default function Login() {
   const [rPass, setRPass] = useState('')
 
   // 2FA
-  const [pending, setPending] = useState(null) // { username, user }
+  const [pending, setPending] = useState(null) // { secret, label } — só na primeira configuração do 2FA
   const [code, setCode] = useState('')
   const [qrUrl, setQrUrl] = useState('')
-  const [blockedWindow, setBlockedWindow] = useState(null)
   const [logoutReason, setLogoutReason] = useState(null)
 
   useEffect(() => {
@@ -34,25 +33,12 @@ export default function Login() {
     if (r) setLogoutReason(r)
   }, [])
 
-  // Se este navegador já logou como alguém com horário de acesso restrito,
-  // e o horário atual está fora da janela, nem mostra o formulário de login.
   useEffect(() => {
-    const lastUsername = getLastUsername()
-    if (!lastUsername) return
-    const u = users[lastUsername]
-    if (!u) return
-    if (!withinAccessWindow(u)) {
-      setBlockedWindow({ inicio: u.acessoInicio, fim: u.acessoFim })
-      setMode('blocked')
-    }
-  }, [users])
-
-  useEffect(() => {
-    if (mode === 'twofa-setup' && pending?.user?.totpSecret) {
-      const url = otpAuthUrl(pending.user.totpSecret, pending.user.email || pending.username)
+    if (mode === 'twofa-setup' && pending?.secret) {
+      const url = otpAuthUrl(pending.secret, pending.label || user)
       QRCode.toDataURL(url, { margin: 1, width: 200 }).then(setQrUrl).catch(() => setQrUrl(''))
     }
-  }, [mode, pending])
+  }, [mode, pending, user])
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -62,7 +48,7 @@ export default function Login() {
     setBusy(false)
     if (!res.ok) { setError(res.error); return }
     if (res.needs2FA) {
-      setPending(res.pending)
+      setPending(res.setup ? { secret: res.secret, label: res.label } : null)
       setCode('')
       setMode(res.setup ? 'twofa-setup' : 'twofa-verify')
     }
@@ -72,14 +58,15 @@ export default function Login() {
     e.preventDefault()
     if (!/^\d{6}$/.test(code.trim())) { setError('Digite os 6 dígitos do app autenticador.'); return }
     setBusy(true); setError('')
-    const res = await verifyTwoFactor(pending.username, code.trim())
+    const res = await login(user, pass, code.trim())
     setBusy(false)
-    if (!res.ok) setError(res.error)
+    if (!res.ok) { setError(res.error); if (!res.needs2FA) { setMode('login'); setCode('') } }
   }
 
   async function handleRegister(e) {
     e.preventDefault()
     if (!rUser || !rName || !rPass) { setError('Preencha todos os campos.'); return }
+    if (rPass.length < 8) { setError('A senha precisa ter pelo menos 8 caracteres.'); return }
     setBusy(true); setError('')
     const res = await register({ username: rUser, name: rName, email: rEmail, pass: rPass })
     setBusy(false)
@@ -100,24 +87,18 @@ export default function Login() {
           </div>
         </div>
 
-        {logoutReason && mode !== 'blocked' && (
+        {logoutReason && (
           <p className="text-[11.5px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3 text-center">{logoutReason}</p>
         )}
 
         <div className="glass rounded-2xl p-6">
-          {mode === 'blocked' ? (
-            <div className="text-center py-2">
-              <Clock size={26} className="mx-auto text-[var(--tx4)] mb-3" />
-              <h1 className="font-display text-[16px] font-semibold mb-1">Fora do horário de acesso</h1>
-              <p className="text-[12.5px] text-[var(--tx3)]">O acesso a este sistema está liberado apenas entre <strong>{blockedWindow?.inicio}</strong> e <strong>{blockedWindow?.fim}</strong>.</p>
-            </div>
-          ) : mode === 'twofa-setup' ? (
+          {mode === 'twofa-setup' ? (
             <form onSubmit={handleVerify2FA}>
               <ShieldCheck size={20} className="text-id-dark dark:text-id-light mb-2" />
               <h1 className="font-display text-[16px] font-semibold mb-1">Configure a verificação em duas etapas</h1>
               <p className="text-[12px] text-[var(--tx3)] mb-4">Escaneie o QR code com o Google Authenticator, Microsoft Authenticator ou Authy — depois digite o código de 6 dígitos gerado.</p>
               {qrUrl && <img src={qrUrl} alt="QR code 2FA" className="mx-auto mb-3 rounded-lg border border-[var(--bdr)]" />}
-              <p className="text-[10.5px] text-[var(--tx4)] text-center mb-4 break-all">Ou insira manualmente: {pending?.user?.totpSecret}</p>
+              <p className="text-[10.5px] text-[var(--tx4)] text-center mb-4 break-all">Ou insira manualmente: {pending?.secret}</p>
               <label className="block text-[11px] text-[var(--tx3)] mb-1">Código de 6 dígitos</label>
               <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[16px] tracking-[6px] text-center outline-none focus:border-id-mid" autoFocus />
               {error && <p className="text-[11.5px] text-red-400 mt-2">{error}</p>}
@@ -177,7 +158,7 @@ export default function Login() {
               <input type="email" value={rEmail} onChange={(e) => setREmail(e.target.value)} className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[13px] mb-3 outline-none focus:border-id-mid" />
 
               <label className="block text-[11px] text-[var(--tx3)] mb-1">Senha</label>
-              <input type="password" value={rPass} onChange={(e) => setRPass(e.target.value)} className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[13px] mb-1 outline-none focus:border-id-mid" />
+              <input type="password" value={rPass} onChange={(e) => setRPass(e.target.value)} placeholder="mínimo 8 caracteres" className="w-full bg-[var(--sur2)] border border-[var(--bdr)] rounded-lg px-3 py-2 text-[13px] mb-1 outline-none focus:border-id-mid" />
 
               {error && <p className="text-[11.5px] text-red-400 mt-2">{error}</p>}
 
