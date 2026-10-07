@@ -178,13 +178,16 @@ body::before {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
-.animate-fade-up { animation: fade-up .22s ease-out both; }
+/* backwards (e não both): depois da animação o elemento fica sem transform —
+   com o estado final "preso", ele vira referência dos position:fixed dentro
+   dele e as janelas (modais) abriam fora da tela em páginas compridas. */
+.animate-fade-up { animation: fade-up .22s ease-out backwards; }
 
 @keyframes slide-in-right {
   from { opacity: .4; transform: translateX(24px); }
   to { opacity: 1; transform: none; }
 }
-.animate-slide-in { animation: slide-in-right .2s ease-out both; }
+.animate-slide-in { animation: slide-in-right .2s ease-out backwards; }
 
 /* Linha recém-alterada (por você ou por outra pessoa) pisca rapidamente */
 @keyframes row-flash {
