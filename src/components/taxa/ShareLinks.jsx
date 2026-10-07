@@ -76,7 +76,7 @@ export default function ShareLinks({ who, toast, onClose }) {
                 {l.active ? (
                   <>
                     <button onClick={() => copy(token)} className="btn btn-sm"><Copy size={13} /> Copiar</button>
-                    <a href={consultaUrl(token)} target="_blank" rel="noreferrer" className="btn btn-sm" title="Abrir"><ExternalLink size={13} /></a>
+                    <a href={consultaUrl(token)} target="_blank" rel="noreferrer" className="btn btn-sm" title="Abrir a consulta em nova guia"><ExternalLink size={13} /> Abrir</a>
                     <button onClick={() => { if (confirm(`Revogar o link "${l.label}"? Quem tiver esse link perde o acesso na hora.`)) update((cur) => ({ ...cur, [token]: { ...cur[token], active: false, revokedAt: Date.now(), revokedBy: who } }), 'Link revogado.') }} className="btn btn-sm btn-danger"><Ban size={13} /> Revogar</button>
                   </>
                 ) : null}

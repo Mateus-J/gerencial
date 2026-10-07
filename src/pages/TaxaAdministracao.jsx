@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { doc, onSnapshot, runTransaction } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import {
-  Upload, Download, Trash2, Plus, X, Link2, CheckCircle2, Clock, AlertCircle, Search,
+  Upload, Download, Trash2, Plus, X, Link2, ExternalLink, Settings2, CheckCircle2, Clock, AlertCircle, Search,
   FileSpreadsheet, TrendingUp, TrendingDown, Building2, Users, Wallet,
 } from 'lucide-react'
 import { db } from '../lib/firebase'
@@ -15,6 +15,7 @@ import AnimatedNumber from '../components/AnimatedNumber'
 import BaseTable from '../components/taxa/BaseTable'
 import SlackNotify from '../components/taxa/SlackNotify'
 import ShareLinks from '../components/taxa/ShareLinks'
+import { SHARE_REF, consultaUrl } from '../lib/share'
 import {
   ensureIds, cleanRow, recalc, parseWorkbook, mergeImport, newId, parseNum, onlyDigits, norm, sortKey,
   fmtShort, fmtFull, brDate, todayISO, rowsToSheetData, TEMPLATE_HEADERS, TAXAS, TAXA_KEYS, sumTaxas,
@@ -78,6 +79,16 @@ export default function TaxaAdministracao({ readOnly = false, search, onSearch }
   const setQ = onSearch || setQLocal
   const [dragging, setDragging] = useState(false)
   const [sharing, setSharing] = useState(false)
+  // Link de consulta mais recente ainda ativo — o botão abre ele numa nova guia
+  const [shareToken, setShareToken] = useState(null)
+  useEffect(() => {
+    if (readOnly) return undefined
+    return onSnapshot(SHARE_REF(), (snap) => {
+      const links = snap.exists() ? snap.data().links || {} : {}
+      const last = Object.entries(links).filter(([, l]) => l.active).sort((a, b) => b[1].createdAt - a[1].createdAt)[0]
+      setShareToken(last ? last[0] : null)
+    }, () => setShareToken(null))
+  }, [readOnly])
   const [editing, setEditing] = useState(null) // linha em edição, ou {} pra novo lançamento
   const [preview, setPreview] = useState(null) // { rows, skipped, fileName }
   const [view, setView] = useState('geral') // geral | taxas | slack
@@ -313,7 +324,12 @@ export default function TaxaAdministracao({ readOnly = false, search, onSearch }
     <button onClick={() => exportXlsx(null, 'base_taxas_completa')} className="btn"><Download size={14} /> Exportar base</button>
   ) : (
     <>
-      <button onClick={() => setSharing(true)} className="btn" title="Gerar link só de leitura desta tela"><Link2 size={14} /> Link de consulta</button>
+      <div className="inline-flex">
+        {shareToken
+          ? <a href={consultaUrl(shareToken)} target="_blank" rel="noreferrer" className="btn rounded-r-none" title="Abrir a tela de consulta (só leitura) numa nova guia"><ExternalLink size={14} /> Link de consulta</a>
+          : <button onClick={() => setSharing(true)} className="btn rounded-r-none" title="Criar um link só de leitura desta tela"><Link2 size={14} /> Link de consulta</button>}
+        <button onClick={() => setSharing(true)} className="btn rounded-l-none border-l-0 px-2.5" title="Gerenciar links (criar, copiar, revogar)" aria-label="Gerenciar links de consulta"><Settings2 size={14} /></button>
+      </div>
       <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
       <button onClick={() => fileRef.current?.click()} className="btn" title="Escolha a planilha de controle (.xlsx) — ou arraste o arquivo para a página"><Upload size={14} /> Atualizar base (planilha)</button>
       <button onClick={() => exportXlsx(null, 'base_taxas_completa')} className="btn"><Download size={14} /> Exportar base</button>
