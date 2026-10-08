@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
-import { ensureAnonAuth } from '../lib/firebase'
+import { onAuthStateChanged } from 'firebase/auth'
+import { auth } from '../lib/firebase'
 
 // Espelha o "sdot" do app antigo: cinza = conectando, verde = ok, âmbar = offline
 export function useFirebaseStatus() {
   const [status, setStatus] = useState('connecting') // connecting | ok | offline
 
   useEffect(() => {
-    let mounted = true
-    ensureAnonAuth()
-      .then(() => { if (mounted) setStatus('ok') })
-      .catch(() => { if (mounted) setStatus('offline') })
-    return () => { mounted = false }
+    const sync = () => setStatus(!navigator.onLine ? 'offline' : auth.currentUser ? 'ok' : 'connecting')
+    const unsub = onAuthStateChanged(auth, sync)
+    window.addEventListener('online', sync)
+    window.addEventListener('offline', sync)
+    return () => { unsub(); window.removeEventListener('online', sync); window.removeEventListener('offline', sync) }
   }, [])
 
   return status

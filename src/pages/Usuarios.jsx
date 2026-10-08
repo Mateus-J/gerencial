@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, onSnapshot, updateDoc, FieldPath } from 'firebase/firestore'
 import { UserPlus, ShieldCheck, RotateCcw } from 'lucide-react'
-import { db } from '../lib/firebase'
+import { db, api } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
-import { genSecret } from '../lib/totp'
-import { clearTwoFAFlag } from '../context/AuthContext'
 import { useToast } from '../components/Toast'
 import { COLABORADORES, slugify } from '../hooks/useBoard'
-import { useAuth } from '../context/AuthContext'
 
 const DOC_REF = () => doc(db, 'controle', 'users')
 const PERMS_DOC = () => doc(db, 'controle', 'permissoes')
@@ -26,19 +23,8 @@ const DEFAULT_PERMS = [
 ]
 
 // Mesma estratégia de hash do app antigo: SHA-256 com salt aleatório por usuário
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-async function hashPass(pass, salt) { return salt ? sha256(salt + ':' + pass) : sha256(pass) }
-function genSalt() {
-  const arr = new Uint8Array(16); crypto.getRandomValues(arr)
-  return Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
 export default function Usuarios() {
   const toast = useToast()
-  const { currentUser } = useAuth()
   const [users, setUsers] = useState({})
   const [loading, setLoading] = useState(true)
   const [nu, setNu] = useState({ user: '', name: '', email: '', pass: '', role: 'user' })
@@ -50,14 +36,13 @@ export default function Usuarios() {
 
   useEffect(() => {
     let mounted = true
-    getDoc(DOC_REF())
-      .then((snap) => { if (mounted && snap.exists()) setUsers(snap.data().users || {}) })
-      .catch((e) => console.warn('usersLoad err', e))
-      .finally(() => mounted && setLoading(false))
+    // Ao vivo: senha/2FA são alterados pelo servidor e a lista atualiza sozinha
+    const unsub = onSnapshot(DOC_REF(), (snap) => { if (mounted) { setUsers(snap.exists() ? snap.data().users || {} : {}); setLoading(false) } },
+      (e) => { console.warn('usersLoad err', e); if (mounted) setLoading(false) })
     getDoc(PERMS_DOC())
       .then((snap) => { if (mounted && snap.exists() && snap.data().matrix?.length) setPerms(snap.data().matrix) })
       .catch((e) => console.warn('permsLoad err', e))
-    return () => { mounted = false }
+    return () => { mounted = false; unsub() }
   }, [])
 
   function persistPerms(next) {
@@ -76,9 +61,8 @@ export default function Usuarios() {
     setConfirmBusy(true)
     setConfirmError('')
     try {
-      const me = users[currentUser.username]
-      const hash = await hashPass(confirmPass, me?.salt || '')
-      if (hash !== me?.pass) { setConfirmError('Senha incorreta.'); setConfirmBusy(false); return }
+      const r = await api('/api/auth/admin', { action: 'verifyPassword', pass: confirmPass })
+      if (!r.ok || !r.data.ok) { setConfirmError(r.data.error || 'Senha incorreta.'); setConfirmBusy(false); return }
       const next = perms.map((p) => p.action === pendingToggle.action ? { ...p, [pendingToggle.role]: pendingToggle.next } : p)
       persistPerms(next)
       toast.success(`Permissão "${pendingToggle.action}" atualizada.`)
@@ -90,32 +74,35 @@ export default function Usuarios() {
     }
   }
 
-  function persist(next) {
-    setUsers(next)
-    setDoc(DOC_REF(), { users: next, updatedAt: Date.now() }, { merge: false }).catch((e) => { console.warn('usersSave err', e); toast.error('Erro ao salvar: ' + e.message) })
+  // Ações que mexem em senha/2FA (e criar/remover usuário) passam pelo servidor
+  async function admin(action, payload, okMsg) {
+    const r = await api('/api/auth/admin', { action, ...payload })
+    if (!r.ok) { toast.error(r.data.error || 'Não foi possível concluir.'); return false }
+    if (okMsg) toast.success(okMsg)
+    return true
   }
 
   async function addUser() {
     const { user, name, email, pass, role } = nu
     if (!user || !name || !pass) { toast.error('Preencha usuário, nome e senha.'); return }
     if (users[user]) { toast.error('Usuário já existe.'); return }
-    const salt = genSalt()
-    const passHash = await hashPass(pass, salt)
+    if (pass.length < 8) { toast.error('A senha precisa ter pelo menos 8 caracteres.'); return }
     // Se o nome bater com um dos colaboradores fixos (André Castro, etc.),
     // já vincula ao quadro dele automaticamente — evita ficar sem "Atividades do dia".
     const matched = COLABORADORES.find((c) => c.slug === slugify(name))
-    persist({ ...users, [user]: { pass: passHash, salt, name, email, role, ...(matched ? { boardSlug: matched.slug } : {}) } })
-    setNu({ user: '', name: '', email: '', pass: '', role: 'user' })
-    toast.success(`Usuário @${user} adicionado com sucesso!${matched ? ` Vinculado ao quadro de ${matched.name}.` : ''}`)
+    const ok = await admin('createUser', { username: user, pass, profile: { name, email, role, ...(matched ? { boardSlug: matched.slug } : {}) } },
+      `Usuário @${user} adicionado com sucesso!${matched ? ` Vinculado ao quadro de ${matched.name}.` : ''}`)
+    if (ok) setNu({ user: '', name: '', email: '', pass: '', role: 'user' })
   }
   function removeUser(key) {
     if (!confirm('Remover usuário @' + key + '?')) return
-    const next = { ...users }; delete next[key]
-    persist(next)
-    toast.success(`Usuário @${key} removido.`)
+    admin('removeUser', { username: key }, `Usuário @${key} removido.`)
   }
+  // Campos do perfil (nome, perfil, horário…): grava só o campo alterado
   function updateField(key, field, value) {
-    persist({ ...users, [key]: { ...users[key], [field]: value } })
+    setUsers((u) => ({ ...u, [key]: { ...u[key], [field]: value } }))
+    updateDoc(DOC_REF(), new FieldPath('users', key, field), value, 'updatedAt', Date.now())
+      .catch((e) => { console.warn('usersSave err', e); toast.error('Erro ao salvar: ' + e.message) })
     if (field === 'role' && value !== 'pending') toast.success(`@${key} aprovado como ${ROLE_LABEL[value] || value}.`)
     if (field === 'acessoInicio' || field === 'acessoFim') toast.success('Horário de acesso atualizado.')
     if (field === 'boardSlug') {
@@ -124,27 +111,18 @@ export default function Usuarios() {
     }
   }
   async function updatePass(key, newPass) {
-    if (!newPass) return
-    const salt = genSalt()
-    const passHash = await hashPass(newPass, salt)
-    persist({ ...users, [key]: { ...users[key], pass: passHash, salt } })
-    toast.success(`Senha de @${key} atualizada.`)
+    if (!newPass) return false
+    if (newPass.length < 8) { toast.error('A senha precisa ter pelo menos 8 caracteres.'); return false }
+    return admin('setPassword', { username: key, pass: newPass }, `Senha de @${key} atualizada.`)
   }
   function toggle2FA(key, enabled) {
-    const u = users[key]
-    // Gera o segredo na primeira vez que ativa; ao desativar, mantém o
-    // segredo salvo (se reativar sem "resetar", não precisa escanear de novo).
-    const secret = u.totpSecret || genSecret()
-    persist({ ...users, [key]: { ...u, totpEnabled: enabled, totpSecret: secret } })
-    clearTwoFAFlag(key)
-    toast.success(enabled ? `2FA ativado para @${key}.` : `2FA desativado para @${key}.`)
+    // Ao desativar, o segredo continua guardado no servidor (se reativar sem
+    // "resetar", não precisa escanear de novo).
+    admin('set2FA', { username: key, enabled }, enabled ? `2FA ativado para @${key}.` : `2FA desativado para @${key}.`)
   }
   function reset2FA(key) {
     if (!confirm('Resetar 2FA de @' + key + '? A pessoa vai precisar escanear um novo QR code no próximo login.')) return
-    const u = users[key]
-    persist({ ...users, [key]: { ...u, totpSecret: genSecret(), totpConfirmed: false } })
-    clearTwoFAFlag(key)
-    toast.success('2FA resetado com sucesso!')
+    admin('reset2FA', { username: key }, '2FA resetado com sucesso!')
   }
 
   if (loading) {
@@ -228,7 +206,7 @@ export default function Usuarios() {
                       {COLABORADORES.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
                     </select>
                   </td>
-                  <td className="px-3 py-2"><input type="password" placeholder="Nova senha…" onBlur={(e) => e.target.value && updatePass(key, e.target.value)} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px] w-[110px]" /></td>
+                  <td className="px-3 py-2"><input type="password" placeholder="Nova senha…" onBlur={async (e) => { const el = e.target; if (el.value && await updatePass(key, el.value)) el.value = '' }} className="bg-[var(--sur2)] border border-[var(--bdr)] rounded-md px-1.5 py-1 text-[11px] w-[110px]" /></td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
                       <label className="relative inline-flex items-center cursor-pointer">

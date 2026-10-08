@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Wallet, Percent, Landmark, AlertTriangle,
   Home, CalendarDays, Users, ShieldCheck, Settings, ChevronDown, LogOut, History, Building2,
-  LayoutGrid, User, Lock, Layers,
+  LayoutGrid, User, Lock, Layers, Receipt,
 } from 'lucide-react'
 import { COLABORADORES } from '../hooks/useBoard'
 import logoId from '../assets/logo-id.png'
@@ -19,6 +19,7 @@ const NAV = [
       { id: 'saldos', label: 'Saldos', icon: Wallet },
       { id: 'fundos', label: 'Fundos', icon: Building2 },
       { id: 'taxa-administracao', label: 'Taxa de Administração', icon: Percent, adminOnly: true },
+      { id: 'taxa-anbima', label: 'Taxa Anbima', icon: Receipt, adminOnly: true },
       { id: 'portal-saldos', label: 'Portal Saldos', icon: Landmark },
       { id: 'multas-juros', label: 'Multas e Juros', icon: AlertTriangle, badge: true },
     ],
