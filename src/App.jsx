@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Saldos from './pages/Saldos'
 import Fundos from './pages/Fundos'
 import TaxaAdministracao from './pages/TaxaAdministracao'
+import TaxaAnbima from './pages/TaxaAnbima'
 import FipCustodia from './pages/FipCustodia'
 import FipAdministracao from './pages/FipAdministracao'
 import PortalSaldos from './pages/PortalSaldos'
@@ -35,6 +36,7 @@ const PAGES = {
   saldos: { component: Saldos, title: 'Saldos', subtitle: 'Conta lastros' },
   fundos: { component: Fundos, title: 'Fundos', subtitle: 'Base de referência' },
   'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração', adminOnly: true, search: true },
+  'taxa-anbima': { component: TaxaAnbima, title: 'Taxa Anbima', adminOnly: true, search: true },
   'fip-custodia': { component: FipCustodia, title: 'Taxa de Custódia — FIPs' },
   'fip-administracao': { component: FipAdministracao, title: 'Taxa de Administração — FIPs' },
   'portal-saldos': { component: PortalSaldos, title: 'Portal Saldos' },

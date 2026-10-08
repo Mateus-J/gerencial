@@ -1,6 +1,8 @@
 // Tabela da base no mesmo formato da planilha de controle: todas as colunas,
 // taxas segregadas, mais recente primeiro, filtro por coluna (estilo Excel),
-// totais do que está filtrado e exportação.
+// totais do que está filtrado e exportação. As colunas vêm por `cols` (padrão:
+// Taxa de Administração) — a Taxa Anbima usa a mesma tabela com as suas.
+// Coluna pode trazer `text(r)` (texto exibido/filtrado) e `sortValue(r)`.
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Clock, AlertCircle, Download, Trash2, Plus, X, Pencil, ChevronLeft, ChevronRight, Filter, FilterX } from 'lucide-react'
 import { brDate, sortKey, norm, fmtMoney, isOverdue, onlyDigits } from '../../lib/taxaAdm'
@@ -25,10 +27,13 @@ const COLS = [
   { key: 'mesRef', label: 'Mês referência', type: 'mes' },
 ]
 const NUMERIC = new Set(['tax', 'total', 'money'])
+const DEFAULT_SORT = { key: 'mesRef', asc: false }
+const DEFAULT_TIEBREAK = [['mesRef', false], ['dataReceita', false], ['fundo', true]]
 const PAGE_SIZES = [50, 100, 250, 500]
 
 // Texto que o filtro da coluna compara (o mesmo que aparece na célula)
 function cellText(r, c) {
+  if (c.text) return c.text(r)
   const v = r[c.key]
   if (c.type === 'date') return brDate(v)
   if (NUMERIC.has(c.type)) return fmtMoney(v)
@@ -38,10 +43,11 @@ function cellText(r, c) {
 }
 
 // Ordenação padrão: mês de referência mais recente primeiro, depois data da receita
-function compare(a, b, key, asc) {
-  const col = COLS.find((c) => c.key === key)
+function compare(a, b, key, asc, cols = COLS) {
+  const col = cols.find((c) => c.key === key)
   let va, vb
-  if (key === 'mesRef') { va = sortKey(a.mesRef); vb = sortKey(b.mesRef) }
+  if (col?.sortValue) { va = col.sortValue(a); vb = col.sortValue(b) }
+  else if (key === 'mesRef') { va = sortKey(a.mesRef); vb = sortKey(b.mesRef) }
   else if (col && NUMERIC.has(col.type)) { va = Number(a[key]) || 0; vb = Number(b[key]) || 0 }
   else { va = (a[key] || '').toString().toLowerCase(); vb = (b[key] || '').toString().toLowerCase() }
   const d = va > vb ? 1 : va < vb ? -1 : 0
@@ -50,8 +56,11 @@ function compare(a, b, key, asc) {
 
 export default function BaseTable({
   rows, totalBase, onEdit, onNew, onUpdate, onUpdateTaxa, onSetStatus, onDelete, onExport, readOnly = false,
+  cols = COLS, title = 'Base de taxas', noun = 'lançamento(s)', exportPrefix = 'taxas',
+  defaultSort = DEFAULT_SORT, tiebreak = DEFAULT_TIEBREAK, minWidth = 'min-w-[1820px]', newLabel = 'Nova linha',
 }) {
-  const [sort, setSort] = useState({ key: 'mesRef', asc: false })
+  const COLS = cols
+  const [sort, setSort] = useState(defaultSort)
   const [filters, setFilters] = useState({})
   const [showFilters, setShowFilters] = useState(true)
   const [page, setPage] = useState(0)
@@ -64,16 +73,15 @@ export default function BaseTable({
     const out = rows.filter((r) => fs.every(([c, v]) => (c.type === 'status' ? cellText(r, c) === v
       : c.key === 'cnpj' && onlyDigits(v) ? onlyDigits(r.cnpj).includes(onlyDigits(v)) // com ou sem pontuação
       : norm(cellText(r, c)).includes(v))))
-    out.sort((a, b) => compare(a, b, sort.key, sort.asc)
-      || compare(a, b, 'mesRef', false) || compare(a, b, 'dataReceita', false) || compare(a, b, 'fundo', true))
+    out.sort((a, b) => tiebreak.reduce((d, [k, asc]) => d || compare(a, b, k, asc, COLS), compare(a, b, sort.key, sort.asc, COLS)))
     return out
-  }, [rows, filters, sort])
+  }, [rows, filters, sort, COLS, tiebreak])
 
   const totals = useMemo(() => {
     const t = {}
     COLS.filter((c) => NUMERIC.has(c.type)).forEach((c) => { t[c.key] = view.reduce((a, r) => a + (Number(r[c.key]) || 0), 0) })
     return t
-  }, [view])
+  }, [view, COLS])
 
   const pageCount = Math.max(1, Math.ceil(view.length / pageSize))
   const curPage = Math.min(page, pageCount - 1)
@@ -84,15 +92,15 @@ export default function BaseTable({
 
   const setFilter = (k, v) => { setFilters((f) => ({ ...f, [k]: v })); setPage(0) }
   const toggle = (id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
-  const clickSort = (key) => setSort((s) => (s.key === key ? { key, asc: !s.asc } : { key, asc: !(key === 'mesRef' || NUMERIC.has(COLS.find((c) => c.key === key)?.type) || key.startsWith('data') || key === 'vencimento') }))
+  const clickSort = (key) => setSort((s) => (s.key === key ? { key, asc: !s.asc } : { key, asc: !(key === 'mesRef' || COLS.find((c) => c.key === key)?.desc || NUMERIC.has(COLS.find((c) => c.key === key)?.type) || key.startsWith('data') || key === 'vencimento') }))
 
   return (
     <div className="glass rounded-2xl overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--bdr)] flex flex-wrap items-center gap-2">
         <div className="mr-auto">
-          <div className="text-[13px] font-semibold font-display">Base de taxas</div>
+          <div className="text-[13px] font-semibold font-display">{title}</div>
           <div className="text-[11.5px] text-[var(--tx3)]">
-            {view.length.toLocaleString('pt-BR')} de {totalBase.toLocaleString('pt-BR')} lançamento(s)
+            {view.length.toLocaleString('pt-BR')} de {totalBase.toLocaleString('pt-BR')} {noun}
             {activeFilters.length > 0 && <> · {activeFilters.length} filtro(s) de coluna</>}
           </div>
         </div>
@@ -101,7 +109,7 @@ export default function BaseTable({
             <span className="text-[11.5px] text-[var(--tx3)]">{selected.size} selecionado(s)</span>
             <button onClick={() => { onSetStatus(selIds, 'PAGO'); setSelected(new Set()) }} className="btn btn-sm"><CheckCircle2 size={13} className="text-id-mid" /> Marcar pago</button>
             <button onClick={() => { onSetStatus(selIds, 'PENDENTE'); setSelected(new Set()) }} className="btn btn-sm"><Clock size={13} className="text-amber-500" /> Marcar pendente</button>
-            <button onClick={() => onExport(view.filter((r) => selected.has(r.id)), 'taxas_selecao')} className="btn btn-sm"><Download size={13} /> Exportar seleção</button>
+            <button onClick={() => onExport(view.filter((r) => selected.has(r.id)), exportPrefix + '_selecao')} className="btn btn-sm"><Download size={13} /> Exportar seleção</button>
             <button onClick={() => { onDelete(selIds); setSelected(new Set()) }} className="btn btn-sm btn-danger"><Trash2 size={13} /> Excluir</button>
             <button onClick={() => setSelected(new Set())} className="btn btn-sm" title="Limpar seleção"><X size={13} /></button>
           </div>
@@ -109,15 +117,15 @@ export default function BaseTable({
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => setShowFilters((v) => !v)} className={`btn btn-sm ${showFilters ? 'border-id-mid/40' : ''}`}><Filter size={13} /> Filtros por coluna</button>
             {activeFilters.length > 0 && <button onClick={() => { setFilters({}); setPage(0) }} className="btn btn-sm"><FilterX size={13} /> Limpar</button>}
-            <button onClick={() => onExport(view, 'taxas_filtrado')} className="btn btn-sm"><Download size={13} /> Exportar o que está na tela</button>
-            <button onClick={() => onExport(null, 'base_taxas_completa')} className="btn btn-sm"><Download size={13} /> Exportar base completa</button>
-            {!readOnly && <button onClick={onNew} className="btn btn-sm btn-primary"><Plus size={13} /> Nova linha</button>}
+            <button onClick={() => onExport(view, exportPrefix + '_filtrado')} className="btn btn-sm"><Download size={13} /> Exportar o que está na tela</button>
+            <button onClick={() => onExport(null, 'base_' + exportPrefix + '_completa')} className="btn btn-sm"><Download size={13} /> Exportar base completa</button>
+            {!readOnly && <button onClick={onNew} className="btn btn-sm btn-primary"><Plus size={13} /> {newLabel}</button>}
           </div>
         )}
       </div>
 
       <div className="overflow-auto max-h-[72vh]">
-        <table className="w-full text-left min-w-[1820px] border-separate border-spacing-0">
+        <table className={`w-full text-left ${minWidth} border-separate border-spacing-0`}>
           <thead className="sticky top-0 z-10">
             <tr className="text-[10px] font-mono uppercase tracking-wider text-[var(--tx3)] bg-[var(--sur)]">
               <th className="pl-4 pr-1 py-2.5 w-8 border-b border-[var(--bdr)] bg-[var(--sur)]">
@@ -234,6 +242,10 @@ function Cell({ r, c, onEdit, onUpdate, onUpdateTaxa, onSetStatus, readOnly }) {
       return <td className={base}><StatusPill row={r} onToggle={ro ? null : () => onSetStatus([r.id], r.status === 'PAGO' ? 'PENDENTE' : 'PAGO')} /></td>
     case 'mes':
       return <td className={`${base} font-mono text-[11.5px] font-medium`}>{r.mesRef}</td>
+    case 'label': // texto calculado (ex.: bimestre de referência)
+      return <td className={`${base} font-mono text-[11.5px] font-medium`} title={c.title?.(r) || ''}>{c.text(r) || '—'}</td>
+    case 'mono':
+      return <td className={`${base} font-mono text-[11.5px] text-[var(--tx2)]`}>{r[c.key] || '—'}</td>
     default:
       return <td className={`${base} text-[var(--tx2)] max-w-[220px] truncate`} title={r[c.key] || ''}>{r[c.key] || '—'}</td>
   }

@@ -7,7 +7,7 @@ import { COLABORADORES } from '../hooks/useBoard'
 import { useToast } from '../components/Toast'
 
 // Todas as coleções 'controle/*' que este app usa — usado no backup completo
-const COLLECTIONS = ['saldos_v2', 'taxa_adm', 'portal_saldos', 'multas_juros', 'home_office', 'agenda', 'users', 'audit_log', 'pendencias', 'pendencias_historico', 'fundos_extra']
+const COLLECTIONS = ['saldos_v2', 'taxa_adm', 'portal_saldos', 'multas_juros', 'home_office', 'agenda', 'users', 'audit_log', 'pendencias', 'pendencias_historico', 'fundos_extra', 'taxa_anbima']
 
 // Mesmas regras do arquivo firestore.rules (fonte única)
 import FIREBASE_RULES from '../../firestore.rules?raw'
@@ -38,6 +38,13 @@ export default function Configuracoes() {
         if (snap.exists()) shards[id] = snap.data()
       }
       bundle.taxa_adm__meses = shards
+      // Taxa Anbima: um documento por ano (taxa_anbima__AAAA)
+      const anb = {}
+      for (const id of bundle.taxa_anbima?.shards || []) {
+        const snap = await getDoc(doc(db, 'controle', 'taxa_anbima__' + id))
+        if (snap.exists()) anb[id] = snap.data()
+      }
+      bundle.taxa_anbima__anos = anb
       const date = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-')
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
       const a = document.createElement('a')
@@ -67,6 +74,9 @@ export default function Configuracoes() {
         }
         for (const [id, data] of Object.entries(parsed.taxa_adm__meses || {})) {
           await setDoc(doc(db, 'controle', 'taxa_adm__' + id), data, { merge: false })
+        }
+        for (const [id, data] of Object.entries(parsed.taxa_anbima__anos || {})) {
+          await setDoc(doc(db, 'controle', 'taxa_anbima__' + id), data, { merge: false })
         }
         toast.success(`${keys.length} coleções restauradas com sucesso!`)
       } catch (err) {
