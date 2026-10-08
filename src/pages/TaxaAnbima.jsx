@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { doc, onSnapshot, runTransaction } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
-import { Upload, Download, Plus, X, CheckCircle2, Clock, AlertCircle, Search, FileSpreadsheet, Building2, Receipt, Wallet } from 'lucide-react'
+import { Upload, Download, Plus, X, CheckCircle2, Clock, Search, FileSpreadsheet, Building2, Receipt, Wallet } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { useToast } from '../components/Toast'
@@ -17,7 +17,7 @@ import BaseTable from '../components/taxa/BaseTable'
 import { StatCard, MiniStat, RankCard, Overlay } from '../components/taxa/Cards'
 import { norm, onlyDigits, fmtFull, fmtShort, todayISO, brDate } from '../lib/taxaCore'
 import {
-  SHARD_PREFIX, parseWorkbook, mergeImport, cleanRow, partition, refLabel, parseRef, isOverdue, EXPORT_HEADERS, toSheetRow,
+  SHARD_PREFIX, parseWorkbook, mergeImport, cleanRow, partition, refLabel, parseRef, EXPORT_HEADERS, toSheetRow,
 } from '../lib/anbima'
 
 const DOC_REF = () => doc(db, 'controle', 'taxa_anbima')
@@ -214,7 +214,7 @@ export default function TaxaAnbima({ search, onSearch }) {
     const qq = norm(q)
     const qd = /^[\d./\-\s]+$/.test(q) ? onlyDigits(q) : ''
     const all = rows.filter((r) => {
-      if (fStatus === 'VENCIDO' ? !isOverdue(r) : fStatus && r.status !== fStatus) return false
+      if (fStatus && r.status !== fStatus) return false
       if (fSit && r.situacao !== fSit) return false
       if (qq && !norm(r.fundo).includes(qq) && !(qd && (onlyDigits(r.cnpj).includes(qd) || r.titulo.includes(qd)))) return false
       return true
@@ -285,8 +285,6 @@ export default function TaxaAnbima({ search, onSearch }) {
   const pagos = filtered.filter((r) => r.status === 'PAGO')
   const pends = filtered.filter((r) => r.status !== 'PAGO')
   const pago = sum(pagos), pend = total - pago
-  const vencidos = filtered.filter(isOverdue)
-  const vencido = sum(vencidos)
   const pct = total > 0 ? (pago / total) * 100 : 0
   const fundosU = new Set(filtered.map((r) => onlyDigits(r.cnpj) || r.fundo)).size
   const fundosPend = new Set(pends.map((r) => onlyDigits(r.cnpj) || r.fundo)).size
@@ -321,7 +319,7 @@ export default function TaxaAnbima({ search, onSearch }) {
 
   const activeChips = [
     selRef && [`Referência ${refLabel(selRef)}`, () => setSelRef('')],
-    fStatus && [`Status: ${{ PAGO: 'pago', PENDENTE: 'pendente', VENCIDO: 'vencido' }[fStatus]}`, () => setFStatus('')],
+    fStatus && [`Status: ${fStatus === 'PAGO' ? 'pago' : 'pendente'}`, () => setFStatus('')],
     fSit && [`No sistema: ${fSit}`, () => setFSit('')],
     q && [`Busca: “${q}”`, () => setQ('')],
   ].filter(Boolean)
@@ -350,7 +348,7 @@ export default function TaxaAnbima({ search, onSearch }) {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_2fr] gap-2 mt-3">
           <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="field">
-            <option value="">Todos os status</option><option value="PAGO">Pago</option><option value="PENDENTE">Pendente</option><option value="VENCIDO">Vencido</option>
+            <option value="">Todos os status</option><option value="PAGO">Pago</option><option value="PENDENTE">Pendente</option>
           </select>
           <select value={fSit} onChange={(e) => setFSit(e.target.value)} className="field">
             <option value="">Todos no sistema</option>{situacoes.map((s) => <option key={s}>{s}</option>)}
@@ -388,14 +386,14 @@ export default function TaxaAnbima({ search, onSearch }) {
           details={[['Títulos pagos', pagos.length.toLocaleString('pt-BR')], ['Média por título', pagos.length ? fmtShort(pago / pagos.length) : '—']]}
           onClick={() => setFStatus(fStatus === 'PAGO' ? '' : 'PAGO')} hint="Clique para ver só os pagos" />
         <StatCard icon={Clock} tone={pend > 0 ? 'amber' : 'neutral'} label="Pendente" value={<AnimatedNumber value={pend} format={fmtFull} />} share={total > 0 ? 100 - pct : 0}
-          details={[['Títulos pendentes', pends.length.toLocaleString('pt-BR')], ['Vencido', vencido > 0 ? fmtShort(vencido) : 'R$ 0', vencido > 0 ? 'text-red-500' : '']]}
+          details={[['Títulos pendentes', pends.length.toLocaleString('pt-BR')], ['Média por título', pends.length ? fmtShort(pend / pends.length) : '—']]}
           onClick={() => setFStatus(fStatus === 'PENDENTE' ? '' : 'PENDENTE')} hint="Clique para ver só os pendentes" />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <MiniStat icon={Building2} label="Fundos" value={<AnimatedNumber value={fundosU} />} />
         <MiniStat icon={Receipt} label="Fundos com pendência" value={<AnimatedNumber value={fundosPend} />} tone={fundosPend ? 'amber' : undefined} onClick={() => setFStatus(fStatus === 'PENDENTE' ? '' : 'PENDENTE')} />
         <MiniStat icon={Wallet} label="Média por fundo" value={fundosU ? <AnimatedNumber value={total / fundosU} format={fmtShort} /> : '—'} />
-        <MiniStat icon={AlertCircle} label="Títulos vencidos" value={<AnimatedNumber value={vencidos.length} />} tone={vencidos.length ? 'red' : undefined} onClick={() => setFStatus(fStatus === 'VENCIDO' ? '' : 'VENCIDO')} />
+        <MiniStat icon={FileSpreadsheet} label="Títulos" value={<AnimatedNumber value={filtered.length} />} />
       </div>
 
       {/* Gráficos */}
@@ -431,6 +429,7 @@ export default function TaxaAnbima({ search, onSearch }) {
         tiebreak={TIEBREAK}
         minWidth="min-w-[1300px]"
         newLabel="Novo título"
+        overdue={false}
         onEdit={(r) => setEditing(r)}
         onNew={() => setEditing({})}
         onUpdate={(id, patch) => updateRow(id, patch)}

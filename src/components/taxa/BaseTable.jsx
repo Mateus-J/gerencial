@@ -32,12 +32,12 @@ const DEFAULT_TIEBREAK = [['mesRef', false], ['dataReceita', false], ['fundo', t
 const PAGE_SIZES = [50, 100, 250, 500]
 
 // Texto que o filtro da coluna compara (o mesmo que aparece na célula)
-function cellText(r, c) {
+function cellText(r, c, overdue = true) {
   if (c.text) return c.text(r)
   const v = r[c.key]
   if (c.type === 'date') return brDate(v)
   if (NUMERIC.has(c.type)) return fmtMoney(v)
-  if (c.type === 'status') return r.status === 'PAGO' ? 'PAGO' : isOverdue(r) ? 'VENCIDO' : 'PENDENTE'
+  if (c.type === 'status') return r.status === 'PAGO' ? 'PAGO' : overdue && isOverdue(r) ? 'VENCIDO' : 'PENDENTE'
   if (c.type === 'fundo') return (r.fundo || '') + ' ' + (r.ajuste || '')
   return v == null ? '' : String(v)
 }
@@ -58,6 +58,7 @@ export default function BaseTable({
   rows, totalBase, onEdit, onNew, onUpdate, onUpdateTaxa, onSetStatus, onDelete, onExport, readOnly = false,
   cols = COLS, title = 'Base de taxas', noun = 'lançamento(s)', exportPrefix = 'taxas',
   defaultSort = DEFAULT_SORT, tiebreak = DEFAULT_TIEBREAK, minWidth = 'min-w-[1820px]', newLabel = 'Nova linha',
+  overdue = true, // false: status só Pago/Pendente (sem "Vencido")
 }) {
   const COLS = cols
   const [sort, setSort] = useState(defaultSort)
@@ -70,12 +71,12 @@ export default function BaseTable({
   const activeFilters = Object.entries(filters).filter(([, v]) => v)
   const view = useMemo(() => {
     const fs = Object.entries(filters).filter(([, v]) => v).map(([k, v]) => [COLS.find((c) => c.key === k), norm(v)])
-    const out = rows.filter((r) => fs.every(([c, v]) => (c.type === 'status' ? cellText(r, c) === v
+    const out = rows.filter((r) => fs.every(([c, v]) => (c.type === 'status' ? cellText(r, c, overdue) === v
       : c.key === 'cnpj' && onlyDigits(v) ? onlyDigits(r.cnpj).includes(onlyDigits(v)) // com ou sem pontuação
       : norm(cellText(r, c)).includes(v))))
     out.sort((a, b) => tiebreak.reduce((d, [k, asc]) => d || compare(a, b, k, asc, COLS), compare(a, b, sort.key, sort.asc, COLS)))
     return out
-  }, [rows, filters, sort, COLS, tiebreak])
+  }, [rows, filters, sort, COLS, tiebreak, overdue])
 
   const totals = useMemo(() => {
     const t = {}
@@ -146,7 +147,7 @@ export default function BaseTable({
                   <th key={c.key} className="px-1 py-1.5 border-b border-[var(--bdr)] bg-[var(--sur)] font-normal">
                     {c.type === 'status' ? (
                       <select value={filters[c.key] || ''} onChange={(e) => setFilter(c.key, e.target.value)} className="field py-1 px-1.5 text-[11px]">
-                        <option value="">Todos</option><option value="PAGO">Pago</option><option value="PENDENTE">Pendente</option><option value="VENCIDO">Vencido</option>
+                        <option value="">Todos</option><option value="PAGO">Pago</option><option value="PENDENTE">Pendente</option>{overdue && <option value="VENCIDO">Vencido</option>}
                       </select>
                     ) : (
                       <input value={filters[c.key] || ''} onChange={(e) => setFilter(c.key, e.target.value)} placeholder="Filtrar…"
@@ -168,7 +169,7 @@ export default function BaseTable({
                       ? <span title="Vem da Área FIP" className="text-[9px] font-semibold text-id-dark dark:text-id-light border border-id-mid/40 rounded px-1 py-0.5">FIP</span>
                       : !readOnly && <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} className="accent-[#6B9A52]" />}
                   </td>
-                  {COLS.map((c) => <Cell key={c.key} r={r} c={c} onEdit={onEdit} onUpdate={onUpdate} onUpdateTaxa={onUpdateTaxa} onSetStatus={onSetStatus} readOnly={readOnly} />)}
+                  {COLS.map((c) => <Cell key={c.key} r={r} c={c} overdue={overdue} onEdit={onEdit} onUpdate={onUpdate} onUpdateTaxa={onUpdateTaxa} onSetStatus={onSetStatus} readOnly={readOnly} />)}
                   <td className="px-2 py-1.5 border-b border-[var(--bdr)]/70">
                     {!r._fromFip && !readOnly && (
                       <div className="flex justify-end gap-0.5 opacity-50 group-hover:opacity-100">
@@ -218,12 +219,12 @@ export default function BaseTable({
   )
 }
 
-function Cell({ r, c, onEdit, onUpdate, onUpdateTaxa, onSetStatus, readOnly }) {
+function Cell({ r, c, overdue, onEdit, onUpdate, onUpdateTaxa, onSetStatus, readOnly }) {
   const base = 'px-2 py-1.5 border-b border-[var(--bdr)]/70 whitespace-nowrap'
   const ro = r._fromFip || readOnly
   switch (c.type) {
     case 'date':
-      return <td className={`${base} font-mono text-[11.5px] ${c.key === 'vencimento' && isOverdue(r) ? 'text-red-500 font-medium' : 'text-[var(--tx2)]'}`}>{brDate(r[c.key]) || '—'}</td>
+      return <td className={`${base} font-mono text-[11.5px] ${c.key === 'vencimento' && overdue && isOverdue(r) ? 'text-red-500 font-medium' : 'text-[var(--tx2)]'}`}>{brDate(r[c.key]) || '—'}</td>
     case 'tax':
       return <td className={`${base} text-right`}>{ro ? <span className={`font-mono text-[11.5px] ${r[c.key] ? 'text-[var(--tx2)]' : 'text-[var(--tx4)]'}`}>{fmtMoney(r[c.key])}</span> : <MoneyInput value={Number(r[c.key]) || 0} onCommit={(v) => onUpdateTaxa(r, c.key, v)} width="w-[108px]" dim />}</td>
     case 'total':
@@ -239,7 +240,7 @@ function Cell({ r, c, onEdit, onUpdate, onUpdateTaxa, onSetStatus, readOnly }) {
         </td>
       )
     case 'status':
-      return <td className={base}><StatusPill row={r} onToggle={ro ? null : () => onSetStatus([r.id], r.status === 'PAGO' ? 'PENDENTE' : 'PAGO')} /></td>
+      return <td className={base}><StatusPill row={r} overdue={overdue} onToggle={ro ? null : () => onSetStatus([r.id], r.status === 'PAGO' ? 'PENDENTE' : 'PAGO')} /></td>
     case 'mes':
       return <td className={`${base} font-mono text-[11.5px] font-medium`}>{r.mesRef}</td>
     case 'label': // texto calculado (ex.: bimestre de referência)
@@ -271,9 +272,9 @@ export function MoneyInput({ value, onCommit, width = 'w-[120px]', dim, strong }
   )
 }
 
-export function StatusPill({ row, onToggle }) {
+export function StatusPill({ row, onToggle, overdue: showOverdue = true }) {
   const paid = row.status === 'PAGO'
-  const overdue = isOverdue(row)
+  const overdue = showOverdue && isOverdue(row)
   const cls = paid
     ? 'bg-id-mid/15 text-id-dark dark:text-id-light border-id-mid/30'
     : overdue ? 'bg-red-500/12 text-red-600 dark:text-red-400 border-red-500/30'
