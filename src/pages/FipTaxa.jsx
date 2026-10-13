@@ -249,13 +249,12 @@ export default function FipTaxa({ campo, title }) {
     return parsed.filter((r) => {
       const cad = cadastro[onlyDigits(r.cnpj)]
       // Classificação vem do CADASTRO (Administrador/Custodiante reais por
-      // fundo), não da planilha de lançamentos — que pode vir com a coluna
-      // errada. Sem cadastro pra aquele CNPJ, o registro fica de fora (mais
-      // seguro que assumir uma classificação incerta).
+      // fundo) quando ele existe; sem cadastro para aquele CNPJ, usa o
+      // custodiante/administrador que veio no próprio lançamento.
       if (campo === 'custodia') {
-        if (!cad || !norm(cad.custodiante).includes('ID CTVM')) return false
+        if (!norm(cad ? cad.custodiante : r.custodiaEmpresa).includes('ID CTVM')) return false
       } else {
-        if (!cad || !norm(cad.administrador).includes('HORIZON')) return false
+        if (!norm(cad ? cad.administrador : r.administrador).includes('HORIZON')) return false
       }
       if (mode === 'mes' && r.mesRef !== selMes) return false
       if (fGestor && r.gestor !== fGestor) return false
@@ -411,7 +410,7 @@ export default function FipTaxa({ campo, title }) {
       />
       {semCadastro > 0 && (
         <p className="text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-1.5 mb-3">
-          {semCadastro} lançamento(s) sem cadastro (CNPJ não encontrado) — não entram em nenhuma das duas telas até você importar/atualizar o cadastro dos FIPs.
+          {semCadastro} lançamento(s) sem cadastro (CNPJ não encontrado) — para esses vale o administrador/custodiante informado no próprio lançamento. Importe/atualize o cadastro dos FIPs para usar o cadastro oficial.
           {cadastroImportedAt && <span className="text-[var(--tx4)]"> · cadastro importado em {cadastroImportedAt}</span>}
         </p>
       )}
