@@ -60,11 +60,3 @@ roteador (`src/App.jsx`). Para portar uma aba do app antigo:
    correspondente no HTML antigo (linhas indicadas nos comentários `TODO` de cada página).
 2. Troque `getDocs`/`onSnapshot` para usar `db` já importado de `../lib/firebase`.
 3. Use `Dashboard.jsx` como referência de layout (KPIs + tabela + busca).
-
-## Segurança
-
-A `apiKey` do Firebase em `src/lib/firebase.js` não é secreta — é normal ela
-aparecer no bundle de apps client-side do Firebase. Quem protege os dados de
-verdade são as **Regras de Segurança do Firestore**, configuradas no console
-do projeto `id-liquidacao`. Confirme que elas continuam restritas por
-usuário/role antes de publicar.
