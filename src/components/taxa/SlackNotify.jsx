@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { doc, onSnapshot, runTransaction } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import { Mail, Copy, Eye, Settings2, ListPlus, Download, Search, CheckCircle2, Clock, X, RotateCcw, Info, Send, Loader2, AlertTriangle, Zap } from 'lucide-react'
-import { db } from '../../lib/firebase'
+import { db, api } from '../../lib/firebase'
 import { sortKey, fmtFull, fmtShort, TAXAS, todayISO } from '../../lib/taxaAdm'
 import { DEFAULT_TEMPLATE, PLACEHOLDERS, groupByFund, renderMessage, mailtoHref, parseChannelList, channelKey } from '../../lib/slackNotify'
 
@@ -97,13 +97,8 @@ export default function SlackNotify({ rows, who, toast }) {
     for (let i = 0; i < items.length; i += 25) {
       const chunk = items.slice(i, i + 25)
       try {
-        const res = await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ mesRef: curMes, keys: chunk.map((f) => f.key), who }),
-        })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) { chunk.forEach((f) => fails.push([f, data.error || `HTTP ${res.status}`])); continue }
+        const { ok: resOk, status, data } = await api('/api/send-email', { mesRef: curMes, keys: chunk.map((f) => f.key) })
+        if (!resOk) { chunk.forEach((f) => fails.push([f, data.error || `HTTP ${status}`])); continue }
         data.results.forEach((r) => { const f = chunk.find((x) => x.key === r.id); if (!f) return; if (r.ok) ok.push(f); else fails.push([f, r.error]) })
         if (data.recorded === false) unrecorded.push(...chunk.filter((f) => data.results.some((r) => r.id === f.key && r.ok)))
       } catch {

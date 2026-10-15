@@ -1,0 +1,56 @@
+rules_version = '2';
+// Regras do Gerencial (projeto id-liquidacao). Publicar em:
+// console do Firebase → Firestore Database → Regras → colar → Publicar.
+//
+// Quem entra: só quem fez login pelo servidor (/api/auth/login), que devolve
+// uma sessão com o perfil em request.auth.token.role (admin | user | consulta).
+// O link de consulta (/api/consulta) devolve role "link" + o código do link
+// (st), conferido aqui a cada leitura — revogar corta o acesso na hora.
+// Login anônimo não dá acesso a nada.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function role() { return request.auth != null ? request.auth.token.get('role', '') : ''; }
+    function isAdmin() { return role() == 'admin'; }
+    function isEditor() { return role() in ['admin', 'user']; }
+    function isStaff() { return role() in ['admin', 'user', 'consulta']; }
+    function linkOk() {
+      return role() == 'link'
+        && get(/databases/$(database)/documents/controle/taxa_adm_share).data.links[request.auth.token.st].active == true;
+    }
+    // O que a tela pública de consulta lê (Taxa ADM + base dos FIPs)
+    function consultaDoc(d) {
+      return d == 'taxa_adm' || d.matches('taxa_adm__.*') || d == 'fip_taxas' || d == 'fip_cadastro';
+    }
+
+    // Senhas e segredos de 2FA: só o servidor (conta de serviço) acessa
+    match /segredos/{doc=**} {
+      allow read, write: if false;
+    }
+
+    // Atenção: no Firestore, se duas regras valem para o mesmo documento,
+    // basta UMA liberar — por isso tudo de /controle fica numa regra só.
+    match /controle/{d} {
+      // Só admin: links de consulta, Slack, config e leitura da auditoria
+      function adminOnly() { return d in ['taxa_adm_share', 'taxa_adm_slack', 'admin_tab_pass']; }
+      // A equipe lê, só admin altera: perfis e permissões
+      function adminWrites() { return d in ['users', 'permissoes']; }
+
+      allow read: if (isAdmin())
+        || (isStaff() && !adminOnly() && d != 'audit_log')
+        || (consultaDoc(d) && linkOk());
+      allow write: if (isAdmin())
+        || (isEditor() && !adminOnly() && !adminWrites() && d != 'audit_log')
+        // presença ("quem está online"): toda a equipe
+        || (isStaff() && d == 'presence')
+        // auditoria: a equipe só acrescenta (registro de saída) — não apaga
+        || (isStaff() && d == 'audit_log' && resource != null
+            && (request.resource.data.entries.size() >= resource.data.entries.size()
+                || request.resource.data.entries.size() >= 499));
+    }
+
+    // Qualquer outra coleção: fechado
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

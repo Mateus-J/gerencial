@@ -1,11 +1,13 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { db } from '../lib/firebase'
-import { sha256, hashPass, genSalt, isHashed } from '../lib/authCrypto'
-import { totpVerify } from '../lib/totp'
+import { onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth'
+import { db, auth, api } from '../lib/firebase'
 
+// Login: usuário, senha e 2FA são conferidos no servidor (/api/auth/login),
+// que devolve um token do Firebase com o perfil da pessoa. As regras do
+// Firestore só liberam a base para quem tem esse token — o navegador não vê
+// senha nem segredo de 2FA de ninguém.
 const AuthContext = createContext(null)
-const SESSION_KEY = 'ctrl_session'
 const LAST_USER_KEY = 'ctrl_last_username'
 const LOGOUT_REASON_KEY = 'ctrl_logout_reason'
 const USERS_DOC = () => doc(db, 'controle', 'users')
@@ -20,6 +22,7 @@ function toMinutes(hhmm) {
 
 // Se o usuário tem janela de horário configurada, checa se agora está dentro dela.
 // Sem horário configurado (um ou os dois campos vazios) = sem restrição.
+// (O servidor também confere no login, no horário de Brasília.)
 export function withinAccessWindow(user) {
   const start = toMinutes(user?.acessoInicio)
   const end = toMinutes(user?.acessoFim)
@@ -32,7 +35,7 @@ export function withinAccessWindow(user) {
 }
 
 export function getLastUsername() {
-  try { return localStorage.getItem(LAST_USER_KEY) } catch (e) { return null }
+  try { return localStorage.getItem(LAST_USER_KEY) } catch { return null }
 }
 
 // Lê o motivo do último logout automático (inatividade / fora do horário) e
@@ -42,17 +45,7 @@ export function consumeLogoutReason() {
     const r = localStorage.getItem(LOGOUT_REASON_KEY)
     if (r) localStorage.removeItem(LOGOUT_REASON_KEY)
     return r
-  } catch (e) { return null }
-}
-
-function todayStr() {
-  const d = new Date()
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
-}
-const twoFAFlagKey = (username) => `ctrl_2fa_ok_${username}_${todayStr()}`
-
-export function clearTwoFAFlag(username) {
-  try { localStorage.removeItem(twoFAFlagKey(username)) } catch (e) {}
+  } catch { return null }
 }
 
 async function addAuditEntry(type, details) {
@@ -64,167 +57,71 @@ async function addAuditEntry(type, details) {
   } catch (e) { console.warn('audit err', e) }
 }
 
+const usernameOf = (fbUser) => (fbUser?.uid?.startsWith('u:') ? fbUser.uid.slice(2) : null)
+
 export function AuthProvider({ children }) {
-  const [users, setUsers] = useState({})
   const [currentUser, setCurrentUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const userRef = useRef(null)
+  useEffect(() => { userRef.current = currentUser }, [currentUser])
 
-  const loadUsers = useCallback(async () => {
-    const snap = await getDoc(USERS_DOC())
-    const u = snap.exists() ? snap.data().users || {} : {}
-    setUsers(u)
-    return u
-  }, [])
-
-  const saveUsers = useCallback(async (next) => {
-    setUsers(next)
-    await setDoc(USERS_DOC(), { users: next, updatedAt: Date.now() }, { merge: false })
-  }, [])
-
-  // Restaura sessão salva + valida contra a lista mais atual de usuários
-  useEffect(() => {
-    (async () => {
-      const u = await loadUsers().catch(() => ({}))
-      try {
-        const raw = localStorage.getItem(SESSION_KEY)
-        if (raw) {
-          const s = JSON.parse(raw)
-          if (s?.username) {
-            const fresh = u[s.username]
-            if (fresh) {
-              const merged = { username: s.username, ...fresh }
-              setCurrentUser(merged)
-              localStorage.setItem(SESSION_KEY, JSON.stringify(merged))
-            } else {
-              localStorage.removeItem(SESSION_KEY)
-            }
-          }
-        }
-      } catch (e) { localStorage.removeItem(SESSION_KEY) }
+  // Sessão do Firebase (persistida pelo próprio SDK) → perfil atual da base
+  useEffect(() => onAuthStateChanged(auth, async (fbUser) => {
+    const username = usernameOf(fbUser)
+    if (!username) {
+      // sessão anônima antiga ou de link de consulta: não serve para o app
+      if (fbUser) await signOut(auth).catch(() => {})
+      setCurrentUser((cur) => (cur?.role === 'pending' ? cur : null))
       setLoading(false)
-    })()
-  }, [loadUsers])
-
-  async function login(inputRaw, pass) {
-    const input = inputRaw.trim().toLowerCase()
-    const fresh = await loadUsers().catch(() => users)
-    let foundKey = null, foundUser = null
-    if (fresh[input]) { foundKey = input; foundUser = fresh[input] }
-    else {
-      for (const [k, u] of Object.entries(fresh)) {
-        if (u.email && u.email === input) { foundKey = k; foundUser = u; break }
-      }
+      return
     }
-    if (!foundUser) {
-      addAuditEntry('login_fail', { username: input, reason: 'Usuário não encontrado' })
-      return { ok: false, error: 'Usuário/e-mail ou senha incorretos.' }
+    try {
+      const snap = await getDoc(USERS_DOC())
+      const profile = snap.exists() ? snap.data().users?.[username] : null
+      if (!profile || profile.role === 'pending') { await signOut(auth); setCurrentUser(null) }
+      else setCurrentUser({ username, ...profile })
+    } catch (e) {
+      console.warn('perfil err', e)
+      await signOut(auth).catch(() => {})
+      setCurrentUser(null)
     }
-    const storedPass = foundUser.pass || '', storedSalt = foundUser.salt || ''
-    if (isHashed(storedPass)) {
-      const passHash = await hashPass(pass, storedSalt)
-      if (passHash !== storedPass) {
-        addAuditEntry('login_fail', { username: foundKey, reason: 'Senha incorreta' })
-        return { ok: false, error: 'Usuário/e-mail ou senha incorretos.' }
-      }
-      if (!storedSalt) {
-        const newSalt = genSalt()
-        const h2 = await hashPass(pass, newSalt)
-        const next = { ...fresh, [foundKey]: { ...foundUser, pass: h2, salt: newSalt } }
-        await saveUsers(next)
-      }
-    } else {
-      if (storedPass !== pass) return { ok: false, error: 'Usuário/e-mail ou senha incorretos.' }
-      const newSalt = genSalt()
-      const h = await hashPass(pass, newSalt)
-      const next = { ...fresh, [foundKey]: { ...foundUser, pass: h, salt: newSalt } }
-      await saveUsers(next)
-    }
+    setLoading(false)
+  }), [])
 
-    if (!withinAccessWindow(foundUser)) {
-      addAuditEntry('login_fail', { username: foundKey, reason: 'Fora do horário permitido' })
-      return { ok: false, error: `Acesso permitido apenas entre ${foundUser.acessoInicio} e ${foundUser.acessoFim}.` }
-    }
+  // Entra com usuário + senha (+ código do 2FA). Respostas:
+  // { ok } | { needs2FA, setup, secret?, label? } | { ok:false, error }
+  const login = useCallback(async (user, pass, code) => {
+    const r = await api('/api/auth/login', { user, pass, code })
+    if (!r.ok) return { ok: false, error: r.data.error || 'Não foi possível entrar.', needs2FA: !!r.data.needs2FA }
+    if (r.data.needs2FA) return { ok: true, needs2FA: true, setup: !!r.data.setup, secret: r.data.secret, label: r.data.label }
+    const profile = r.data.user
+    try { localStorage.setItem(LAST_USER_KEY, profile.username) } catch { /* sem storage */ }
+    if (!r.data.token) { setCurrentUser(profile); return { ok: true, user: profile } } // aguardando aprovação
+    await signInWithCustomToken(auth, r.data.token)
+    setCurrentUser(profile)
+    return { ok: true, user: profile }
+  }, [])
 
-    localStorage.setItem(LAST_USER_KEY, foundKey)
-
-    if (foundUser.totpEnabled) {
-      const already = localStorage.getItem(twoFAFlagKey(foundKey)) === '1'
-      if (!already) {
-        // Não abre sessão ainda — devolve o usuário pendente pro Login.jsx pedir o código
-        return { ok: true, needs2FA: true, setup: !foundUser.totpConfirmed, pending: { username: foundKey, user: foundUser } }
-      }
-    }
-
-    const session = { username: foundKey, ...foundUser }
-    setCurrentUser(session)
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
-    addAuditEntry('login_ok', { username: foundKey, role: foundUser.role, email: foundUser.email || '', passHash: foundUser.pass })
-    return { ok: true, user: session }
-  }
-
-  // Confirma o código do app autenticador — usado tanto na primeira configuração
-  // (marca totpConfirmed) quanto na verificação diária normal.
-  async function verifyTwoFactor(username, code) {
-    const fresh = await loadUsers().catch(() => users)
-    const u = fresh[username]
-    if (!u || !u.totpSecret) return { ok: false, error: 'Configuração de 2FA não encontrada.' }
-    const valid = await totpVerify(u.totpSecret, code)
-    if (!valid) {
-      addAuditEntry('login_fail', { username, reason: '2FA inválido' })
-      return { ok: false, error: 'Código inválido ou expirado.' }
-    }
-    let userRecord = u
-    if (!u.totpConfirmed) {
-      const next = { ...fresh, [username]: { ...u, totpConfirmed: true } }
-      await saveUsers(next)
-      userRecord = next[username]
-    }
-    localStorage.setItem(twoFAFlagKey(username), '1')
-    const session = { username, ...userRecord }
-    setCurrentUser(session)
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
-    localStorage.setItem(LAST_USER_KEY, username)
-    addAuditEntry('login_ok', { username, role: userRecord.role, email: userRecord.email || '', twoFA: true })
-    return { ok: true, user: session }
-  }
-
-  function logout(reason) {
-    const safeReason = typeof reason === 'string' ? reason : null
-    if (currentUser) {
-      addAuditEntry(safeReason ? 'logout_auto' : 'logout', { username: currentUser.username, reason: safeReason })
-      // Ao sair, esquece a confirmação de 2FA de hoje — assim, ao entrar de
-      // novo (mesmo no mesmo dia), o código volta a ser pedido. O "1x por
-      // dia" vale enquanto a sessão continua aberta, não entre logins.
-      try { localStorage.removeItem(twoFAFlagKey(currentUser.username)) } catch (e) {}
-    }
-    if (safeReason) { try { localStorage.setItem(LOGOUT_REASON_KEY, safeReason) } catch (e) {} }
-    setCurrentUser(null)
-    localStorage.removeItem(SESSION_KEY)
-  }
-
-  // Cria um cadastro pendente — só vira usuário de fato quando um admin aprova (aba Usuários).
-  // Exceção: se ainda não existe NENHUM usuário (primeiro acesso ao sistema), quem se
-  // cadastra vira admin direto — senão ninguém conseguiria aprovar o primeiro cadastro.
-  async function register({ username, name, email, pass }) {
-    const key = username.trim().toLowerCase()
-    const fresh = await loadUsers().catch(() => users)
-    if (fresh[key]) return { ok: false, error: 'Usuário já existe.' }
-    const isFirstUser = Object.keys(fresh).length === 0
-    const salt = genSalt()
-    const passHash = await hashPass(pass, salt)
-    const next = { ...fresh, [key]: { pass: passHash, salt, name: name.trim(), email: email.trim().toLowerCase(), role: isFirstUser ? 'admin' : 'pending' } }
-    await saveUsers(next)
-    addAuditEntry('register', { username: key, email })
-    const session = { username: key, ...next[key] }
-    setCurrentUser(session)
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  const register = useCallback(async ({ username, name, email, pass }) => {
+    const r = await api('/api/auth/register', { username, name, email, pass })
+    if (!r.ok) return { ok: false, error: r.data.error || 'Não foi possível cadastrar.' }
+    setCurrentUser(r.data.user)
     return { ok: true }
-  }
+  }, [])
+
+  const logout = useCallback((reason) => {
+    const safeReason = typeof reason === 'string' ? reason : null
+    const cur = userRef.current
+    if (cur && cur.role !== 'pending') addAuditEntry(safeReason ? 'logout_auto' : 'logout', { username: cur.username, reason: safeReason }).finally(() => signOut(auth).catch(() => {}))
+    else signOut(auth).catch(() => {})
+    setCurrentUser(null)
+    if (safeReason) { try { localStorage.setItem(LOGOUT_REASON_KEY, safeReason) } catch { /* sem storage */ } }
+  }, [])
 
   // Deslogamento automático: 1h sem interação com o sistema, ou o horário
   // permitido do usuário (definido em Usuários) chegou ao fim.
   useEffect(() => {
-    if (!currentUser) return
+    if (!currentUser || currentUser.role === 'pending') return
     const IDLE_LIMIT_MS = 60 * 60 * 1000 // 1 hora
     const CHECK_EVERY_MS = 30 * 1000
     let lastActivity = Date.now()
@@ -246,10 +143,10 @@ export function AuthProvider({ children }) {
       events.forEach((ev) => window.removeEventListener(ev, markActivity))
       clearInterval(interval)
     }
-  }, [currentUser])
+  }, [currentUser, logout])
 
   return (
-    <AuthContext.Provider value={{ currentUser, users, loading, login, logout, register, loadUsers, saveUsers, verifyTwoFactor }}>
+    <AuthContext.Provider value={{ currentUser, loading, login, logout, register }}>
       {children}
     </AuthContext.Provider>
   )

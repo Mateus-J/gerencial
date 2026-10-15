@@ -1,11 +1,11 @@
 // Página pública de consulta (/consulta/taxa-adm?t=TOKEN): só a tela de Taxa
-// de Administração, somente leitura, com os dados ao vivo. O token precisa
-// existir e estar ativo em controle/taxa_adm_share — revogou, perdeu o acesso.
+// de Administração, somente leitura, com os dados ao vivo. O servidor confere
+// o link e entrega uma sessão que só lê a Taxa ADM; as regras do Firestore
+// conferem o link de novo a cada leitura — revogou, perdeu o acesso na hora.
 import { useEffect, useState } from 'react'
-import { onSnapshot } from 'firebase/firestore'
+import { inMemoryPersistence, setPersistence, signInWithCustomToken } from 'firebase/auth'
 import { Moon, Sun, Lock, Eye } from 'lucide-react'
-import { ensureAnonAuth } from '../lib/firebase'
-import { SHARE_REF } from '../lib/share'
+import { auth, api } from '../lib/firebase'
 import TaxaAdministracao from './TaxaAdministracao'
 import logoId from '../assets/logo-id.png'
 
@@ -22,16 +22,26 @@ export default function ConsultaTaxaAdm() {
 
   useEffect(() => {
     document.title = 'Taxa de Administração · Consulta'
-    let unsub = () => {}
-    ensureAnonAuth()
-      .then(() => {
-        unsub = onSnapshot(SHARE_REF(), (snap) => {
-          const l = snap.exists() ? snap.data().links?.[token] : null
-          if (l?.active) { setLabel(l.label || ''); setState('ok') } else setState('invalid')
-        }, () => setState('error'))
-      })
-      .catch(() => setState('error'))
-    return () => unsub()
+    let alive = true
+    const check = async (first) => {
+      const r = await api('/api/consulta', { t: token })
+      if (!alive) return
+      if (!r.ok) { setState(r.status === 404 ? 'invalid' : first ? 'error' : 'ok'); return }
+      setLabel(r.data.label || '')
+      if (first) {
+        await auth.authStateReady()
+        // Quem já está logado no app neste navegador continua com a própria
+        // sessão; senão, entra só com o link e sem gravar nada no navegador.
+        if (!auth.currentUser?.uid?.startsWith('u:')) {
+          await setPersistence(auth, inMemoryPersistence)
+          await signInWithCustomToken(auth, r.data.token)
+        }
+      }
+      if (alive) setState('ok')
+    }
+    check(true).catch(() => alive && setState('error'))
+    const iv = setInterval(() => check(false).catch(() => {}), 60 * 1000) // revogou → sai da tela
+    return () => { alive = false; clearInterval(iv) }
   }, [token])
 
   if (state !== 'ok') {

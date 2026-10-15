@@ -1,11 +1,9 @@
 // Mesma configuração do app atual (gerencial.pages.dev).
 // Trocar o hosting/frontend NÃO afeta os dados: eles continuam
-// no mesmo projeto Firestore ('id-liquidacao'). Copiei a config
-// direto do HTML original — ajuste aqui se algo mudar.
+// no mesmo projeto Firestore ('id-liquidacao').
 import { initializeApp } from 'firebase/app'
-import { getFirestore } from 'firebase/firestore'
-import { getStorage } from 'firebase/storage'
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth'
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
+import { getAuth, connectAuthEmulator } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAUcVEYwdeq1sfo6P8q8JIodgu0J-akJgI',
@@ -16,21 +14,28 @@ const firebaseConfig = {
   appId: '1:254207803173:web:70dc87e9cdf67682b424cc',
 }
 
-// Nota: a apiKey acima não é secreta (é normal ela ir no bundle client-side
-// do Firebase). Quem protege os dados de verdade são as Regras do Firestore
-// no console do projeto — confirme que elas continuam restritas por usuário/role.
+// A apiKey acima não é secreta (todo app Firebase a expõe no navegador). Quem
+// protege os dados são as regras do Firestore (firestore.rules): só entra quem
+// fez login pelo servidor (/api/auth/login), que entrega uma sessão com o
+// perfil (admin/user/consulta) — não existe mais acesso anônimo.
 
 export const app = initializeApp(firebaseConfig)
 export const db = getFirestore(app)
 export const auth = getAuth(app)
-export const storage = getStorage(app)
 
-export function ensureAnonAuth() {
-  return new Promise((resolve, reject) => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      unsub()
-      if (user) return resolve(user)
-      signInAnonymously(auth).then((cred) => resolve(cred.user)).catch(reject)
-    })
-  })
+// Só em testes locais (npm run dev com VITE_FIREBASE_EMULATOR=1)
+if (import.meta.env.VITE_FIREBASE_EMULATOR) {
+  connectFirestoreEmulator(db, '127.0.0.1', 8089)
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
+}
+
+// Chamada às funções do servidor levando o token da sessão atual
+export async function api(path, body) {
+  const headers = { 'content-type': 'application/json' }
+  const tok = auth.currentUser ? await auth.currentUser.getIdToken().catch(() => null) : null
+  if (tok) headers.authorization = 'Bearer ' + tok
+  let res
+  try { res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body || {}) }) } catch { return { ok: false, status: 0, data: { error: 'Sem conexão com o servidor.' } } }
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, data }
 }
