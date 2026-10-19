@@ -155,6 +155,10 @@ export function parseWorkbook(buffer) {
     mesRef: col(18, ['mes referencia', 'mes ref', 'competencia', 'referencia']),
     ajuste: findCol(['ajuste']),
   }
+  // Colunas que a planilha não traz (sem cabeçalho) não entram: na
+  // atualização o valor que já está na base é mantido em vez de virar zero.
+  const CORE = ['dataReceita', 'vencimento', 'fundo', 'cnpj', 'val', 'status', 'mesRef']
+  const absent = Object.keys(idx).filter((k) => !CORE.includes(k) && k !== 'ajuste' && (idx[k] < 0 || !headerRow[idx[k]]))
   const get = (r, k) => (idx[k] >= 0 ? r[idx[k]] : '')
   const txt = (r, k) => String(get(r, k) ?? '').trim()
 
@@ -210,8 +214,9 @@ export function parseWorkbook(buffer) {
       saldo: typeof saldoCell === 'number' ? saldoCell : 0,
       obs: txt(r, 'obs').replace(/^0$/, ''),
     })
+    absent.forEach((k) => { delete rows[rows.length - 1][k] })
   })
-  return { rows, skipped, sheet }
+  return { rows, skipped, sheet, absent }
 }
 
 export const TEMPLATE_HEADERS = ['Data da receita', 'Data prevista do recebimento', 'ADM', 'Custódia', 'Controladoria', 'Distribuição', 'Escrituração', 'Fundo', 'Conta do Fundo', 'Gestor', 'Classificação', 'CNPJ do Fundo', 'Valor Total', 'Saldos', 'Observação', 'Data de pgto', 'Status', 'Mês Referência', 'Ajuste']
@@ -289,6 +294,7 @@ export function mergeImport(existing, incoming, { replace = false, who = '' } = 
     const next = { ...old }
     const changes = []
     FIELDS.forEach((f) => {
+      if (!(f in nr)) return // coluna que a planilha não trouxe: fica como está
       const v = nr[f]
       if (SOFT_FIELDS.includes(f) && (v === '' || v === undefined)) return
       if (!same(f, old[f], v)) {

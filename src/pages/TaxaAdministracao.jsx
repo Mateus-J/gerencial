@@ -245,7 +245,6 @@ export default function TaxaAdministracao({ readOnly = false, search, onSearch }
     const set = new Set(ids)
     const removed = rows.filter((r) => set.has(r.id))
     if (!removed.length) return
-    setSelected(new Set())
     const scope = scopeOf(removed)
     mutate((list) => list.filter((r) => !set.has(r.id)), {
       msg: `${removed.length} lançamento(s) excluído(s).`,
@@ -275,7 +274,6 @@ export default function TaxaAdministracao({ readOnly = false, search, onSearch }
     const { rows: incoming, replace, fileName } = preview
     const r = mergeImport(rows, incoming, { replace, who })
     setPreview(null)
-    setSelected(new Set())
     mutate((list) => mergeImport(list, incoming, { replace, who }).rows, {
       extra: { importedAt: new Date().toLocaleString('pt-BR'), importedBy: who, importFile: fileName },
       msg: `Planilha aplicada: ${r.added.length} novo(s), ${r.updated.length} atualizado(s), ${r.unchanged} sem mudança${replace ? `, ${r.removed.length} removido(s)` : ''}.`,
@@ -822,6 +820,7 @@ function EditDrawer({ row, allRows, gestores, classes, defaultMes, onClose, onSa
   )
 }
 
+const ABSENT_LABEL = { adm: 'ADM', custodia: 'Custódia', controladoria: 'Controladoria', distribuicao: 'Distribuição', escrituracao: 'Escrituração', conta: 'Conta', gestor: 'Gestor', classif: 'Classificação', saldo: 'Saldos', obs: 'Observação', dataPagamento: 'Data de pgto' }
 function ImportPreview({ preview, diff, onToggleReplace, onCancel, onConfirm }) {
   const [tab, setTab] = useState(diff.updated.length ? 'updated' : 'added')
   const nothing = !diff.added.length && !diff.updated.length && !(preview.replace && diff.removed.length)
@@ -836,6 +835,7 @@ function ImportPreview({ preview, diff, onToggleReplace, onCancel, onConfirm }) 
           <div className="min-w-0 flex-1">
             <div className="font-display font-semibold text-[15px]">Conferir importação</div>
             <div className="text-[11.5px] text-[var(--tx3)] truncate">{preview.fileName} · aba “{preview.sheet}” · {preview.rows.length.toLocaleString('pt-BR')} lançamento(s) lidos{preview.skipped ? ` · ${preview.skipped.toLocaleString('pt-BR')} linha(s) sem mês ou sem nenhum valor ignoradas` : ''}</div>
+            {preview.absent?.length > 0 && <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Colunas que a planilha não trouxe (mantidas como estão na base): {preview.absent.map((k) => ABSENT_LABEL[k] || k).join(', ')}</div>}
           </div>
           <button onClick={onCancel} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:bg-[var(--sur2)]"><X size={16} /></button>
         </div>
