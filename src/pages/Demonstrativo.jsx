@@ -1,4 +1,4 @@
-// Demonstrativo de Caixa: preenche cabeçalho e lançamentos, confere o saldo na
+// Detalhamento de Despesas: preenche cabeçalho e lançamentos, confere o saldo na
 // hora e gera o PDF com a identidade da ID. Os demonstrativos salvos ficam em
 // controle/demonstrativos para a equipe reabrir, duplicar ou ajustar.
 import { useEffect, useMemo, useState } from 'react'
@@ -89,7 +89,7 @@ export default function Demonstrativo() {
         tx.set(DOC_REF(), { itens: [item, ...itens].slice(0, 300), updatedAt: Date.now(), updatedBy: who })
       })
       setD(item)
-      toast.success(copia ? 'Cópia salva.' : 'Demonstrativo salvo.')
+      toast.success(copia ? 'Cópia salva.' : 'Detalhamento salvo.')
     } catch (e) { toast.error('Não foi possível salvar: ' + e.message) }
   }
   async function excluir(id) {
@@ -99,11 +99,11 @@ export default function Demonstrativo() {
         tx.set(DOC_REF(), { itens: (s.exists() ? s.data().itens || [] : []).filter((x) => x.id !== id), updatedAt: Date.now(), updatedBy: who })
       })
       if (d.id === id) setD((s) => ({ ...s, id: null }))
-      toast.success('Demonstrativo excluído.')
+      toast.success('Detalhamento excluído.')
     } catch (e) { toast.error('Não foi possível excluir: ' + e.message) }
   }
   function novo() {
-    if (calc.linhas.length && !confirm('Começar um demonstrativo novo? O que está na tela será descartado (salve antes, se precisar).')) return
+    if (calc.linhas.length && !confirm('Começar um detalhamento novo? O que está na tela será descartado (salve antes, se precisar).')) return
     setD(vazio())
   }
 
@@ -111,7 +111,7 @@ export default function Demonstrativo() {
     <div>
       <PageHeader
         eyebrow="Operacional"
-        title="Demonstrativo de Caixa"
+        title="Detalhamento de Despesas"
         description="Preencha os dados e os lançamentos e gere o PDF"
         actions={
           <>
@@ -126,7 +126,7 @@ export default function Demonstrativo() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-3">
         <div className="space-y-3 min-w-0">
           <Card className="p-4">
-            <div className="text-[12.5px] font-semibold mb-3">Dados do demonstrativo {d.id && <span className="text-[11px] font-normal text-[var(--tx3)]">· salvo{d.updatedBy ? ` por ${d.updatedBy}` : ''}</span>}</div>
+            <div className="text-[12.5px] font-semibold mb-3">Dados do detalhamento {d.id && <span className="text-[11px] font-normal text-[var(--tx3)]">· salvo{d.updatedBy ? ` por ${d.updatedBy}` : ''}</span>}</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-2"><div className="label">Cliente (fundo)</div><input value={d.cliente} onChange={set('cliente')} className="field" placeholder="Ex.: BELLENZIER FIDC" /></div>
               <div><div className="label">CNPJ</div><input value={d.cnpj} onChange={set('cnpj')} className="field font-mono" placeholder="00.000.000/0001-00" /></div>
@@ -253,9 +253,9 @@ export default function Demonstrativo() {
       {abrindo && (
         <Overlay onClose={() => setAbrindo(false)}>
           <Card className="relative w-full max-w-[640px] max-h-[80vh] flex flex-col animate-fade-up">
-            <div className="px-5 py-4 border-b border-[var(--bdr)] flex items-center"><div className="font-display font-semibold text-[15px] flex-1">Demonstrativos salvos</div><button onClick={() => setAbrindo(false)} className="text-[var(--tx3)]"><X size={16} /></button></div>
+            <div className="px-5 py-4 border-b border-[var(--bdr)] flex items-center"><div className="font-display font-semibold text-[15px] flex-1">Detalhamentos salvos</div><button onClick={() => setAbrindo(false)} className="text-[var(--tx3)]"><X size={16} /></button></div>
             <div className="overflow-y-auto p-2">
-              {!salvos.length && <div className="text-center text-[12.5px] text-[var(--tx3)] py-8">Nenhum demonstrativo salvo ainda.</div>}
+              {!salvos.length && <div className="text-center text-[12.5px] text-[var(--tx3)] py-8">Nenhum detalhamento salvo ainda.</div>}
               {salvos.map((s) => (
                 <div key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[var(--sur2)]">
                   <div className="flex-1 min-w-0">
@@ -263,7 +263,7 @@ export default function Demonstrativo() {
                     <div className="text-[11px] text-[var(--tx3)]">{s.conta} · {br(s.periodoInicio)}{s.periodoFim !== s.periodoInicio ? ` a ${br(s.periodoFim)}` : ''} · {s.lancamentos?.length || 0} lanç. · saldo R$ {fmt(s.saldoFinal)}{s.updatedBy ? ` · ${s.updatedBy}` : ''}</div>
                   </div>
                   <button onClick={() => { setD({ ...vazio(), ...s }); setAbrindo(false) }} className="btn btn-sm">Abrir</button>
-                  <button onClick={() => { if (confirm(`Excluir o demonstrativo de ${s.cliente}?`)) excluir(s.id) }} className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--tx3)] hover:text-red-500 hover:bg-red-500/10"><Trash2 size={13} /></button>
+                  <button onClick={() => { if (confirm(`Excluir o detalhamento de ${s.cliente}?`)) excluir(s.id) }} className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--tx3)] hover:text-red-500 hover:bg-red-500/10"><Trash2 size={13} /></button>
                 </div>
               ))}
             </div>

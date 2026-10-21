@@ -1,4 +1,4 @@
-// Demonstrativo de Caixa: cálculo do saldo lançamento a lançamento e geração
+// Detalhamento de Despesas: cálculo do saldo lançamento a lançamento e geração
 // do PDF (jsPDF + autotable) com a identidade da ID.
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -82,7 +82,7 @@ export async function gerarPDF(d) {
   pdf.setFillColor(...VERDE_CLARO); pdf.rect(0, 34, W, 1.2, 'F')
   if (logo) pdf.addImage(logo, 'PNG', M, 8, 16, 17.8)
   pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(17)
-  pdf.text('Demonstrativo de Caixa', M + 22, 16)
+  pdf.text('Detalhamento de Despesas', M + 22, 16)
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(200, 220, 190)
   pdf.text(d.conta || 'Caixa ADM', M + 22, 22.5)
   pdf.setFontSize(8); pdf.setTextColor(170, 190, 165)
@@ -171,7 +171,7 @@ export async function gerarPDF(d) {
       // nas páginas seguintes, um cabeçalho discreto
       if (pdf.internal.getCurrentPageInfo().pageNumber > 1) {
         pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8.5); pdf.setTextColor(...ESCURO)
-        pdf.text(`Demonstrativo de Caixa — ${d.cliente || ''}`, M, 10)
+        pdf.text(`Detalhamento de Despesas — ${d.cliente || ''}`, M, 10)
         pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...CINZA)
         pdf.text(`${br(d.periodoInicio)} a ${br(d.periodoFim)}`, W - M, 10, { align: 'right' })
       }
@@ -199,5 +199,5 @@ export async function gerarPDF(d) {
   }
 
   const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
-  pdf.save(`demonstrativo_${slug(d.cliente) || 'caixa'}_${(d.periodoInicio || '').replace(/-/g, '')}${d.periodoFim && d.periodoFim !== d.periodoInicio ? '_' + d.periodoFim.replace(/-/g, '') : ''}.pdf`)
+  pdf.save(`detalhamento_despesas_${slug(d.cliente) || 'fundo'}_${(d.periodoInicio || '').replace(/-/g, '')}${d.periodoFim && d.periodoFim !== d.periodoInicio ? '_' + d.periodoFim.replace(/-/g, '') : ''}.pdf`)
 }
