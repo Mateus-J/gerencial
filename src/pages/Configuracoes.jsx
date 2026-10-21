@@ -7,7 +7,7 @@ import { COLABORADORES } from '../hooks/useBoard'
 import { useToast } from '../components/Toast'
 
 // Todas as coleções 'controle/*' que este app usa — usado no backup completo
-const COLLECTIONS = ['saldos_v2', 'taxa_adm', 'portal_saldos', 'multas_juros', 'home_office', 'agenda', 'users', 'audit_log', 'pendencias', 'pendencias_historico', 'fundos_extra', 'taxa_anbima', 'transfer_closed']
+const COLLECTIONS = ['saldos_v2', 'taxa_adm', 'portal_saldos', 'multas_juros', 'home_office', 'agenda', 'users', 'audit_log', 'pendencias', 'pendencias_historico', 'fundos_extra', 'taxa_anbima', 'transfer_closed', 'demonstrativos']
 
 const FIREBASE_RULES = `rules_version = '2';
 service cloud.firestore {
