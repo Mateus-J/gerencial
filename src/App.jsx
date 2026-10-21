@@ -40,7 +40,7 @@ const PAGES = {
   'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração', adminOnly: true, search: true },
   'taxa-anbima': { component: TaxaAnbima, title: 'Taxa Anbima', adminOnly: true, search: true },
   'transfer-closed': { component: TransferClosed, title: 'Transfer / Closed', subtitle: 'Transferência e encerramento', search: true },
-  demonstrativo: { component: Demonstrativo, title: 'Demonstrativo de Caixa', subtitle: 'Gerar PDF' },
+  demonstrativo: { component: Demonstrativo, title: 'Detalhamento de Despesas', subtitle: 'Gerar PDF' },
   'fip-custodia': { component: FipCustodia, title: 'Taxa de Custódia — FIPs' },
   'fip-administracao': { component: FipAdministracao, title: 'Taxa de Administração — FIPs' },
   'portal-saldos': { component: PortalSaldos, title: 'Portal Saldos' },

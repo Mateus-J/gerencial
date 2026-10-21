@@ -21,7 +21,7 @@ const NAV = [
       { id: 'taxa-administracao', label: 'Taxa de Administração', icon: Percent, adminOnly: true },
       { id: 'taxa-anbima', label: 'Taxa Anbima', icon: Receipt, adminOnly: true },
       { id: 'transfer-closed', label: 'Transfer / Closed', icon: ArrowRightLeft },
-      { id: 'demonstrativo', label: 'Demonstrativo', icon: FileText },
+      { id: 'demonstrativo', label: 'Detalhamento de despesas', icon: FileText },
       { id: 'portal-saldos', label: 'Portal Saldos', icon: Landmark },
       { id: 'multas-juros', label: 'Multas e Juros', icon: AlertTriangle, badge: true },
     ],
