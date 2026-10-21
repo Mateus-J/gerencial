@@ -7,6 +7,7 @@ import Fundos from './pages/Fundos'
 import TaxaAdministracao from './pages/TaxaAdministracao'
 import TaxaAnbima from './pages/TaxaAnbima'
 import TransferClosed from './pages/TransferClosed'
+import Demonstrativo from './pages/Demonstrativo'
 import FipCustodia from './pages/FipCustodia'
 import FipAdministracao from './pages/FipAdministracao'
 import PortalSaldos from './pages/PortalSaldos'
@@ -39,6 +40,7 @@ const PAGES = {
   'taxa-administracao': { component: TaxaAdministracao, title: 'Taxa de Administração', adminOnly: true, search: true },
   'taxa-anbima': { component: TaxaAnbima, title: 'Taxa Anbima', adminOnly: true, search: true },
   'transfer-closed': { component: TransferClosed, title: 'Transfer / Closed', subtitle: 'Transferência e encerramento', adminOnly: true, search: true },
+  demonstrativo: { component: Demonstrativo, title: 'Demonstrativo de Caixa', subtitle: 'Gerar PDF' },
   'fip-custodia': { component: FipCustodia, title: 'Taxa de Custódia — FIPs' },
   'fip-administracao': { component: FipAdministracao, title: 'Taxa de Administração — FIPs' },
   'portal-saldos': { component: PortalSaldos, title: 'Portal Saldos' },
