@@ -1,56 +1,63 @@
-// Transfer / Closed: controle dos fundos que saem (transferência) ou encerram.
-// Base ao vivo para toda a equipe (um documento em controle/transfer_closed),
-// gravação em transação sobre a versão mais recente do servidor.
+// Transfer / Closed: controle dos fundos que saem (transferência de
+// administração), encerram ou são incorporados. Base ao vivo para toda a equipe
+// (controle/transfer_closed). Todos veem; só edita quem tem permissão ou o código.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { doc, onSnapshot, runTransaction } from 'firebase/firestore'
+import { doc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import {
-  Plus, Upload, Download, X, Landmark, Lock, Wallet, AlertTriangle, ChevronRight, CheckCircle2, Circle,
-  Trash2, RefreshCw, Clock, ArrowRightLeft, Archive, Loader2,
+  Plus, Upload, Download, X, Landmark, Wallet, CheckCircle2, Clock, Trash2, RefreshCw, Loader2, Lock, Unlock,
+  KeyRound, FileText, Paperclip, Link2, ExternalLink, Ban, Users,
 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { useToast } from '../components/Toast'
 import { useOptionalAuth } from '../context/AuthContext'
 import AnimatedNumber from '../components/AnimatedNumber'
-import { StatCard, MiniStat, RankCard, Overlay } from '../components/taxa/Cards'
+import { StatCard, RankCard, Overlay } from '../components/taxa/Cards'
 import { norm, onlyDigits, fmtFull, fmtShort, todayISO, brDate } from '../lib/taxaCore'
 import {
-  CONTA_NOME, ETAPAS, CANCELADO, ETAPA, ETAPA_TONE, TIPOS, CATEGORIAS, ITENS_RETENCAO, proximaEtapa, checklistDe,
-  parseValor, novoId, resumo, carregarBases, fundoPorCnpj, pendenciasDoSistema, parsePlanilha, mergePlanilha,
-  novoProcesso, EXPORT_HEADERS, toSheetRow,
+  CONTA_NOME, ATIVIDADES, CATEGORIAS, CONTROLES, PEND, LIQ, EXC, CONC, parseValor, novoId, itensDe, resumo,
+  novoProcesso, carregarBases, fundoPorCnpj, pendenciasDoSistema, enviarArquivo, baixarArquivo, apagarArquivo, MAX_ARQUIVO,
+  ACESSO_REF, sha256, salvarCodigo, parsePlanilha, mergePlanilha, statusTxt, EXPORT_HEADERS, toSheetRow, folhaConclusao,
 } from '../lib/transfer'
 
 const DOC_REF = () => doc(db, 'controle', 'transfer_closed')
-const fmtInput = (v) => (Number(v) ? Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '')
+const USERS_REF = () => doc(db, 'controle', 'users')
+const OWNER_EMAIL = 'mateus.jesus@idsf.com.br'
+const UNLOCK_KEY = 'tc_desbloqueio'
+const fmtInput = (v) => (v === '' || v == null ? '' : typeof v === 'number' ? (v ? v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '') : v)
 
-function EtapaBadge({ id, className = '' }) {
-  const e = ETAPA[id] || ETAPA.solicitado
-  return <span className={`inline-flex items-center text-[10.5px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${ETAPA_TONE[e.id]} ${className}`}>{e.label}</span>
-}
-function TipoBadge({ tipo }) {
-  const t = tipo === 'TRANSFER'
+function StatusPill({ v, onClick, disabled }) {
+  const ok = v === CONC
+  const Tag = onClick && !disabled ? 'button' : 'span'
   return (
-    <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${t ? 'bg-sky-500/10 text-sky-600 dark:text-sky-300' : 'bg-red-500/10 text-red-600 dark:text-red-300'}`}>
-      {t ? <ArrowRightLeft size={11} /> : <Archive size={11} />}{TIPOS[tipo] || tipo}
-    </span>
+    <Tag onClick={onClick} className={`inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${ok ? 'bg-id-mid/15 text-id-dark dark:text-id-light border-id-mid/30' : 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'}`}>
+      {ok ? <CheckCircle2 size={11} /> : <Clock size={11} />}{statusTxt(v)}
+    </Tag>
   )
 }
+function AtividadeBadge({ a }) {
+  const cls = a === 'TRANSF_ADM' ? 'bg-sky-500/10 text-sky-600 dark:text-sky-300' : a === 'INCORPORADO' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-300' : 'bg-red-500/10 text-red-600 dark:text-red-300'
+  return <span className={`inline-flex text-[10.5px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${cls}`}>{ATIVIDADES[a] || a}</span>
+}
 
-export default function TransferClosed({ search, onSearch }) {
+export default function TransferClosed({ search }) {
   const toast = useToast()
   const currentUser = useOptionalAuth()?.currentUser
   const who = currentUser?.name || currentUser?.username || ''
+  const isOwner = currentUser?.username === 'admin' || (currentUser?.email || '').toLowerCase() === OWNER_EMAIL
   const [data, setData] = useState(null)
+  const [acesso, setAcesso] = useState(null)
   const [loaded, setLoaded] = useState(false)
   const [live, setLive] = useState('connecting')
   const [saving, setSaving] = useState(0)
-  const [fEtapa, setFEtapa] = useState('ativos') // 'ativos' | 'todos' | id da etapa
-  const [fTipo, setFTipo] = useState('')
+  const [desbloqueio, setDesbloqueio] = useState(() => { try { return sessionStorage.getItem(UNLOCK_KEY) || '' } catch { return '' } })
+  const [fSit, setFSit] = useState(PEND)
+  const [fAtiv, setFAtiv] = useState('')
   const [qLocal, setQLocal] = useState('')
-  const q = onSearch ? search || '' : qLocal
-  const [aberto, setAberto] = useState(null) // id do processo, ou 'novo'
-  const [editSaldo, setEditSaldo] = useState(false)
+  const q = search || qLocal
+  const [aberto, setAberto] = useState(null)
+  const [modal, setModal] = useState(null) // 'codigo' | 'acesso' | 'saldo'
   const fileRef = useRef(null)
 
   useEffect(() => onSnapshot(DOC_REF(), { includeMetadataChanges: true }, (snap) => {
@@ -58,43 +65,47 @@ export default function TransferClosed({ search, onSearch }) {
     setData(snap.exists() ? snap.data() : null)
     setLoaded(true)
   }, (e) => { console.warn('tcLoad err', e); setLive('offline'); setLoaded(true) }), [])
+  useEffect(() => onSnapshot(ACESSO_REF(), (s) => setAcesso(s.exists() ? s.data() : {}), () => setAcesso({})), [])
+
+  // quem pode editar: o dono, quem recebeu permissão ou quem digitou o código nesta sessão
+  const porPermissao = !!currentUser?.username && (acesso?.editores || []).includes(currentUser.username)
+  const porCodigo = !!acesso?.hash && desbloqueio === acesso.hash
+  const canEdit = isOwner || porPermissao || porCodigo
 
   const processos = useMemo(() => data?.processos || [], [data])
   const conta = data?.conta || {}
 
   async function mutate(fn, { msg, contaPatch } = {}) {
+    if (!canEdit) { toast.error('Somente leitura — desbloqueie para editar.'); return }
     setData((d) => ({ ...(d || {}), processos: fn(d?.processos || []), conta: { ...(d?.conta || {}), ...(contaPatch || {}) } }))
     setSaving((s) => s + 1)
     try {
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(DOC_REF())
         const cur = snap.exists() ? snap.data() : {}
-        tx.set(DOC_REF(), {
-          processos: fn(cur.processos || []),
-          conta: { ...(cur.conta || {}), ...(contaPatch || {}) },
-          updatedAt: Date.now(), updatedBy: who,
-        })
+        tx.set(DOC_REF(), JSON.parse(JSON.stringify({ processos: fn(cur.processos || []), conta: { ...(cur.conta || {}), ...(contaPatch || {}) }, updatedAt: Date.now(), updatedBy: who })))
       })
       if (msg) toast.success(msg)
     } catch (e) {
       console.warn('tcSave err', e)
       toast.error('Não foi possível salvar: ' + e.message)
-    } finally {
-      setSaving((s) => s - 1)
-    }
+    } finally { setSaving((s) => s - 1) }
+  }
+  const salvarProcesso = (p, msg) => mutate((list) => (list.some((x) => x.id === p.id) ? list.map((x) => (x.id === p.id ? p : x)) : [p, ...list]), { msg })
+  async function excluirProcesso(p) {
+    await mutate((list) => list.filter((x) => x.id !== p.id), { msg: `${p.fundo || 'Fundo'} excluído.` })
+    ;(p.arquivos || []).forEach((a) => apagarArquivo(a))
   }
 
-  function salvarProcesso(p) {
-    const isNew = !processos.some((x) => x.id === p.id)
-    mutate((list) => (isNew ? [p, ...list] : list.map((x) => (x.id === p.id ? p : x))), { msg: isNew ? 'Processo criado.' : 'Processo atualizado.' })
+  async function desbloquear(codigo) {
+    if (!acesso?.hash) { toast.error('Nenhum código definido ainda. Peça para o responsável liberar o acesso.'); return false }
+    const h = await sha256(acesso.salt + ':' + codigo)
+    if (h !== acesso.hash) { toast.error('Código incorreto.'); return false }
+    try { sessionStorage.setItem(UNLOCK_KEY, h) } catch { /* sem storage */ }
+    setDesbloqueio(h); toast.success('Edição liberada nesta sessão.')
+    return true
   }
-  function excluirProcesso(p) {
-    mutate((list) => list.filter((x) => x.id !== p.id), { msg: `${p.fundo || 'Processo'} excluído.` })
-  }
-  function salvarSaldoConta(v) {
-    mutate((l) => l, { contaPatch: { saldoInformado: v, informadoEm: Date.now(), informadoPor: who }, msg: 'Saldo da conta atualizado.' })
-    setEditSaldo(false)
-  }
+  function bloquear() { try { sessionStorage.removeItem(UNLOCK_KEY) } catch { /* sem storage */ } setDesbloqueio('') }
 
   function handleFile(file) {
     if (!file) return
@@ -105,60 +116,51 @@ export default function TransferClosed({ search, onSearch }) {
         if (!linhas.length) { toast.error('Não encontrei fundos na planilha. Ela precisa das colunas "Fundo" e "CNPJ".'); return }
         const prev = mergePlanilha(processos, linhas, who)
         if (!prev.novos && !prev.atualizados) { toast.success('Planilha conferida: nada novo para atualizar.'); return }
-        if (!confirm(`Aplicar a planilha? ${prev.novos} fundo(s) novo(s) e ${prev.atualizados} atualizado(s). Retenções, checklist e histórico de quem já existe ficam como estão.`)) return
+        if (!confirm(`Aplicar a planilha? ${prev.novos} fundo(s) novo(s) e ${prev.atualizados} atualizado(s). Itens já liquidados ou excluídos não mudam.`)) return
         mutate((list) => mergePlanilha(list, linhas, who).processos, { msg: `Planilha aplicada: ${prev.novos} novo(s), ${prev.atualizados} atualizado(s).` })
       } catch (err) { console.error(err); toast.error('Erro ao ler a planilha: ' + err.message) }
     }
     reader.readAsArrayBuffer(file)
     if (fileRef.current) fileRef.current.value = ''
   }
-
   function exportar() {
-    if (!processos.length) { toast.error('Nenhum processo para exportar.'); return }
+    if (!processos.length) { toast.error('Nenhum fundo para exportar.'); return }
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.aoa_to_sheet([EXPORT_HEADERS, ...processos.map(toSheetRow)])
-    ws['!cols'] = EXPORT_HEADERS.map((h) => ({ wch: h === 'Fundo' ? 55 : 16 }))
-    XLSX.utils.book_append_sheet(wb, ws, 'Fundos')
-    const det = [['Fundo', 'CNPJ', 'Item', 'Valor', 'Status', 'Data de pagamento', 'Observação']]
-    processos.forEach((p) => (p.retencoes || []).forEach((r) => det.push([p.fundo, p.cnpj, r.item, Number(r.valor) || 0, r.status === 'PAGO' ? 'Pago' : 'Pendente', brDate(r.dataPagamento), r.obs || ''])))
-    const ws2 = XLSX.utils.aoa_to_sheet(det)
-    ws2['!cols'] = [{ wch: 55 }, { wch: 20 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 50 }]
-    XLSX.utils.book_append_sheet(wb, ws2, 'Saldo retido')
+    ws['!cols'] = EXPORT_HEADERS.map((h) => ({ wch: h === 'Fundo' ? 50 : h.length > 12 ? 20 : 13 }))
+    XLSX.utils.book_append_sheet(wb, ws, 'Transfer Closed')
+    const det = [['Fundo', 'CNPJ', 'Item', 'Valor', 'Status', 'Liquidado em', 'Observação']]
+    processos.forEach((p) => itensDe(p).filter((x) => x.v).forEach((x) => det.push([p.fundo, p.cnpj, x.label, x.v, x.status === LIQ ? 'Liquidado' : x.status === EXC ? 'Excluído' : 'Pendente', brDate(x.data), x.obs || ''])))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det), 'Itens')
     XLSX.writeFile(wb, `transfer_closed_${todayISO()}.xlsx`)
   }
 
   // ---- números ----
   const comResumo = useMemo(() => processos.map((p) => ({ p, r: resumo(p) })), [processos])
-  const ativos = comResumo.filter((x) => x.r.ativo)
-  const saldoConta = ativos.reduce((a, x) => a + x.r.saldo, 0)
-  const retPend = ativos.reduce((a, x) => a + x.r.pendente, 0)
-  const retPago = ativos.reduce((a, x) => a + x.r.pago, 0)
-  const liberavel = ativos.reduce((a, x) => a + x.r.liberavel, 0)
-  const atrasados = ativos.filter((x) => x.r.atrasado).length
-  const insuf = ativos.filter((x) => x.r.insuficiente).length
+  const pendentes = comResumo.filter((x) => !x.r.concluido)
+  const total = pendentes.reduce((a, x) => a + x.r.total, 0)
+  const liquidado = pendentes.reduce((a, x) => a + x.r.liquidado, 0)
+  const saldoConta = pendentes.reduce((a, x) => a + x.r.saldo, 0)
   const informado = conta.saldoInformado
-  const diferenca = informado != null ? informado - saldoConta : null
-  const porEtapa = Object.fromEntries([...ETAPAS, CANCELADO].map((e) => [e.id, comResumo.filter((x) => x.p.status === e.id).length]))
-
   const lista = useMemo(() => {
     const qq = norm(q), qd = /^[\d./\-\s]+$/.test(q) ? onlyDigits(q) : ''
     return comResumo
-      .filter(({ p, r }) => {
-        if (fEtapa === 'ativos' && !r.ativo) return false
-        if (fEtapa !== 'ativos' && fEtapa !== 'todos' && p.status !== fEtapa) return false
-        if (fTipo && p.tipo !== fTipo) return false
-        if (qq && !norm(p.fundo).includes(qq) && !(qd && onlyDigits(p.cnpj).includes(qd))) return false
-        return true
-      })
-      .sort((a, b) => (b.r.atrasado - a.r.atrasado) || (ETAPA[a.p.status].ordem - ETAPA[b.p.status].ordem) || String(a.p.dataPrevista || '9').localeCompare(String(b.p.dataPrevista || '9')) || a.p.fundo.localeCompare(b.p.fundo))
-  }, [comResumo, fEtapa, fTipo, q])
+      .filter(({ p }) => (!fSit || (fSit === CONC ? p.situacao === CONC : p.situacao !== CONC)) && (!fAtiv || p.atividade === fAtiv)
+        && (!qq || norm(p.fundo).includes(qq) || (qd && onlyDigits(p.cnpj).includes(qd))))
+      .sort((a, b) => (a.r.concluido - b.r.concluido) || (b.r.pendente - a.r.pendente) || a.p.fundo.localeCompare(b.p.fundo))
+  }, [comResumo, fSit, fAtiv, q])
 
+  const lockBtn = canEdit
+    ? <button onClick={porCodigo && !isOwner && !porPermissao ? bloquear : undefined} className="btn" title={isOwner ? 'Você é o responsável pela aba' : porPermissao ? 'Você tem permissão para editar' : 'Clique para bloquear de novo'}><Unlock size={14} className="text-id-dark dark:text-id-light" /> Edição liberada</button>
+    : <button onClick={() => setModal('codigo')} className="btn"><Lock size={14} className="text-amber-500" /> Somente leitura · desbloquear</button>
   const header = (
     <>
+      {lockBtn}
+      {isOwner && <button onClick={() => setModal('acesso')} className="btn" title="Código e quem pode editar"><KeyRound size={14} /> Acesso</button>}
       <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
-      <button onClick={() => fileRef.current?.click()} className="btn" title="Planilha com as colunas Fundo, CNPJ, Categoria, Situação, Atividade e Data"><Upload size={14} /> Importar planilha</button>
+      {canEdit && <button onClick={() => fileRef.current?.click()} className="btn" title="Planilha com Fundo, CNPJ, Categoria, Situação, Atividade, Data e uma coluna por item (Tarifa, ADM, Custódia…)"><Upload size={14} /> Importar planilha</button>}
       <button onClick={exportar} className="btn"><Download size={14} /> Exportar</button>
-      <button onClick={() => setAberto('novo')} className="btn btn-primary"><Plus size={14} /> Novo fundo</button>
+      {canEdit && <button onClick={() => setAberto('novo')} className="btn btn-primary"><Plus size={14} /> Novo fundo</button>}
     </>
   )
   const liveMeta = (
@@ -171,136 +173,172 @@ export default function TransferClosed({ search, onSearch }) {
     </div>
   )
 
-  if (!loaded) {
-    return (
-      <div>
-        <PageHeader eyebrow="Operacional" title="Transfer / Closed" />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">{[0, 1, 2].map((i) => <Card key={i} className="h-[150px] animate-pulse" />)}</div>
-        <Card className="h-[320px] animate-pulse" />
-      </div>
-    )
-  }
-
+  if (!loaded) return <div><PageHeader eyebrow="Operacional" title="Transfer / Closed" /><Card className="h-[320px] animate-pulse" /></div>
   const procAberto = aberto === 'novo' ? null : processos.find((p) => p.id === aberto)
 
   return (
     <div>
-      <PageHeader eyebrow="Operacional" title="Transfer / Closed" description="Fundos que saem da casa (transferência) ou encerram" meta={liveMeta} actions={header} />
+      <PageHeader eyebrow="Operacional" title="Transfer / Closed" description="Transferência de administração, encerramento e incorporação de fundos" meta={liveMeta} actions={header} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+        <StatCard icon={Wallet} tone="neutral" label="Total dos fundos pendentes" value={<AnimatedNumber value={total} format={fmtFull} />}
+          details={[['Fundos pendentes', String(pendentes.length)], ['Concluídos', String(comResumo.length - pendentes.length)]]} onClick={() => setFSit(PEND)} />
+        <StatCard icon={CheckCircle2} tone="green" label="Liquidado" value={<AnimatedNumber value={liquidado} format={fmtFull} />} share={total > 0 ? (liquidado / total) * 100 : null}
+          details={[['Itens liquidados', String(pendentes.reduce((a, x) => a + x.r.qtd - x.r.qtdPend, 0))]]} />
+        <StatCard icon={Clock} tone={total - liquidado > 0 ? 'amber' : 'green'} label="Pendente" value={<AnimatedNumber value={total - liquidado} format={fmtFull} />}
+          details={[['Itens pendentes', String(pendentes.reduce((a, x) => a + x.r.qtdPend, 0))], ['Despesas pendentes', `${pendentes.filter((x) => x.p.statusDespesas !== CONC).length} fundo(s)`]]} />
         <StatCard icon={Landmark} tone="green" label="Saldo da conta" value={<AnimatedNumber value={saldoConta} format={fmtFull} />}
-          details={[
-            ['Conta', CONTA_NOME],
-            ['Extrato informado', informado != null ? fmtFull(informado) : '— clique para informar'],
-            ...(diferenca != null ? [['Diferença', fmtFull(diferenca), Math.abs(diferenca) > 0.005 ? 'text-red-500' : 'text-id-dark dark:text-id-light']] : []),
-          ]}
-          onClick={() => setEditSaldo(true)} hint="Soma do saldo dos fundos em andamento. Clique para informar o saldo do extrato e conferir." />
-        <StatCard icon={Lock} tone="amber" label="Saldo retido a pagar" value={<AnimatedNumber value={retPend} format={fmtFull} />}
-          share={retPend + retPago > 0 ? (retPend / (retPend + retPago)) * 100 : null}
-          details={[['Já pago', fmtFull(retPago)], ['Fundos com retenção', String(ativos.filter((x) => x.r.pendente > 0).length)]]} />
-        <StatCard icon={Wallet} tone="green" label="Saldo liberável" value={<AnimatedNumber value={liberavel} format={fmtFull} />}
-          details={[['Após pagar o retido', `${ativos.length} fundo(s)`], ...(insuf ? [['Saldo insuficiente', `${insuf} fundo(s)`, 'text-red-500']] : [])]} />
-        <StatCard icon={AlertTriangle} tone={atrasados ? 'red' : 'neutral'} label="Em andamento" value={String(ativos.length)}
-          details={[['Atrasados', String(atrasados), atrasados ? 'text-red-500' : ''], ['Concluídos', String(porEtapa.concluido)]]}
-          onClick={() => setFEtapa('ativos')} />
+          details={[['Caixa retido', fmtFull(comResumo.reduce((a, x) => a + parseValor(x.p.caixaRetido), 0))], ['Extrato informado', informado != null ? fmtFull(informado) : canEdit ? '— clique para informar' : '—', informado != null && Math.abs(informado - saldoConta) > 0.005 ? 'text-red-500' : '']]}
+          onClick={canEdit ? () => setModal('saldo') : undefined} hint="Soma do saldo informado em cada fundo pendente" />
       </div>
 
-      {/* esteira de etapas */}
       <Card className="p-3 mb-3">
-        <div className="flex flex-wrap items-stretch gap-1.5">
-          {[['ativos', 'Em andamento', ativos.length], ...ETAPAS.map((e) => [e.id, e.label, porEtapa[e.id]]), ['cancelado', 'Cancelado', porEtapa.cancelado], ['todos', 'Todos', processos.length]].map(([id, label, n], i) => (
-            <button key={id} onClick={() => setFEtapa(id)} title={ETAPA[id]?.desc}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-[12px] transition-colors ${fEtapa === id ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : 'border-[var(--bdr)] text-[var(--tx2)] hover:bg-[var(--sur2)]'}`}>
-              {ETAPA[id] && i > 0 && <span className={`w-2 h-2 rounded-full border ${ETAPA_TONE[id]}`} />}
-              <span>{label}</span>
-              <span className="font-mono text-[11px] text-[var(--tx3)]">{n}</span>
-            </button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[[PEND, 'Pendentes', pendentes.length], [CONC, 'Concluídos', comResumo.length - pendentes.length], ['', 'Todos', comResumo.length]].map(([id, l, n]) => (
+            <button key={l} onClick={() => setFSit(id)} className={`px-3 py-1.5 rounded-xl border text-[12px] ${fSit === id ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : 'border-[var(--bdr)] text-[var(--tx2)] hover:bg-[var(--sur2)]'}`}>{l} <span className="font-mono text-[11px] text-[var(--tx3)]">{n}</span></button>
+          ))}
+          <span className="w-px h-6 bg-[var(--bdr)] mx-1" />
+          {[['', 'Todas as atividades'], ...Object.entries(ATIVIDADES)].map(([id, l]) => (
+            <button key={l} onClick={() => setFAtiv(id)} className={`px-3 py-1.5 rounded-xl border text-[12px] ${fAtiv === id ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : 'border-[var(--bdr)] text-[var(--tx2)] hover:bg-[var(--sur2)]'}`}>{l}</button>
           ))}
           <div className="flex-1" />
-          <select value={fTipo} onChange={(e) => setFTipo(e.target.value)} className="field !w-auto !py-1.5 text-[12px]">
-            <option value="">Transferência e encerramento</option>
-            <option value="TRANSFER">Só transferências</option>
-            <option value="ENCERRAMENTO">Só encerramentos</option>
-          </select>
-          {!onSearch && <input value={qLocal} onChange={(e) => setQLocal(e.target.value)} placeholder="Buscar fundo ou CNPJ…" className="field !w-[220px] !py-1.5 text-[12px]" />}
+          {!search && <input value={qLocal} onChange={(e) => setQLocal(e.target.value)} placeholder="Buscar fundo ou CNPJ…" className="field !w-[220px] !py-1.5 text-[12px]" />}
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 2xl:grid-cols-[1fr_320px] gap-3">
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
-                  <th className="px-4 py-2.5 font-medium min-w-[220px]">Fundo</th>
-                                    <th className="px-3 py-2.5 font-medium">Atividade</th>
-                  <th className="px-3 py-2.5 font-medium">Situação</th>
-                  <th className="px-3 py-2.5 font-medium">Previsão</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Saldo na conta</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Retido a pagar</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Liberável</th>
-                  <th className="px-3 py-2.5 font-medium">Checklist</th>
+      <Card className="overflow-hidden mb-3">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
+                <th className="px-4 py-2.5 font-medium min-w-[200px]">Fundo</th>
+                <th className="px-3 py-2.5 font-medium">Atividade</th>
+                <th className="px-3 py-2.5 font-medium">Situação</th>
+                <th className="px-3 py-2.5 font-medium text-right">Total</th>
+                <th className="px-3 py-2.5 font-medium text-right">Liquidado</th>
+                <th className="px-3 py-2.5 font-medium text-right">Pendente</th>
+                <th className="px-3 py-2.5 font-medium text-right">Caixa retido</th>
+                <th className="px-3 py-2.5 font-medium">Status despesas</th>
+                <th className="px-3 py-2.5 font-medium">Transf./encerr.</th>
+                <th className="px-3 py-2.5 font-medium">Evidência</th>
+                <th className="px-3 py-2.5 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map(({ p, r }) => (
+                <tr key={p.id} onClick={() => setAberto(p.id)} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px] cursor-pointer">
+                  <td className="px-4 py-2.5 max-w-[320px]">
+                    <div className="font-medium truncate" title={p.fundo}>{p.fundo || '—'}</div>
+                    <div className="text-[11px] text-[var(--tx3)] truncate"><span className="font-mono">{p.cnpj || 'sem CNPJ'}</span>{p.categoria ? ` · ${p.categoria}` : ''}{p.data ? ` · ${brDate(p.data)}` : ''}</div>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <AtividadeBadge a={p.atividade} />
+                    {p.atividade === 'INCORPORADO' && p.incorporadoPara && <div className="text-[10.5px] text-[var(--tx3)] mt-0.5 max-w-[180px] truncate" title={p.incorporadoPara}>→ {p.incorporadoPara}</div>}
+                  </td>
+                  <td className="px-3 py-2.5"><StatusPill v={p.situacao} /></td>
+                  <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap font-medium">{fmtFull(r.total)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-id-dark dark:text-id-light">{fmtFull(r.liquidado)}</td>
+                  <td className={`px-3 py-2.5 text-right tabular-nums whitespace-nowrap ${r.pendente ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--tx3)]'}`}>{fmtFull(r.pendente)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap" title={p.caixaRetidoObs || ''}>{parseValor(p.caixaRetido) ? fmtFull(parseValor(p.caixaRetido)) : <span className="text-[var(--tx4)]">—</span>}</td>
+                  <td className="px-3 py-2.5"><StatusPill v={p.statusDespesas} /></td>
+                  <td className="px-3 py-2.5"><StatusPill v={p.transferido} /></td>
+                  <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    {p.evidencia ? <a href={p.evidencia} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11.5px] text-sky-600 dark:text-sky-300 hover:underline"><Link2 size={12} /> Slack</a> : <span className="text-[var(--tx4)]">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    {(p.arquivos || []).length > 0 && <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--tx3)] mr-2" title={p.arquivos.map((a) => a.nome).join('\n')}><Paperclip size={12} />{p.arquivos.length}</span>}
+                    <button onClick={() => folhaConclusao(p, who).catch((e) => toast.error('Erro no PDF: ' + e.message))} className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[var(--bdr)] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]" title="Folha de conclusão (PDF)"><FileText size={13} /></button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {lista.map(({ p, r }) => (
-                  <tr key={p.id} onClick={() => setAberto(p.id)} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px] cursor-pointer">
-                    <td className="px-4 py-2.5 max-w-[300px]">
-                      <div className="font-medium truncate" title={p.fundo}>{p.fundo || '—'}</div>
-                      <div className="text-[11px] text-[var(--tx3)] truncate"><span className="font-mono">{p.cnpj || 'sem CNPJ'}</span>{p.categoria ? ` · ${p.categoria}` : ''}{p.responsavel ? ` · ${p.responsavel}` : ''}</div>
-                    </td>
-                                        <td className="px-3 py-2.5"><TipoBadge tipo={p.tipo} /></td>
-                    <td className="px-3 py-2.5"><EtapaBadge id={p.status} /></td>
-                    <td className={`px-3 py-2.5 whitespace-nowrap ${r.atrasado ? 'text-red-500 font-medium' : 'text-[var(--tx2)]'}`}>
-                      {p.status === 'concluido' ? <span className="text-[var(--tx3)]">{brDate(p.dataConclusao) || '—'}</span> : brDate(p.dataPrevista) || '—'}
-                      {r.atrasado && <span className="ml-1 text-[10px]">atrasado</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{fmtFull(r.saldo)}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums whitespace-nowrap ${r.pendente > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--tx3)]'}`}>{fmtFull(r.pendente)}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums whitespace-nowrap ${r.liberavel < 0 ? 'text-red-500' : ''}`}>{fmtFull(r.liberavel)}</td>
-                    <td className="px-3 py-2.5 min-w-[110px]">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full bg-[var(--sur2)] overflow-hidden"><div className="h-full rounded-full bg-id-light transition-[width] duration-500" style={{ width: r.progresso * 100 + '%' }} /></div>
-                        <span className="text-[10.5px] font-mono text-[var(--tx3)]">{r.feitos}/{r.totalCheck}</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!lista.length && (
-                  <tr><td colSpan={8} className="text-center py-12 text-[12.5px] text-[var(--tx3)]">
-                    {processos.length ? 'Nenhum fundo para esse filtro.' : <>Nenhum fundo em transferência ou encerramento ainda.<br /><button onClick={() => setAberto('novo')} className="btn btn-primary btn-sm mt-3"><Plus size={13} /> Incluir o primeiro</button></>}
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)]">{lista.length} de {processos.length} fundos</div>
-        </Card>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 2xl:grid-cols-1 gap-3 content-start">
-          <RankCard title="Fundos na conta" tone="green"
-            items={ativos.filter((x) => x.r.saldo > 0).map((x) => ({ name: x.p.fundo, value: x.r.saldo, id: x.p.id })).sort((a, b) => b.value - a.value)}
-            empty="Nenhum saldo informado nos fundos em andamento."
-            onPick={(name) => { const x = ativos.find((y) => y.p.fundo === name); if (x) setAberto(x.p.id) }} />
-          <RankCard title="Maior saldo retido a pagar" tone="amber"
-            items={ativos.filter((x) => x.r.pendente > 0).map((x) => ({ name: x.p.fundo, value: x.r.pendente })).sort((a, b) => b.value - a.value).slice(0, 6)}
-            empty="Nada retido a pagar."
-            onPick={(name) => { const x = ativos.find((y) => y.p.fundo === name); if (x) setAberto(x.p.id) }} />
-          <div className="grid grid-cols-1 gap-3">
-            <MiniStat icon={ArrowRightLeft} label="Transferências" value={String(ativos.filter((x) => x.p.tipo === 'TRANSFER').length)} onClick={() => setFTipo((t) => (t === 'TRANSFER' ? '' : 'TRANSFER'))} />
-            <MiniStat icon={Archive} label="Encerramentos" value={String(ativos.filter((x) => x.p.tipo === 'ENCERRAMENTO').length)} onClick={() => setFTipo((t) => (t === 'ENCERRAMENTO' ? '' : 'ENCERRAMENTO'))} />
-          </div>
+              ))}
+              {!lista.length && (
+                <tr><td colSpan={11} className="text-center py-12 text-[12.5px] text-[var(--tx3)]">
+                  {processos.length ? 'Nenhum fundo para esse filtro.' : canEdit ? <>Nenhum fundo ainda.<br /><button onClick={() => setAberto('novo')} className="btn btn-primary btn-sm mt-3"><Plus size={13} /> Incluir o primeiro</button></> : 'Nenhum fundo ainda.'}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
+        <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)]">{lista.length} de {processos.length} fundos{!canEdit && ' · somente leitura'}</div>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <RankCard title="Maior valor pendente" tone="amber" items={pendentes.filter((x) => x.r.pendente > 0).map((x) => ({ name: x.p.fundo, value: x.r.pendente })).sort((a, b) => b.value - a.value).slice(0, 6)} empty="Nada pendente." onPick={(n) => { const x = pendentes.find((y) => y.p.fundo === n); if (x) setAberto(x.p.id) }} />
+        <RankCard title="Fundos na conta" tone="green" items={pendentes.filter((x) => x.r.saldo > 0).map((x) => ({ name: x.p.fundo, value: x.r.saldo })).sort((a, b) => b.value - a.value).slice(0, 6)} empty="Nenhum saldo informado." onPick={(n) => { const x = pendentes.find((y) => y.p.fundo === n); if (x) setAberto(x.p.id) }} />
       </div>
 
       {aberto && (
-        <ProcessoDrawer key={aberto} proc={procAberto} who={who} toast={toast} existentes={processos}
+        <ProcessoDrawer key={aberto} proc={procAberto} who={who} toast={toast} existentes={processos} canEdit={canEdit}
           onClose={() => setAberto(null)}
-          onSave={(p) => { salvarProcesso(p); setAberto(null) }}
+          onSave={(p, fechar = true) => { salvarProcesso(p, fechar ? (procAberto ? 'Fundo atualizado.' : 'Fundo incluído.') : undefined); if (fechar) setAberto(null) }}
           onDelete={procAberto ? () => { excluirProcesso(procAberto); setAberto(null) } : null} />
       )}
-      {editSaldo && <SaldoContaModal atual={informado} soma={saldoConta} onClose={() => setEditSaldo(false)} onSave={salvarSaldoConta} />}
+      {modal === 'codigo' && <CodigoModal onClose={() => setModal(null)} onOk={async (c) => { if (await desbloquear(c)) setModal(null) }} semCodigo={!acesso?.hash} />}
+      {modal === 'acesso' && <AcessoModal acesso={acesso} who={who} toast={toast} onClose={() => setModal(null)} />}
+      {modal === 'saldo' && <SaldoContaModal atual={informado} soma={saldoConta} onClose={() => setModal(null)} onSave={(v) => { mutate((l) => l, { contaPatch: { saldoInformado: v, informadoEm: Date.now(), informadoPor: who }, msg: 'Saldo da conta atualizado.' }); setModal(null) }} />}
     </div>
+  )
+}
+
+function CodigoModal({ onClose, onOk, semCodigo }) {
+  const [c, setC] = useState('')
+  return (
+    <Overlay onClose={onClose}>
+      <Card className="relative w-full max-w-[360px] p-5 animate-fade-up">
+        <div className="font-display font-semibold text-[15px] mb-1 flex items-center gap-2"><Lock size={15} /> Desbloquear edição</div>
+        <div className="text-[12px] text-[var(--tx3)] mb-3">{semCodigo ? 'O código ainda não foi definido. Peça ao responsável pela aba para liberar seu acesso.' : 'Digite o código de edição. Fica liberado até você fechar o navegador.'}</div>
+        <input autoFocus type="password" value={c} onChange={(e) => setC(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && c && onOk(c)} className="field font-mono" placeholder="Código" disabled={semCodigo} />
+        <div className="flex justify-end gap-2 mt-4"><button onClick={onClose} className="btn btn-sm">Cancelar</button><button onClick={() => onOk(c)} disabled={!c || semCodigo} className="btn btn-sm btn-primary">Desbloquear</button></div>
+      </Card>
+    </Overlay>
+  )
+}
+
+function AcessoModal({ acesso, who, toast, onClose }) {
+  const [codigo, setCodigo] = useState('')
+  const [users, setUsers] = useState([])
+  const [editores, setEditores] = useState(acesso?.editores || [])
+  useEffect(() => onSnapshot(USERS_REF(), (s) => {
+    const u = s.exists() ? s.data().users || {} : {}
+    setUsers(Object.entries(u).filter(([, p]) => p.role && p.role !== 'pending').map(([username, p]) => ({ username, name: p.name || username, role: p.role })).sort((a, b) => a.name.localeCompare(b.name)))
+  }, () => setUsers([])), [])
+  async function salvar() {
+    try {
+      if (codigo) {
+        if (codigo.length < 4) { toast.error('Código muito curto (mínimo 4 caracteres).'); return }
+        await salvarCodigo(codigo, { ...(acesso || {}), editores }, who)
+      } else {
+        await setDoc(ACESSO_REF(), { ...(acesso || {}), editores, updatedAt: Date.now(), updatedBy: who })
+      }
+      toast.success('Acesso atualizado.'); onClose()
+    } catch (e) { toast.error('Não foi possível salvar: ' + e.message) }
+  }
+  return (
+    <Overlay onClose={onClose}>
+      <Card className="relative w-full max-w-[460px] max-h-[85vh] flex flex-col animate-fade-up">
+        <div className="px-5 py-4 border-b border-[var(--bdr)] flex items-center"><div className="font-display font-semibold text-[15px] flex-1 flex items-center gap-2"><KeyRound size={15} /> Acesso à aba</div><button onClick={onClose} className="text-[var(--tx3)]"><X size={16} /></button></div>
+        <div className="p-5 overflow-y-auto space-y-4">
+          <p className="text-[12px] text-[var(--tx3)]">Todos veem a aba. Editam você, quem estiver marcado abaixo e quem digitar o código.</p>
+          <div>
+            <div className="label">{acesso?.hash ? 'Trocar código de edição' : 'Definir código de edição'}</div>
+            <input type="password" value={codigo} onChange={(e) => setCodigo(e.target.value)} className="field font-mono" placeholder={acesso?.hash ? 'Deixe em branco para manter o atual' : 'Mínimo 4 caracteres'} />
+          </div>
+          <div>
+            <div className="label flex items-center gap-1.5"><Users size={12} /> Podem editar sem código</div>
+            <div className="space-y-1 max-h-[260px] overflow-y-auto">
+              {users.map((u) => (
+                <label key={u.username} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[var(--sur2)] text-[12.5px] cursor-pointer">
+                  <input type="checkbox" checked={editores.includes(u.username)} onChange={(e) => setEditores((s) => (e.target.checked ? [...s, u.username] : s.filter((x) => x !== u.username)))} />
+                  <span className="flex-1">{u.name}</span><span className="text-[11px] text-[var(--tx3)]">{u.username} · {u.role}</span>
+                </label>
+              ))}
+              {!users.length && <div className="text-[12px] text-[var(--tx3)]">Carregando usuários…</div>}
+            </div>
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t border-[var(--bdr)] flex justify-end gap-2"><button onClick={onClose} className="btn btn-sm">Cancelar</button><button onClick={salvar} className="btn btn-sm btn-primary">Salvar</button></div>
+      </Card>
+    </Overlay>
   )
 }
 
@@ -311,267 +349,266 @@ function SaldoContaModal({ atual, soma, onClose, onSave }) {
       <Card className="relative w-full max-w-[400px] p-5 animate-fade-up">
         <div className="font-display font-semibold text-[15px] mb-1">Saldo da conta</div>
         <div className="text-[12px] text-[var(--tx3)] mb-3">{CONTA_NOME} — informe o saldo do extrato para conferir com a soma dos fundos ({fmtFull(soma)}).</div>
-        <div className="label">Saldo no extrato (R$)</div>
         <input autoFocus value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onSave(parseValor(v))} inputMode="decimal" className="field text-right font-mono" />
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="btn btn-sm">Cancelar</button>
-          <button onClick={() => onSave(parseValor(v))} className="btn btn-sm btn-primary">Salvar</button>
-        </div>
+        <div className="flex justify-end gap-2 mt-4"><button onClick={onClose} className="btn btn-sm">Cancelar</button><button onClick={() => onSave(parseValor(v))} className="btn btn-sm btn-primary">Salvar</button></div>
       </Card>
     </Overlay>
   )
 }
 
-function ProcessoDrawer({ proc, who, toast, existentes, onClose, onSave, onDelete }) {
+function ProcessoDrawer({ proc, who, toast, existentes, canEdit, onClose, onSave, onDelete }) {
   const isNew = !proc
   const [f, setF] = useState(() => (proc ? JSON.parse(JSON.stringify(proc)) : novoProcesso({ responsavel: who }, who)))
-  const [aba, setAba] = useState('geral')
+  const [aba, setAba] = useState('dados')
   const [buscando, setBuscando] = useState(false)
+  const [enviando, setEnviando] = useState(false)
   const [comentario, setComentario] = useState('')
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
+  const ro = !canEdit
   const r = resumo(f)
-  const prox = proximaEtapa(f.status)
+  const itens = itensDe(f)
 
-  // nome e categoria pelo CNPJ (base da Taxa ADM)
+  const setItem = (x, patch) => setF((s) => (x.extra
+    ? { ...s, extras: s.extras.map((e) => (e.id === x.key ? { ...e, ...patch } : e)) }
+    : { ...s, itens: { ...(s.itens || {}), [x.key]: { ...(s.itens?.[x.key] || {}), ...patch } } }))
+  const statusItem = (x, st) => setItem(x, { status: x.status === st ? PEND : st, data: st === LIQ && x.status !== LIQ ? x.data || todayISO() : x.data })
+  const addExtra = () => setF((s) => ({ ...s, extras: [...(s.extras || []), { id: novoId(), label: '', valor: '', status: PEND }] }))
+  const delExtra = (x) => setF((s) => ({ ...s, extras: s.extras.filter((e) => e.id !== x.key) }))
+
   async function completarPorCnpj() {
-    if (onlyDigits(f.cnpj).length < 14 || (f.fundo && f.categoria)) return
-    try {
-      const achou = fundoPorCnpj(await carregarBases(), f.cnpj)
-      if (achou) setF((s) => ({ ...s, fundo: s.fundo || achou.fundo, categoria: s.categoria || achou.categoria }))
-    } catch (e) { console.warn('bases err', e) }
+    if (ro || onlyDigits(f.cnpj).length < 14 || (f.fundo && f.categoria)) return
+    try { const a = fundoPorCnpj(await carregarBases(), f.cnpj); if (a) setF((s) => ({ ...s, fundo: s.fundo || a.fundo, categoria: s.categoria || a.categoria })) } catch (e) { console.warn(e) }
   }
-  async function puxarPendencias() {
-    if (!onlyDigits(f.cnpj)) { toast.error('Informe o CNPJ do fundo para buscar as pendências.'); return }
+  async function puxar() {
+    if (!onlyDigits(f.cnpj)) { toast.error('Informe o CNPJ para buscar as pendências.'); return }
     setBuscando(true)
     try {
-      const sugest = pendenciasDoSistema(await carregarBases(), f.cnpj)
-      if (!sugest.length) { toast.success('Nenhuma pendência de Taxa ADM ou ANBIMA para esse CNPJ.'); return }
-      setF((s) => {
-        const ret = [...(s.retencoes || [])]
-        sugest.forEach((x) => {
-          const i = ret.findIndex((y) => y.origem === x.origem && y.status !== 'PAGO')
-          if (i >= 0) ret[i] = { ...ret[i], valor: x.valor, obs: x.obs }
-          else ret.push({ id: novoId(), status: 'PENDENTE', dataPagamento: '', ...x })
-        })
-        return { ...s, retencoes: ret }
+      const s = pendenciasDoSistema(await carregarBases(), f.cnpj)
+      const ks = Object.keys(s)
+      if (!ks.length) { toast.success('Nenhuma pendência de Taxa ADM ou ANBIMA para esse CNPJ.'); return }
+      setF((cur) => {
+        const it = { ...(cur.itens || {}) }
+        ks.forEach((k) => { if (!it[k] || (it[k].status || PEND) === PEND) it[k] = { ...(it[k] || {}), valor: s[k].valor, obs: s[k].obs, status: PEND } })
+        return { ...cur, itens: it }
       })
-      toast.success(`Pendências trazidas: ${sugest.map((x) => `${x.item} ${fmtFull(x.valor)}`).join(' · ')}`)
-    } catch (e) {
-      toast.error('Não consegui ler as bases: ' + e.message)
-    } finally { setBuscando(false) }
+      toast.success('Trazido do sistema: ' + ks.map((k) => `${k === 'adm' ? 'ADM' : 'ANBIMA'} ${fmtFull(s[k].valor)}`).join(' · '))
+    } catch (e) { toast.error('Não consegui ler as bases: ' + e.message) } finally { setBuscando(false) }
   }
-  const setRet = (id, patch) => setF((s) => ({ ...s, retencoes: s.retencoes.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
-  const addRet = (item = '') => setF((s) => ({ ...s, retencoes: [...(s.retencoes || []), { id: novoId(), item, valor: 0, status: 'PENDENTE', dataPagamento: '', obs: '' }] }))
-  const delRet = (id) => setF((s) => ({ ...s, retencoes: s.retencoes.filter((x) => x.id !== id) }))
-  const toggleCheck = (k) => setF((s) => {
-    const cur = s.checklist?.[k]
-    return { ...s, checklist: { ...(s.checklist || {}), [k]: cur?.feito ? { feito: false } : { feito: true, por: who, em: Date.now() } } }
-  })
+  async function anexar(files) {
+    if (!files.length) return
+    if (isNew) { toast.error('Salve o fundo antes de anexar arquivos.'); return }
+    setEnviando(true)
+    try {
+      const novos = []
+      for (const file of files) {
+        if (file.size > MAX_ARQUIVO) { toast.error(`${file.name} passa de 8 MB.`); continue }
+        novos.push(await enviarArquivo(file, who))
+      }
+      if (!novos.length) return
+      const hist = { ts: Date.now(), quem: who, texto: 'Anexado: ' + novos.map((a) => a.nome).join(', ') }
+      // grava na hora (o arquivo já está guardado), sem esperar o "Salvar"
+      const base = { ...proc, arquivos: [...(proc.arquivos || []), ...novos], historico: [...(proc.historico || []), hist], updatedAt: Date.now(), updatedBy: who }
+      onSave(base, false)
+      setF((s) => ({ ...s, arquivos: [...(s.arquivos || []), ...novos], historico: [...(s.historico || []), hist] }))
+      toast.success(`${novos.length} arquivo(s) anexado(s).`)
+    } catch (e) { toast.error('Falha no envio: ' + e.message) } finally { setEnviando(false) }
+  }
+  function removerArquivo(a) {
+    if (!confirm(`Remover o arquivo ${a.nome}?`)) return
+    const hist = { ts: Date.now(), quem: who, texto: 'Arquivo removido: ' + a.nome }
+    onSave({ ...proc, arquivos: (proc.arquivos || []).filter((x) => x.id !== a.id), historico: [...(proc.historico || []), hist], updatedAt: Date.now(), updatedBy: who }, false)
+    setF((s) => ({ ...s, arquivos: s.arquivos.filter((x) => x.id !== a.id), historico: [...(s.historico || []), hist] }))
+    apagarArquivo(a)
+  }
 
-  function salvar(extra = {}) {
-    const p = { ...f, ...extra }
-    if (!p.fundo.trim()) { setErr('Informe o nome do fundo.'); setAba('geral'); return }
-    const dup = existentes.find((x) => x.id !== p.id && onlyDigits(x.cnpj) && onlyDigits(x.cnpj) === onlyDigits(p.cnpj) && resumo(x).ativo)
-    if (dup && resumo(p).ativo) { setErr(`Já existe um processo em andamento para esse CNPJ (${dup.fundo}).`); return }
-    const now = Date.now()
-    const hist = [...(p.historico || [])]
+  function montar() {
+    const p = { ...f, saldoConta: parseValor(f.saldoConta) || '', caixaRetido: parseValor(f.caixaRetido) || '' }
+    p.itens = Object.fromEntries(Object.entries(p.itens || {}).map(([k, x]) => [k, { ...x, valor: parseValor(x.valor) }]).filter(([, x]) => x.valor || x.obs))
+    p.extras = (p.extras || []).filter((x) => x.label || parseValor(x.valor)).map((x) => ({ ...x, valor: parseValor(x.valor) }))
+    if (p.atividade !== 'INCORPORADO') p.incorporadoPara = ''
+    return p
+  }
+  function salvar() {
+    const p = montar()
+    if (!p.fundo.trim()) { setErr('Informe o nome do fundo.'); setAba('dados'); return }
+    const dup = existentes.find((x) => x.id !== p.id && onlyDigits(x.cnpj) && onlyDigits(x.cnpj) === onlyDigits(p.cnpj))
+    if (dup) { setErr(`Já existe um fundo com esse CNPJ na lista (${dup.fundo}).`); return }
+    const now = Date.now(), hist = [...(p.historico || [])]
     if (proc) {
-      if (proc.status !== p.status) hist.push({ ts: now, quem: who, texto: `Etapa: ${ETAPA[proc.status]?.label} → ${ETAPA[p.status]?.label}` })
-      const antes = resumo(proc)
       const mud = []
-      if (antes.saldo !== r.saldo) mud.push(`saldo na conta ${fmtFull(r.saldo)}`)
-      if (antes.retido !== r.retido || antes.pago !== r.pago) mud.push(`retido ${fmtFull(r.retido)} (pago ${fmtFull(r.pago)})`)
-      if (antes.feitos !== r.feitos) mud.push(`checklist ${r.feitos}/${r.totalCheck}`)
-      if (mud.length) hist.push({ ts: now, quem: who, texto: 'Atualizado: ' + mud.join(', ') })
+      CONTROLES.forEach(([k, l]) => { if ((proc[k] || PEND) !== (p[k] || PEND)) mud.push(`${l}: ${statusTxt(p[k])}`) })
+      if (proc.atividade !== p.atividade) mud.push(`atividade ${ATIVIDADES[p.atividade]}`)
+      const a = resumo(proc)
+      if (a.total !== r.total || a.liquidado !== r.liquidado) mud.push(`total ${fmtFull(r.total)} (liquidado ${fmtFull(r.liquidado)})`)
+      const antes = Object.fromEntries(itensDe(proc).map((x) => [x.key, x.status]))
+      itensDe(p).forEach((x) => { if (x.v && antes[x.key] !== x.status && x.status !== PEND) mud.push(`${x.label} ${x.status === LIQ ? 'liquidado' : 'excluído'}`) })
+      if (mud.length) hist.push({ ts: now, quem: who, texto: mud.join(' · ') })
     }
     if (comentario.trim()) hist.push({ ts: now, quem: who, texto: comentario.trim(), comentario: true })
-    if (p.status === 'concluido' && !p.dataConclusao) p.dataConclusao = todayISO()
-    if (p.status !== 'concluido') p.dataConclusao = p.status === 'cancelado' ? p.dataConclusao : ''
-    p.saldoConta = parseValor(p.saldoConta)
-    p.retencoes = (p.retencoes || []).filter((x) => x.item || Number(x.valor)).map((x) => ({ ...x, valor: parseValor(x.valor), dataPagamento: x.status === 'PAGO' ? x.dataPagamento || todayISO() : '' }))
     onSave({ ...p, historico: hist, updatedAt: now, updatedBy: who })
   }
 
-  const check = checklistDe(f.tipo)
-  const tabs = [['geral', 'Dados'], ['retido', `Detalhamento do retido${r.pendente > 0 ? ` · ${fmtShort(r.pendente)}` : ''}`], ['checklist', `Checklist ${r.feitos}/${r.totalCheck}`], ['historico', 'Histórico']]
-
+  const tabs = [['dados', 'Dados'], ['valores', `Valores · ${fmtShort(r.total)}`], ['arquivos', `Arquivos${(f.arquivos || []).length ? ` (${f.arquivos.length})` : ''}`], ['historico', 'Histórico']]
   return (
     <Overlay onClose={onClose} side>
-      <div className="relative h-full w-full max-w-[680px] bg-[var(--sur)] border-l border-[var(--bdr)] shadow-[var(--shadow-pop)] flex flex-col animate-slide-in">
+      <div className="relative h-full w-full max-w-[720px] bg-[var(--sur)] border-l border-[var(--bdr)] shadow-[var(--shadow-pop)] flex flex-col animate-slide-in">
         <div className="px-5 pt-4 pb-3 border-b border-[var(--bdr)]">
           <div className="flex items-start gap-3">
             <div className="flex-1 min-w-0">
               <div className="font-display font-semibold text-[15px] truncate">{isNew ? 'Novo fundo — Transfer / Closed' : f.fundo}</div>
               <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-[var(--tx3)]">
-                {f.cnpj && <span className="font-mono">{f.cnpj}</span>}
-                <TipoBadge tipo={f.tipo} /><EtapaBadge id={f.status} />
-                {r.atrasado && <span className="text-red-500 font-medium">Atrasado (previsto {brDate(f.dataPrevista)})</span>}
+                {f.cnpj && <span className="font-mono">{f.cnpj}</span>}<AtividadeBadge a={f.atividade} /><StatusPill v={f.situacao} />
+                {ro && <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><Lock size={11} /> somente leitura</span>}
               </div>
             </div>
             <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:bg-[var(--sur2)]"><X size={16} /></button>
           </div>
-          {/* etapas */}
-          <div className="flex items-center gap-1 mt-3 overflow-x-auto pb-1">
-            {ETAPAS.map((e, i) => {
-              const atual = ETAPA[f.status]?.ordem ?? 0
-              const done = f.status !== 'cancelado' && i < atual, on = f.status === e.id
-              return (
-                <button key={e.id} onClick={() => setF((s) => ({ ...s, status: e.id }))} title={e.desc}
-                  className={`flex items-center gap-1 shrink-0 text-[10.5px] px-2 py-1 rounded-full border transition-colors ${on ? ETAPA_TONE[e.id] + ' font-semibold' : done ? 'border-id-mid/30 text-id-dark dark:text-id-light' : 'border-[var(--bdr)] text-[var(--tx3)] hover:bg-[var(--sur2)]'}`}>
-                  {done ? <CheckCircle2 size={11} /> : <Circle size={11} />}{e.label}
-                </button>
-              )
-            })}
-            <button onClick={() => setF((s) => ({ ...s, status: s.status === 'cancelado' ? 'solicitado' : 'cancelado' }))} className={`shrink-0 text-[10.5px] px-2 py-1 rounded-full border ${f.status === 'cancelado' ? ETAPA_TONE.cancelado + ' font-semibold' : 'border-[var(--bdr)] text-[var(--tx4)] hover:bg-[var(--sur2)]'}`}>Cancelado</button>
-          </div>
-          <div className="flex gap-1 mt-2">
+          <div className="flex gap-1 mt-3">
             {tabs.map(([id, l]) => <button key={id} onClick={() => setAba(id)} className={`text-[12px] px-3 py-1.5 rounded-lg ${aba === id ? 'bg-[var(--sur2)] text-[var(--tx)] font-medium' : 'text-[var(--tx3)] hover:text-[var(--tx2)]'}`}>{l}</button>)}
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {aba === 'geral' && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div><div className="label">CNPJ</div><input value={f.cnpj} onChange={set('cnpj')} onBlur={completarPorCnpj} className="field font-mono" placeholder="00.000.000/0001-00" /></div>
-                <div><div className="label">Categoria</div>
-                  <input list="tc-cat" value={f.categoria} onChange={set('categoria')} className="field" />
-                  <datalist id="tc-cat">{CATEGORIAS.map((c) => <option key={c} value={c} />)}</datalist>
+          <fieldset disabled={ro} className="contents">
+            {aba === 'dados' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><div className="label">CNPJ</div><input value={f.cnpj} onChange={set('cnpj')} onBlur={completarPorCnpj} className="field font-mono" placeholder="00.000.000/0001-00" /></div>
+                  <div><div className="label">Categoria</div><input list="tc-cat" value={f.categoria} onChange={set('categoria')} className="field" /><datalist id="tc-cat">{CATEGORIAS.map((c) => <option key={c} value={c} />)}</datalist></div>
                 </div>
-              </div>
-              <div><div className="label">Fundo</div><input value={f.fundo} onChange={set('fundo')} className="field" placeholder="Razão social (preenche sozinho pelo CNPJ, se o fundo estiver na Taxa ADM)" /></div>
-              <div className="grid grid-cols-2 gap-3">
+                <div><div className="label">Fundo</div><input value={f.fundo} onChange={set('fundo')} className="field" placeholder="Razão social (preenche pelo CNPJ se o fundo estiver na Taxa ADM)" /></div>
                 <div><div className="label">Atividade</div>
-                  <div className="grid grid-cols-2 gap-1">
-                    {Object.entries(TIPOS).map(([k, l]) => (
-                      <button key={k} onClick={() => setF((s) => ({ ...s, tipo: k }))} className={`btn btn-sm justify-center ${f.tipo === k ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : ''}`}>{l}</button>
-                    ))}
+                  <div className="grid grid-cols-3 gap-1">
+                    {Object.entries(ATIVIDADES).map(([k, l]) => <button key={k} onClick={() => setF((s) => ({ ...s, atividade: k }))} className={`btn btn-sm justify-center ${f.atividade === k ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : ''}`}>{l}</button>)}
                   </div>
                 </div>
-                <div><div className="label">Responsável</div><input value={f.responsavel} onChange={set('responsavel')} className="field" /></div>
-              </div>
-              {f.tipo === 'TRANSFER' && <div><div className="label">Novo administrador (destino)</div><input value={f.destino} onChange={set('destino')} className="field" placeholder="Para quem o fundo vai" /></div>}
-              <div className="grid grid-cols-3 gap-3">
-                <div><div className="label">Data do pedido</div><input type="date" value={f.dataPedido} onChange={set('dataPedido')} className="field" /></div>
-                <div><div className="label">Previsão de conclusão</div><input type="date" value={f.dataPrevista} onChange={set('dataPrevista')} className="field" /></div>
-                <div><div className="label">Concluído em</div><input type="date" value={f.dataConclusao} onChange={set('dataConclusao')} disabled={f.status !== 'concluido' && f.status !== 'cancelado'} className="field disabled:opacity-50" /></div>
-              </div>
-              <div className="rounded-xl border border-[var(--bdr)] p-3">
-                <div className="flex items-center gap-2 mb-2"><Landmark size={14} className="text-id-dark dark:text-id-light" /><span className="text-[12px] font-semibold">Saldo do fundo na conta</span><span className="text-[11px] text-[var(--tx3)]">{CONTA_NOME}</span></div>
-                <input value={typeof f.saldoConta === 'number' ? fmtInput(f.saldoConta) : f.saldoConta} onChange={set('saldoConta')} onBlur={(e) => setF((s) => ({ ...s, saldoConta: parseValor(e.target.value) }))} inputMode="decimal" className="field text-right font-mono" placeholder="0,00" />
-                <Resumo r={r} />
-              </div>
-              <div><div className="label">Observações</div><textarea value={f.obs} onChange={set('obs')} rows={3} className="field resize-none" /></div>
-            </div>
-          )}
-
-          {aba === 'retido' && (
-            <div>
-              <div className="flex flex-wrap items-center gap-2 mb-3">
-                <div className="text-[12px] text-[var(--tx3)] flex-1 min-w-[200px]">Valores que ficam retidos na conta até serem pagos. O que sobra é liberado ({f.tipo === 'TRANSFER' ? 'transferido ao novo administrador' : 'devolvido aos cotistas'}).</div>
-                <button onClick={puxarPendencias} disabled={buscando} className="btn btn-sm" title="Soma o que está pendente para esse CNPJ na Taxa ADM e na Taxa Anbima">
-                  {buscando ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Puxar pendências do sistema
-                </button>
-              </div>
-              <div className="rounded-xl border border-[var(--bdr)] overflow-hidden">
-                <table className="w-full text-[12px]">
-                  <thead><tr className="text-[10px] uppercase tracking-wider text-[var(--tx3)] bg-[var(--sur2)]/60">
-                    <th className="text-left px-3 py-2 font-medium">Item</th><th className="text-right px-2 py-2 font-medium">Valor (R$)</th><th className="px-2 py-2 font-medium">Status</th><th className="px-2 py-2 font-medium">Pago em</th><th />
-                  </tr></thead>
-                  <tbody>
-                    {(f.retencoes || []).map((x) => (
-                      <tr key={x.id} className="border-t border-[var(--bdr)]/60 align-top">
-                        <td className="px-3 py-2">
-                          <input list="tc-itens" value={x.item} onChange={(e) => setRet(x.id, { item: e.target.value })} className="field !py-1 text-[12px]" placeholder="Item" />
-                          <input value={x.obs || ''} onChange={(e) => setRet(x.id, { obs: e.target.value })} className="field !py-1 text-[11px] mt-1 text-[var(--tx3)]" placeholder="Observação" />
-                        </td>
-                        <td className="px-2 py-2 w-[130px]"><input value={typeof x.valor === 'number' ? fmtInput(x.valor) : x.valor} onChange={(e) => setRet(x.id, { valor: e.target.value })} onBlur={(e) => setRet(x.id, { valor: parseValor(e.target.value) })} inputMode="decimal" className="field !py-1 text-right font-mono text-[12px]" /></td>
-                        <td className="px-2 py-2 w-[100px]">
-                          <button onClick={() => setRet(x.id, { status: x.status === 'PAGO' ? 'PENDENTE' : 'PAGO', dataPagamento: x.status === 'PAGO' ? '' : x.dataPagamento || todayISO() })}
-                            className={`w-full text-[11px] font-semibold px-2 py-1 rounded-md border ${x.status === 'PAGO' ? 'border-id-mid/50 text-id-dark dark:text-id-light bg-id-mid/10' : 'border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-500/10'}`}>
-                            {x.status === 'PAGO' ? 'Pago' : 'Pendente'}
-                          </button>
-                        </td>
-                        <td className="px-2 py-2 w-[130px]">{x.status === 'PAGO' && <input type="date" value={x.dataPagamento || ''} onChange={(e) => setRet(x.id, { dataPagamento: e.target.value })} className="field !py-1 text-[11.5px]" />}</td>
-                        <td className="px-2 py-2 w-[36px]"><button onClick={() => delRet(x.id)} className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--tx3)] hover:text-red-500 hover:bg-red-500/10" title="Remover"><Trash2 size={13} /></button></td>
-                      </tr>
-                    ))}
-                    {!(f.retencoes || []).length && <tr><td colSpan={5} className="px-3 py-6 text-center text-[var(--tx3)]">Nenhum valor retido. Adicione os itens abaixo ou puxe as pendências do sistema.</td></tr>}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-[var(--bdr)] bg-[var(--sur2)]/40 font-semibold">
-                      <td className="px-3 py-2">Total retido</td><td className="px-2 py-2 text-right tabular-nums">{fmtFull(r.retido)}</td><td colSpan={3} className="px-2 py-2 text-[11px] font-normal text-[var(--tx3)]">pago {fmtFull(r.pago)} · a pagar <span className="text-amber-600 dark:text-amber-400">{fmtFull(r.pendente)}</span></td>
-                    </tr>
-                  </tfoot>
-                </table>
-                <datalist id="tc-itens">{ITENS_RETENCAO.map((c) => <option key={c} value={c} />)}</datalist>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                <button onClick={() => addRet()} className="btn btn-sm"><Plus size={12} /> Adicionar item</button>
-                {ITENS_RETENCAO.filter((it) => !(f.retencoes || []).some((x) => x.item === it)).slice(0, 7).map((it) => (
-                  <button key={it} onClick={() => addRet(it)} className="text-[11px] px-2 py-1 rounded-full border border-dashed border-[var(--bdr)] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]">+ {it}</button>
-                ))}
-              </div>
-              <div className="rounded-xl border border-[var(--bdr)] p-3 mt-4"><Resumo r={r} /></div>
-            </div>
-          )}
-
-          {aba === 'checklist' && (
-            <div className="space-y-1.5">
-              {check.map(([k, l]) => {
-                const c = f.checklist?.[k]
-                return (
-                  <button key={k} onClick={() => toggleCheck(k)} className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${c?.feito ? 'border-id-mid/40 bg-id-mid/5' : 'border-[var(--bdr)] hover:bg-[var(--sur2)]'}`}>
-                    {c?.feito ? <CheckCircle2 size={17} className="text-id-dark dark:text-id-light shrink-0" /> : <Circle size={17} className="text-[var(--tx4)] shrink-0" />}
-                    <span className={`flex-1 text-[12.5px] ${c?.feito ? 'text-[var(--tx2)]' : ''}`}>{l}</span>
-                    {c?.feito && <span className="text-[10.5px] text-[var(--tx3)]">{c.por}{c.em ? ` · ${new Date(c.em).toLocaleDateString('pt-BR')}` : ''}</span>}
-                  </button>
-                )
-              })}
-              <div className="text-[11px] text-[var(--tx3)] pt-1">Os itens mudam conforme a atividade ({TIPOS[f.tipo]}).</div>
-            </div>
-          )}
-
-          {aba === 'historico' && (
-            <div>
-              <div className="label">Novo comentário</div>
-              <textarea value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} className="field resize-none mb-3" placeholder="Fica registrado com seu nome ao salvar" />
-              <div className="space-y-2">
-                {[...(f.historico || [])].reverse().map((h, i) => (
-                  <div key={i} className="flex gap-2.5 text-[12px]">
-                    <Clock size={13} className="text-[var(--tx4)] mt-0.5 shrink-0" />
-                    <div className="min-w-0">
-                      <div className={h.comentario ? 'text-[var(--tx)]' : 'text-[var(--tx2)]'}>{h.texto}</div>
-                      <div className="text-[10.5px] text-[var(--tx3)]">{h.quem || '—'} · {new Date(h.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                {f.atividade === 'INCORPORADO' && <div><div className="label">Incorporado para (nome / CNPJ / conta)</div><input value={f.incorporadoPara} onChange={set('incorporadoPara')} className="field" placeholder="Ex.: FUNDO XYZ FIDC · 00.000.000/0001-00 · CC 12345-6" /></div>}
+                <div className="grid grid-cols-3 gap-3">
+                  <div><div className="label">Data</div><input type="date" value={f.data} onChange={set('data')} className="field" /></div>
+                  <div><div className="label">Previsão</div><input type="date" value={f.dataPrevista} onChange={set('dataPrevista')} className="field" /></div>
+                  <div><div className="label">Responsável</div><input value={f.responsavel} onChange={set('responsavel')} className="field" /></div>
+                </div>
+                <div className="rounded-xl border border-[var(--bdr)] p-3 space-y-2">
+                  {CONTROLES.map(([k, l]) => (
+                    <div key={k} className="flex items-center gap-3">
+                      <span className="text-[12.5px] flex-1">{l}</span>
+                      <div className="grid grid-cols-2 gap-1 w-[210px]">
+                        {[[PEND, 'Pendente'], [CONC, 'Concluído']].map(([v, lab]) => (
+                          <button key={v} onClick={() => setF((s) => ({ ...s, [k]: v }))} className={`btn btn-sm justify-center ${(f[k] || PEND) === v ? (v === CONC ? 'border-id-mid/60 text-id-dark dark:text-id-light bg-id-mid/10' : 'border-amber-500/60 text-amber-600 dark:text-amber-400 bg-amber-500/10') : ''}`}>{lab}</button>
+                        ))}
+                      </div>
                     </div>
+                  ))}
+                </div>
+                <div><div className="label">Evidência do looping (link do Slack)</div>
+                  <div className="flex gap-2"><input value={f.evidencia} onChange={set('evidencia')} className="field" placeholder="https://….slack.com/archives/…" />
+                    {/^https?:\/\//.test(f.evidencia) && <a href={f.evidencia} target="_blank" rel="noreferrer" className="btn btn-sm shrink-0"><ExternalLink size={12} /> Abrir</a>}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><div className="label">Caixa retido após {f.atividade === 'ENCERRAMENTO' ? 'o encerramento' : 'a transferência'} (R$)</div><input value={fmtInput(f.caixaRetido)} onChange={set('caixaRetido')} onBlur={(e) => setF((s) => ({ ...s, caixaRetido: e.target.value === '' ? '' : parseValor(e.target.value) }))} inputMode="decimal" className="field text-right font-mono" placeholder="0,00" /></div>
+                  <div><div className="label">Detalhe do caixa retido</div><input value={f.caixaRetidoObs || ''} onChange={set('caixaRetidoObs')} className="field" placeholder="Ex.: provisão de auditoria" /></div>
+                </div>
+                <div><div className="label">Saldo na conta {CONTA_NOME} (R$)</div><input value={fmtInput(f.saldoConta)} onChange={set('saldoConta')} onBlur={(e) => setF((s) => ({ ...s, saldoConta: e.target.value === '' ? '' : parseValor(e.target.value) }))} inputMode="decimal" className="field text-right font-mono" placeholder="opcional" /></div>
+                <div><div className="label">Observações</div><textarea value={f.obs} onChange={set('obs')} rows={3} className="field resize-none" /></div>
+              </div>
+            )}
+
+            {aba === 'valores' && (
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <div className="text-[12px] text-[var(--tx3)] flex-1 min-w-[200px]">Todos somam. Marque <b>Liquidado</b> quando concluir; <b>Excluir</b> tira o item da conta e da folha de conclusão.</div>
+                  {!ro && <button onClick={puxar} disabled={buscando} className="btn btn-sm" title="ADM e ANBIMA pendentes desse CNPJ nas outras telas">{buscando ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Puxar ADM / ANBIMA do sistema</button>}
+                </div>
+                <div className="rounded-xl border border-[var(--bdr)] overflow-hidden">
+                  <table className="w-full text-[12px]">
+                    <thead><tr className="text-[10px] uppercase tracking-wider text-[var(--tx3)] bg-[var(--sur2)]/60">
+                      <th className="text-left px-3 py-2 font-medium">Item</th><th className="text-right px-2 py-2 font-medium w-[130px]">Valor (R$)</th><th className="px-2 py-2 font-medium w-[200px]">Status</th><th className="px-2 py-2 font-medium w-[124px]">Liquidado em</th>
+                    </tr></thead>
+                    <tbody>
+                      {itens.map((x) => (
+                        <tr key={x.key} className={`border-t border-[var(--bdr)]/60 align-top ${x.status === EXC ? 'opacity-45' : ''}`}>
+                          <td className="px-3 py-1.5">
+                            {x.extra
+                              ? <div className="flex gap-1"><input value={x.label} onChange={(e) => setItem(x, { label: e.target.value })} className="field !py-1 text-[12px]" placeholder="Nome do item" />{!ro && <button onClick={() => delExtra(x)} className="w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-[var(--tx3)] hover:text-red-500"><Trash2 size={12} /></button>}</div>
+                              : <div className={`font-medium pt-1 ${x.status === EXC ? 'line-through' : ''}`}>{x.label}</div>}
+                            {(x.obs || (!ro && x.v)) ? <input value={x.obs || ''} onChange={(e) => setItem(x, { obs: e.target.value })} className="field !py-0.5 text-[11px] mt-1 text-[var(--tx3)]" placeholder="Observação" /> : null}
+                          </td>
+                          <td className="px-2 py-1.5"><input value={fmtInput(x.valor)} onChange={(e) => setItem(x, { valor: e.target.value })} onBlur={(e) => setItem(x, { valor: e.target.value === '' ? '' : parseValor(e.target.value) })} inputMode="decimal" className="field !py-1 text-right font-mono text-[12px]" placeholder="0,00" /></td>
+                          <td className="px-2 py-1.5">
+                            <div className="grid grid-cols-3 gap-1">
+                              <span className={`text-[10.5px] font-semibold py-1 rounded-md border text-center ${x.status === PEND ? 'border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-500/10' : 'border-[var(--bdr)] text-[var(--tx4)]'}`}>Pendente</span>
+                              <button onClick={() => statusItem(x, LIQ)} className={`text-[10.5px] font-semibold py-1 rounded-md border ${x.status === LIQ ? 'border-id-mid/60 text-id-dark dark:text-id-light bg-id-mid/10' : 'border-[var(--bdr)] text-[var(--tx3)] hover:bg-[var(--sur2)]'}`}>Liquidado</button>
+                              <button onClick={() => statusItem(x, EXC)} className={`text-[10.5px] font-semibold py-1 rounded-md border inline-flex items-center justify-center gap-0.5 ${x.status === EXC ? 'border-red-500/50 text-red-600 dark:text-red-400 bg-red-500/10' : 'border-[var(--bdr)] text-[var(--tx3)] hover:bg-[var(--sur2)]'}`}><Ban size={10} />Excluir</button>
+                            </div>
+                          </td>
+                          <td className="px-2 py-1.5">{x.status === LIQ && <input type="date" value={x.data || ''} onChange={(e) => setItem(x, { data: e.target.value })} className="field !py-1 text-[11.5px]" />}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-[var(--bdr)] bg-[var(--sur2)]/40 font-semibold">
+                        <td className="px-3 py-2">Total</td><td className="px-2 py-2 text-right tabular-nums">{fmtFull(r.total)}</td>
+                        <td colSpan={2} className="px-2 py-2 text-[11px] font-normal text-[var(--tx3)]">liquidado <span className="text-id-dark dark:text-id-light">{fmtFull(r.liquidado)}</span> · pendente <span className="text-amber-600 dark:text-amber-400">{fmtFull(r.pendente)}</span></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                {!ro && <button onClick={addExtra} className="btn btn-sm mt-2"><Plus size={12} /> Outro item</button>}
+              </div>
+            )}
+
+            {aba === 'historico' && (
+              <div>
+                {!ro && <><div className="label">Novo comentário</div><textarea value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} className="field resize-none mb-3" placeholder="Fica registrado com seu nome ao salvar" /></>}
+                <div className="space-y-2">
+                  {[...(f.historico || [])].reverse().map((h, i) => (
+                    <div key={i} className="flex gap-2.5 text-[12px]">
+                      <Clock size={13} className="text-[var(--tx4)] mt-0.5 shrink-0" />
+                      <div className="min-w-0"><div className={h.comentario ? 'text-[var(--tx)]' : 'text-[var(--tx2)]'}>{h.texto}</div>
+                        <div className="text-[10.5px] text-[var(--tx3)]">{h.quem || '—'} · {new Date(h.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</div></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </fieldset>
+          {aba === 'arquivos' && (
+            <div>
+              {!ro && (
+                <label className={`flex flex-col items-center justify-center gap-1 border-2 border-dashed border-[var(--bdr)] rounded-xl py-8 cursor-pointer hover:bg-[var(--sur2)]/50 ${enviando ? 'opacity-60 pointer-events-none' : ''}`}
+                  onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); anexar([...e.dataTransfer.files]) }}>
+                  {enviando ? <Loader2 size={20} className="animate-spin text-[var(--tx3)]" /> : <Paperclip size={20} className="text-[var(--tx3)]" />}
+                  <span className="text-[12.5px] font-medium">{enviando ? 'Enviando…' : 'Clique ou arraste PDF / Excel aqui'}</span>
+                  <span className="text-[11px] text-[var(--tx3)]">até 8 MB por arquivo{isNew ? ' · salve o fundo antes de anexar' : ''}</span>
+                  <input type="file" multiple accept=".pdf,.xls,.xlsx,.xlsm,.csv" className="hidden" onChange={(e) => { anexar([...e.target.files]); e.target.value = '' }} />
+                </label>
+              )}
+              <div className="space-y-1.5 mt-3">
+                {(f.arquivos || []).map((a) => (
+                  <div key={a.id} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-[var(--bdr)]">
+                    <FileText size={16} className={/pdf/i.test(a.tipo + a.nome) ? 'text-red-500' : 'text-id-dark dark:text-id-light'} />
+                    <div className="flex-1 min-w-0"><div className="text-[12.5px] truncate">{a.nome}</div><div className="text-[10.5px] text-[var(--tx3)]">{(a.tamanho / 1024).toFixed(0)} KB · {a.por || '—'} · {new Date(a.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div></div>
+                    <button onClick={() => baixarArquivo(a).catch((e) => toast.error('Não consegui baixar: ' + e.message))} className="btn btn-sm"><Download size={12} /> Baixar</button>
+                    {!ro && <button onClick={() => removerArquivo(a)} className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--tx3)] hover:text-red-500 hover:bg-red-500/10"><Trash2 size={13} /></button>}
                   </div>
                 ))}
+                {!(f.arquivos || []).length && <div className="text-center text-[12px] text-[var(--tx3)] py-4">Nenhum arquivo anexado.</div>}
               </div>
             </div>
           )}
+
           {err && <p className="text-[12px] text-red-500 mt-3">{err}</p>}
         </div>
 
         <div className="px-5 py-3 border-t border-[var(--bdr)] flex items-center gap-2">
-          {onDelete && <button onClick={() => { if (confirm(`Excluir o processo de ${proc.fundo}? Isso apaga retenções, checklist e histórico.`)) onDelete() }} className="btn btn-sm btn-danger">Excluir</button>}
+          {onDelete && !ro && <button onClick={() => { if (confirm(`Excluir ${proc.fundo} da lista? Apaga valores, arquivos e histórico.`)) onDelete() }} className="btn btn-sm btn-danger">Excluir</button>}
           <div className="flex-1" />
-          <button onClick={onClose} className="btn btn-sm">Cancelar</button>
-          {prox && f.status !== 'cancelado' && <button onClick={() => salvar({ status: prox.id })} className="btn btn-sm" title="Salva e passa para a próxima etapa">Salvar e avançar <ChevronRight size={13} /> {prox.label}</button>}
-          <button onClick={() => salvar()} className="btn btn-sm btn-primary">Salvar</button>
+          <button onClick={() => folhaConclusao(montar(), who).catch((e) => toast.error('Erro no PDF: ' + e.message))} className="btn btn-sm" title="PDF com os itens lançados; liquidados aparecem como Liquidado, excluídos não aparecem"><FileText size={13} /> Folha de conclusão</button>
+          <button onClick={onClose} className="btn btn-sm">{ro ? 'Fechar' : 'Cancelar'}</button>
+          {!ro && <button onClick={salvar} className="btn btn-sm btn-primary">Salvar</button>}
         </div>
       </div>
     </Overlay>
-  )
-}
-
-function Resumo({ r }) {
-  return (
-    <div className="grid grid-cols-3 gap-3 mt-3 text-[11px]">
-      <div><div className="text-[var(--tx3)] uppercase tracking-wider text-[10px]">Saldo na conta</div><div className="font-semibold tabular-nums text-[13px]">{fmtFull(r.saldo)}</div></div>
-      <div><div className="text-[var(--tx3)] uppercase tracking-wider text-[10px]">Retido a pagar</div><div className="font-semibold tabular-nums text-[13px] text-amber-600 dark:text-amber-400">{fmtFull(r.pendente)}</div></div>
-      <div><div className="text-[var(--tx3)] uppercase tracking-wider text-[10px]">Liberável</div><div className={`font-semibold tabular-nums text-[13px] ${r.liberavel < 0 ? 'text-red-500' : 'text-id-dark dark:text-id-light'}`}>{fmtFull(r.liberavel)}</div></div>
-      {r.insuficiente && <div className="col-span-3 text-red-500 flex items-center gap-1.5"><AlertTriangle size={12} /> O saldo na conta não cobre o que ainda está retido a pagar.</div>}
-    </div>
   )
 }
