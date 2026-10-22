@@ -6,7 +6,7 @@ import { doc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import {
   Plus, Upload, Download, X, Landmark, Wallet, CheckCircle2, Clock, Trash2, RefreshCw, Loader2, Lock, Unlock,
-  KeyRound, FileText, Paperclip, Link2, ExternalLink, Ban, Users,
+  KeyRound, FileText, Paperclip, Link2, ExternalLink, Ban, Users, LayoutDashboard, Table2, Archive,
 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
@@ -14,9 +14,11 @@ import { useToast } from '../components/Toast'
 import { useOptionalAuth } from '../context/AuthContext'
 import AnimatedNumber from '../components/AnimatedNumber'
 import { StatCard, RankCard, Overlay } from '../components/taxa/Cards'
+import { DonutChart } from '../components/charts/Charts'
+import { useChartTheme } from '../components/charts/theme'
 import { norm, onlyDigits, fmtFull, fmtShort, todayISO, brDate } from '../lib/taxaCore'
 import {
-  CONTA_NOME, ATIVIDADES, CATEGORIAS, CONTROLES, PEND, LIQ, EXC, CONC, parseValor, novoId, itensDe, resumo,
+  CONTA_NOME, ATIVIDADES, CATEGORIAS, CONTROLES, ITENS, PEND, LIQ, EXC, CONC, parseValor, novoId, itensDe, resumo,
   novoProcesso, carregarBases, fundoPorCnpj, pendenciasDoSistema, enviarArquivo, baixarArquivo, apagarArquivo, MAX_ARQUIVO,
   ACESSO_REF, sha256, salvarCodigo, parsePlanilha, mergePlanilha, statusTxt, EXPORT_HEADERS, toSheetRow, folhaConclusao,
 } from '../lib/transfer'
@@ -25,6 +27,7 @@ const DOC_REF = () => doc(db, 'controle', 'transfer_closed')
 const USERS_REF = () => doc(db, 'controle', 'users')
 const OWNER_EMAIL = 'mateus.jesus@idsf.com.br'
 const UNLOCK_KEY = 'tc_desbloqueio'
+const VIEW_KEY = 'tc_view'
 const fmtInput = (v) => (v === '' || v == null ? '' : typeof v === 'number' ? (v ? v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '') : v)
 
 function StatusPill({ v, onClick, disabled }) {
@@ -58,6 +61,9 @@ export default function TransferClosed({ search }) {
   const q = search || qLocal
   const [aberto, setAberto] = useState(null)
   const [modal, setModal] = useState(null) // 'codigo' | 'acesso' | 'saldo'
+  const [view, setViewState] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'dash' } catch { return 'dash' } })
+  const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* sem storage */ } }
+  const chart = useChartTheme()
   const fileRef = useRef(null)
 
   useEffect(() => onSnapshot(DOC_REF(), { includeMetadataChanges: true }, (snap) => {
@@ -150,6 +156,18 @@ export default function TransferClosed({ search }) {
       .sort((a, b) => (a.r.concluido - b.r.concluido) || (b.r.pendente - a.r.pendente) || a.p.fundo.localeCompare(b.p.fundo))
   }, [comResumo, fSit, fAtiv, q])
 
+  const irBase = (patch = {}) => { if ('sit' in patch) setFSit(patch.sit); if ('ativ' in patch) setFAtiv(patch.ativ); setView('base') }
+  const caixaRetido = comResumo.reduce((a, x) => a + parseValor(x.p.caixaRetido), 0)
+  const porAtividade = Object.keys(ATIVIDADES).map((k) => ({ name: ATIVIDADES[k], key: k, value: pendentes.filter((x) => x.p.atividade === k).reduce((a, x) => a + x.r.total, 0), n: comResumo.filter((x) => x.p.atividade === k).length }))
+  const porItem = ITENS.map(([k, label]) => {
+    let pend = 0, liq = 0
+    pendentes.forEach(({ p }) => { const x = p.itens?.[k]; if (!x || x.status === EXC) return; const v = parseValor(x.valor); if (x.status === LIQ) liq += v; else pend += v })
+    return { label, pend, liq, total: pend + liq }
+  }).filter((x) => x.total).sort((a, b) => b.total - a.total)
+  const maxItem = porItem[0]?.total || 1
+  const controles = CONTROLES.map(([k, l]) => ({ k, l, conc: pendentes.filter((x) => x.p[k] === CONC).length }))
+  const recentes = processos.flatMap((p) => (p.historico || []).map((h) => ({ ...h, fundo: p.fundo, id: p.id }))).sort((a, b) => b.ts - a.ts).slice(0, 8)
+
   const lockBtn = canEdit
     ? <button onClick={porCodigo && !isOwner && !porPermissao ? bloquear : undefined} className="btn" title={isOwner ? 'Você é o responsável pela aba' : porPermissao ? 'Você tem permissão para editar' : 'Clique para bloquear de novo'}><Unlock size={14} className="text-id-dark dark:text-id-light" /> Edição liberada</button>
     : <button onClick={() => setModal('codigo')} className="btn"><Lock size={14} className="text-amber-500" /> Somente leitura · desbloquear</button>
@@ -180,92 +198,172 @@ export default function TransferClosed({ search }) {
     <div>
       <PageHeader eyebrow="Operacional" title="Transfer / Closed" description="Transferência de administração, encerramento e incorporação de fundos" meta={liveMeta} actions={header} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
-        <StatCard icon={Wallet} tone="neutral" label="Total dos fundos pendentes" value={<AnimatedNumber value={total} format={fmtFull} />}
-          details={[['Fundos pendentes', String(pendentes.length)], ['Concluídos', String(comResumo.length - pendentes.length)]]} onClick={() => setFSit(PEND)} />
-        <StatCard icon={CheckCircle2} tone="green" label="Liquidado" value={<AnimatedNumber value={liquidado} format={fmtFull} />} share={total > 0 ? (liquidado / total) * 100 : null}
-          details={[['Itens liquidados', String(pendentes.reduce((a, x) => a + x.r.qtd - x.r.qtdPend, 0))]]} />
-        <StatCard icon={Clock} tone={total - liquidado > 0 ? 'amber' : 'green'} label="Pendente" value={<AnimatedNumber value={total - liquidado} format={fmtFull} />}
-          details={[['Itens pendentes', String(pendentes.reduce((a, x) => a + x.r.qtdPend, 0))], ['Despesas pendentes', `${pendentes.filter((x) => x.p.statusDespesas !== CONC).length} fundo(s)`]]} />
-        <StatCard icon={Landmark} tone="green" label="Saldo da conta" value={<AnimatedNumber value={saldoConta} format={fmtFull} />}
-          details={[['Caixa retido', fmtFull(comResumo.reduce((a, x) => a + parseValor(x.p.caixaRetido), 0))], ['Extrato informado', informado != null ? fmtFull(informado) : canEdit ? '— clique para informar' : '—', informado != null && Math.abs(informado - saldoConta) > 0.005 ? 'text-red-500' : '']]}
-          onClick={canEdit ? () => setModal('saldo') : undefined} hint="Soma do saldo informado em cada fundo pendente" />
+      <div className="flex items-center gap-1 mb-3 p-1 rounded-xl border border-[var(--bdr)] bg-[var(--sur2)]/40 w-fit">
+        {[['dash', 'Dash', LayoutDashboard], ['base', 'Base', Table2]].map(([id, l, Icon]) => (
+          <button key={id} onClick={() => setView(id)} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[12.5px] transition-colors ${view === id ? 'bg-[var(--sur)] text-[var(--tx)] font-semibold shadow-sm' : 'text-[var(--tx3)] hover:text-[var(--tx2)]'}`}>
+            <Icon size={14} />{l}{id === 'base' && <span className="font-mono text-[11px] text-[var(--tx3)]">{processos.length}</span>}
+          </button>
+        ))}
       </div>
 
-      <Card className="p-3 mb-3">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {[[PEND, 'Pendentes', pendentes.length], [CONC, 'Concluídos', comResumo.length - pendentes.length], ['', 'Todos', comResumo.length]].map(([id, l, n]) => (
-            <button key={l} onClick={() => setFSit(id)} className={`px-3 py-1.5 rounded-xl border text-[12px] ${fSit === id ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : 'border-[var(--bdr)] text-[var(--tx2)] hover:bg-[var(--sur2)]'}`}>{l} <span className="font-mono text-[11px] text-[var(--tx3)]">{n}</span></button>
-          ))}
-          <span className="w-px h-6 bg-[var(--bdr)] mx-1" />
-          {[['', 'Todas as atividades'], ...Object.entries(ATIVIDADES)].map(([id, l]) => (
-            <button key={l} onClick={() => setFAtiv(id)} className={`px-3 py-1.5 rounded-xl border text-[12px] ${fAtiv === id ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : 'border-[var(--bdr)] text-[var(--tx2)] hover:bg-[var(--sur2)]'}`}>{l}</button>
-          ))}
-          <div className="flex-1" />
-          {!search && <input value={qLocal} onChange={(e) => setQLocal(e.target.value)} placeholder="Buscar fundo ou CNPJ…" className="field !w-[220px] !py-1.5 text-[12px]" />}
-        </div>
-      </Card>
+      {view === 'dash' && (
+        <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+            <StatCard icon={Wallet} tone="neutral" label="Total dos fundos pendentes" value={<AnimatedNumber value={total} format={fmtFull} />}
+              details={[['Fundos pendentes', String(pendentes.length)], ['Concluídos', String(comResumo.length - pendentes.length)]]} onClick={() => irBase({ sit: PEND })} />
+            <StatCard icon={CheckCircle2} tone="green" label="Liquidado" value={<AnimatedNumber value={liquidado} format={fmtFull} />} share={total > 0 ? (liquidado / total) * 100 : null}
+              details={[['Itens liquidados', String(pendentes.reduce((a, x) => a + x.r.qtd - x.r.qtdPend, 0))]]} />
+            <StatCard icon={Clock} tone={total - liquidado > 0 ? 'amber' : 'green'} label="Pendente" value={<AnimatedNumber value={total - liquidado} format={fmtFull} />}
+              details={[['Itens pendentes', String(pendentes.reduce((a, x) => a + x.r.qtdPend, 0))], ['Despesas pendentes', `${pendentes.filter((x) => x.p.statusDespesas !== CONC).length} fundo(s)`]]} />
+            <StatCard icon={Landmark} tone="green" label="Saldo da conta" value={<AnimatedNumber value={saldoConta} format={fmtFull} />}
+              details={[['Caixa retido', fmtFull(comResumo.reduce((a, x) => a + parseValor(x.p.caixaRetido), 0))], ['Extrato informado', informado != null ? fmtFull(informado) : canEdit ? '— clique para informar' : '—', informado != null && Math.abs(informado - saldoConta) > 0.005 ? 'text-red-500' : '']]}
+              onClick={canEdit ? () => setModal('saldo') : undefined} hint="Soma do saldo informado em cada fundo pendente" />
+          </div>
 
-      <Card className="overflow-hidden mb-3">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
-                <th className="px-4 py-2.5 font-medium min-w-[200px]">Fundo</th>
-                <th className="px-3 py-2.5 font-medium">Atividade</th>
-                <th className="px-3 py-2.5 font-medium">Situação</th>
-                <th className="px-3 py-2.5 font-medium text-right">Total</th>
-                <th className="px-3 py-2.5 font-medium text-right">Liquidado</th>
-                <th className="px-3 py-2.5 font-medium text-right">Pendente</th>
-                <th className="px-3 py-2.5 font-medium text-right">Caixa retido</th>
-                <th className="px-3 py-2.5 font-medium">Status despesas</th>
-                <th className="px-3 py-2.5 font-medium">Transf./encerr.</th>
-                <th className="px-3 py-2.5 font-medium">Evidência</th>
-                <th className="px-3 py-2.5 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {lista.map(({ p, r }) => (
-                <tr key={p.id} onClick={() => setAberto(p.id)} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px] cursor-pointer">
-                  <td className="px-4 py-2.5 max-w-[320px]">
-                    <div className="font-medium truncate" title={p.fundo}>{p.fundo || '—'}</div>
-                    <div className="text-[11px] text-[var(--tx3)] truncate"><span className="font-mono">{p.cnpj || 'sem CNPJ'}</span>{p.categoria ? ` · ${p.categoria}` : ''}{p.data ? ` · ${brDate(p.data)}` : ''}</div>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <AtividadeBadge a={p.atividade} />
-                    {p.atividade === 'INCORPORADO' && p.incorporadoPara && <div className="text-[10.5px] text-[var(--tx3)] mt-0.5 max-w-[180px] truncate" title={p.incorporadoPara}>→ {p.incorporadoPara}</div>}
-                  </td>
-                  <td className="px-3 py-2.5"><StatusPill v={p.situacao} /></td>
-                  <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap font-medium">{fmtFull(r.total)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-id-dark dark:text-id-light">{fmtFull(r.liquidado)}</td>
-                  <td className={`px-3 py-2.5 text-right tabular-nums whitespace-nowrap ${r.pendente ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--tx3)]'}`}>{fmtFull(r.pendente)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap" title={p.caixaRetidoObs || ''}>{parseValor(p.caixaRetido) ? fmtFull(parseValor(p.caixaRetido)) : <span className="text-[var(--tx4)]">—</span>}</td>
-                  <td className="px-3 py-2.5"><StatusPill v={p.statusDespesas} /></td>
-                  <td className="px-3 py-2.5"><StatusPill v={p.transferido} /></td>
-                  <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                    {p.evidencia ? <a href={p.evidencia} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11.5px] text-sky-600 dark:text-sky-300 hover:underline"><Link2 size={12} /> Slack</a> : <span className="text-[var(--tx4)]">—</span>}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {(p.arquivos || []).length > 0 && <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--tx3)] mr-2" title={p.arquivos.map((a) => a.nome).join('\n')}><Paperclip size={12} />{p.arquivos.length}</span>}
-                    <button onClick={() => folhaConclusao(p, who).catch((e) => toast.error('Erro no PDF: ' + e.message))} className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[var(--bdr)] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]" title="Folha de conclusão (PDF)"><FileText size={13} /></button>
-                  </td>
-                </tr>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+            <Card className="p-4 flex flex-col">
+              <div className="text-[12.5px] font-semibold mb-1">Pendente por atividade</div>
+              <div className="text-[11px] text-[var(--tx3)] mb-2">Total dos fundos pendentes · clique para abrir na base</div>
+              <div className="flex-1 min-h-[220px]">
+                {porAtividade.some((x) => x.value) ? <DonutChart data={porAtividade.filter((x) => x.value)} colors={chart.series} format={fmtShort} onPick={(n) => { const x = porAtividade.find((y) => y.name === n); if (x) irBase({ ativ: x.key, sit: PEND }) }} /> : <div className="h-full flex items-center justify-center text-[12px] text-[var(--tx3)]">Sem valores pendentes.</div>}
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                {porAtividade.map((x) => (
+                  <button key={x.key} onClick={() => irBase({ ativ: x.key, sit: '' })} className="text-left rounded-lg px-2 py-1.5 hover:bg-[var(--sur2)]">
+                    <div className="text-[10px] uppercase tracking-wider text-[var(--tx3)] truncate">{x.name}</div>
+                    <div className="text-[13px] font-semibold">{x.n} <span className="text-[10.5px] font-normal text-[var(--tx3)]">fundo(s)</span></div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+            <Card className="p-4 lg:col-span-2">
+              <div className="flex items-center mb-3"><div className="text-[12.5px] font-semibold flex-1">Valor por item</div>
+                <span className="flex items-center gap-3 text-[10.5px] text-[var(--tx3)]"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-id-light" />Liquidado</span><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-400" />Pendente</span></span></div>
+              <div className="space-y-1.5">
+                {porItem.map((x) => (
+                  <div key={x.label} className="grid grid-cols-[110px_1fr_auto] items-center gap-3 text-[11.5px]">
+                    <span className="truncate text-[var(--tx2)]">{x.label}</span>
+                    <div className="h-2.5 rounded-full bg-[var(--sur2)] overflow-hidden flex" title={`Liquidado ${fmtFull(x.liq)} · Pendente ${fmtFull(x.pend)}`}>
+                      <div className="h-full bg-id-light transition-[width] duration-700" style={{ width: (x.liq / maxItem) * 100 + '%' }} />
+                      <div className="h-full bg-amber-400 transition-[width] duration-700" style={{ width: (x.pend / maxItem) * 100 + '%' }} />
+                    </div>
+                    <span className="font-mono tabular-nums text-[var(--tx2)] w-[96px] text-right">{fmtShort(x.total)}</span>
+                  </div>
+                ))}
+                {!porItem.length && <div className="text-[12px] text-[var(--tx3)] py-6 text-center">Nenhum valor lançado nos fundos pendentes.</div>}
+              </div>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+            <Card className="p-4">
+              <div className="text-[12.5px] font-semibold mb-3">Andamento dos fundos pendentes</div>
+              <div className="space-y-3">
+                {controles.map((c) => (
+                  <div key={c.k}>
+                    <div className="flex text-[11.5px] mb-1"><span className="flex-1 text-[var(--tx2)]">{c.l}</span><span className="font-mono text-[var(--tx3)]">{c.conc}/{pendentes.length} concluído(s)</span></div>
+                    <div className="h-2 rounded-full bg-[var(--sur2)] overflow-hidden"><div className="h-full rounded-full bg-id-light transition-[width] duration-700" style={{ width: (pendentes.length ? (c.conc / pendentes.length) * 100 : 0) + '%' }} /></div>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 pt-1 text-[11.5px] text-[var(--tx3)]"><Archive size={13} /> Caixa retido total: <span className="font-semibold text-[var(--tx)]">{fmtFull(caixaRetido)}</span></div>
+              </div>
+            </Card>
+                  <RankCard title="Maior valor pendente" tone="amber" items={pendentes.filter((x) => x.r.pendente > 0).map((x) => ({ name: x.p.fundo, value: x.r.pendente })).sort((a, b) => b.value - a.value).slice(0, 6)} empty="Nada pendente." onPick={(n) => { const x = pendentes.find((y) => y.p.fundo === n); if (x) setAberto(x.p.id) }} />
+            <RankCard title="Fundos na conta" tone="green" items={pendentes.filter((x) => x.r.saldo > 0).map((x) => ({ name: x.p.fundo, value: x.r.saldo })).sort((a, b) => b.value - a.value).slice(0, 6)} empty="Nenhum saldo informado." onPick={(n) => { const x = pendentes.find((y) => y.p.fundo === n); if (x) setAberto(x.p.id) }} />
+
+          </div>
+
+          <Card className="p-4">
+            <div className="text-[12.5px] font-semibold mb-3">Últimas movimentações</div>
+            <div className="space-y-2">
+              {recentes.map((h, i) => (
+                <button key={i} onClick={() => setAberto(h.id)} className="w-full text-left flex gap-2.5 text-[12px] rounded-lg px-2 py-1 hover:bg-[var(--sur2)]">
+                  <Clock size={13} className="text-[var(--tx4)] mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1"><div className="truncate"><span className="font-medium">{h.fundo}</span> <span className="text-[var(--tx2)]">— {h.texto}</span></div>
+                    <div className="text-[10.5px] text-[var(--tx3)]">{h.quem || '—'} · {new Date(h.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div></div>
+                </button>
               ))}
-              {!lista.length && (
-                <tr><td colSpan={11} className="text-center py-12 text-[12.5px] text-[var(--tx3)]">
-                  {processos.length ? 'Nenhum fundo para esse filtro.' : canEdit ? <>Nenhum fundo ainda.<br /><button onClick={() => setAberto('novo')} className="btn btn-primary btn-sm mt-3"><Plus size={13} /> Incluir o primeiro</button></> : 'Nenhum fundo ainda.'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+              {!recentes.length && <div className="text-[12px] text-[var(--tx3)]">Nada registrado ainda.</div>}
+            </div>
+          </Card>
         </div>
-        <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)]">{lista.length} de {processos.length} fundos{!canEdit && ' · somente leitura'}</div>
-      </Card>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <RankCard title="Maior valor pendente" tone="amber" items={pendentes.filter((x) => x.r.pendente > 0).map((x) => ({ name: x.p.fundo, value: x.r.pendente })).sort((a, b) => b.value - a.value).slice(0, 6)} empty="Nada pendente." onPick={(n) => { const x = pendentes.find((y) => y.p.fundo === n); if (x) setAberto(x.p.id) }} />
-        <RankCard title="Fundos na conta" tone="green" items={pendentes.filter((x) => x.r.saldo > 0).map((x) => ({ name: x.p.fundo, value: x.r.saldo })).sort((a, b) => b.value - a.value).slice(0, 6)} empty="Nenhum saldo informado." onPick={(n) => { const x = pendentes.find((y) => y.p.fundo === n); if (x) setAberto(x.p.id) }} />
-      </div>
+      {view === 'base' && (
+        <div>
+          <Card className="p-3 mb-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[[PEND, 'Pendentes', pendentes.length], [CONC, 'Concluídos', comResumo.length - pendentes.length], ['', 'Todos', comResumo.length]].map(([id, l, n]) => (
+                <button key={l} onClick={() => setFSit(id)} className={`px-3 py-1.5 rounded-xl border text-[12px] ${fSit === id ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : 'border-[var(--bdr)] text-[var(--tx2)] hover:bg-[var(--sur2)]'}`}>{l} <span className="font-mono text-[11px] text-[var(--tx3)]">{n}</span></button>
+              ))}
+              <span className="w-px h-6 bg-[var(--bdr)] mx-1" />
+              {[['', 'Todas as atividades'], ...Object.entries(ATIVIDADES)].map(([id, l]) => (
+                <button key={l} onClick={() => setFAtiv(id)} className={`px-3 py-1.5 rounded-xl border text-[12px] ${fAtiv === id ? 'border-id-mid/60 bg-id-mid/10 text-[var(--tx)]' : 'border-[var(--bdr)] text-[var(--tx2)] hover:bg-[var(--sur2)]'}`}>{l}</button>
+              ))}
+              <div className="flex-1" />
+              {!search && <input value={qLocal} onChange={(e) => setQLocal(e.target.value)} placeholder="Buscar fundo ou CNPJ…" className="field !w-[220px] !py-1.5 text-[12px]" />}
+            </div>
+          </Card>
+
+          <Card className="overflow-hidden mb-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
+                    <th className="px-4 py-2.5 font-medium min-w-[200px]">Fundo</th>
+                    <th className="px-3 py-2.5 font-medium">Atividade</th>
+                    <th className="px-3 py-2.5 font-medium">Situação</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Total</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Liquidado</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Pendente</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Caixa retido</th>
+                    <th className="px-3 py-2.5 font-medium">Status despesas</th>
+                    <th className="px-3 py-2.5 font-medium">Transf./encerr.</th>
+                    <th className="px-3 py-2.5 font-medium">Evidência</th>
+                    <th className="px-3 py-2.5 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lista.map(({ p, r }) => (
+                    <tr key={p.id} onClick={() => setAberto(p.id)} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px] cursor-pointer">
+                      <td className="px-4 py-2.5 max-w-[320px]">
+                        <div className="font-medium truncate" title={p.fundo}>{p.fundo || '—'}</div>
+                        <div className="text-[11px] text-[var(--tx3)] truncate"><span className="font-mono">{p.cnpj || 'sem CNPJ'}</span>{p.categoria ? ` · ${p.categoria}` : ''}{p.data ? ` · ${brDate(p.data)}` : ''}</div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <AtividadeBadge a={p.atividade} />
+                        {p.atividade === 'INCORPORADO' && p.incorporadoPara && <div className="text-[10.5px] text-[var(--tx3)] mt-0.5 max-w-[180px] truncate" title={p.incorporadoPara}>→ {p.incorporadoPara}</div>}
+                      </td>
+                      <td className="px-3 py-2.5"><StatusPill v={p.situacao} /></td>
+                      <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap font-medium">{fmtFull(r.total)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-id-dark dark:text-id-light">{fmtFull(r.liquidado)}</td>
+                      <td className={`px-3 py-2.5 text-right tabular-nums whitespace-nowrap ${r.pendente ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--tx3)]'}`}>{fmtFull(r.pendente)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap" title={p.caixaRetidoObs || ''}>{parseValor(p.caixaRetido) ? fmtFull(parseValor(p.caixaRetido)) : <span className="text-[var(--tx4)]">—</span>}</td>
+                      <td className="px-3 py-2.5"><StatusPill v={p.statusDespesas} /></td>
+                      <td className="px-3 py-2.5"><StatusPill v={p.transferido} /></td>
+                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        {p.evidencia ? <a href={p.evidencia} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11.5px] text-sky-600 dark:text-sky-300 hover:underline"><Link2 size={12} /> Slack</a> : <span className="text-[var(--tx4)]">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {(p.arquivos || []).length > 0 && <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--tx3)] mr-2" title={p.arquivos.map((a) => a.nome).join('\n')}><Paperclip size={12} />{p.arquivos.length}</span>}
+                        <button onClick={() => folhaConclusao(p, who).catch((e) => toast.error('Erro no PDF: ' + e.message))} className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[var(--bdr)] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]" title="Folha de conclusão (PDF)"><FileText size={13} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!lista.length && (
+                    <tr><td colSpan={11} className="text-center py-12 text-[12.5px] text-[var(--tx3)]">
+                      {processos.length ? 'Nenhum fundo para esse filtro.' : canEdit ? <>Nenhum fundo ainda.<br /><button onClick={() => setAberto('novo')} className="btn btn-primary btn-sm mt-3"><Plus size={13} /> Incluir o primeiro</button></> : 'Nenhum fundo ainda.'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)]">{lista.length} de {processos.length} fundos{!canEdit && ' · somente leitura'}</div>
+          </Card>
+
+        </div>
+      )}
 
       {aberto && (
         <ProcessoDrawer key={aberto} proc={procAberto} who={who} toast={toast} existentes={processos} canEdit={canEdit}
