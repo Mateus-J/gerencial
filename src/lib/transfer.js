@@ -53,7 +53,8 @@ export function itensDe(p) {
   return [...fixos, ...extras].map((x) => ({ ...x, v: parseValor(x.valor), status: x.status || PEND }))
 }
 // Itens que entram na conta: têm valor e não foram excluídos
-export const itensValidos = (p) => itensDe(p).filter((x) => x.status !== EXC && x.v !== 0)
+// Itens que contam: têm valor ou já foram marcados como liquidados (a planilha às vezes só marca o ✓)
+export const itensValidos = (p) => itensDe(p).filter((x) => x.status !== EXC && (x.v !== 0 || x.status === LIQ))
 
 export function resumo(p) {
   const it = itensValidos(p)
@@ -177,14 +178,23 @@ export function parsePlanilha(buffer) {
     const itemCol = Object.fromEntries(ITENS.map(([k, l]) => [k, head.findIndex((h) => h === norm(l).replace(/[^A-Z0-9/ ]/g, '') || h === k.toUpperCase())]))
     for (const r of grid.slice(hi + 1)) {
       const fundo = String(r[C.fundo] ?? '').replace(/\s+/g, ' ').trim()
-      const cnpj = String(r[C.cnpj] ?? '').trim()
+      let cnpj = String(r[C.cnpj] ?? '').trim()
+      let categoria = C.cat >= 0 ? String(r[C.cat] ?? '').trim() : ''
+      // linha com uma coluna deslocada: o CNPJ caiu em Categoria
+      if (!/\d{8}/.test(onlyDigits(cnpj)) && onlyDigits(categoria).length === 14) { cnpj = categoria; categoria = '' }
       if ((!fundo && !cnpj) || /^TOTAL/i.test(fundo)) continue
       const itens = {}
-      Object.entries(itemCol).forEach(([k, i]) => { if (i >= 0 && parseValor(r[i])) itens[k] = { valor: parseValor(r[i]), status: PEND } })
+      // cada item: ✓ (VERDADEIRO) = liquidado; número = valor lançado; vazio/FALSO = nada
+      Object.entries(itemCol).forEach(([k, i]) => {
+        if (i < 0) return
+        const c = r[i]
+        if (c === true || /^(VERDADEIRO|TRUE|SIM|OK|X|LIQUIDADO|CONCLUIDO)$/.test(norm(c))) itens[k] = { status: LIQ }
+        else if (typeof c !== 'boolean' && parseValor(c)) itens[k] = { valor: parseValor(c), status: PEND }
+      })
       const ativ = norm(r[C.ativ])
       out.push({
         fundo, cnpj,
-        categoria: C.cat >= 0 ? String(r[C.cat] ?? '').trim() : '',
+        categoria,
         atividade: /INCORP/.test(ativ) ? 'INCORPORADO' : /TRANSF/.test(ativ) ? 'TRANSF_ADM' : 'ENCERRAMENTO',
         situacao: conc(r[C.sit]), statusDespesas: C.despesas >= 0 ? conc(r[C.despesas]) : undefined, transferido: C.transf >= 0 ? conc(r[C.transf]) : undefined,
         evidencia: C.evid >= 0 ? String(r[C.evid] ?? '').trim() : '', incorporadoPara: C.incorp >= 0 ? String(r[C.incorp] ?? '').trim() : '',
@@ -195,7 +205,7 @@ export function parsePlanilha(buffer) {
   }
   return out
 }
-const conc = (v) => (/CONCLU|FINALIZ|OK|SIM|LIQUID/.test(norm(v)) ? CONC : PEND)
+const conc = (v) => (v === true || /CONCLU|FINALIZ|^OK|^SIM|LIQUID|VERDADEIRO|^TRUE/.test(norm(v)) ? CONC : PEND)
 function toISO(v) {
   if (typeof v === 'number' && v > 20000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10)
   const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(String(v || '').trim())
@@ -221,7 +231,8 @@ export function mergePlanilha(processos, linhas, who) {
     Object.entries(l.itens || {}).forEach(([k, x]) => {
       const cur = itens[k]
       if (cur && cur.status && cur.status !== PEND) return
-      if (parseValor(cur?.valor) !== x.valor) { itens[k] = { ...(cur || {}), valor: x.valor, status: PEND }; mudouItem = true }
+      if (x.status === LIQ) { itens[k] = { ...(cur || {}), status: LIQ }; mudouItem = true }
+      else if (parseValor(cur?.valor) !== x.valor) { itens[k] = { ...(cur || {}), valor: x.valor, status: PEND }; mudouItem = true }
     })
     if (mudouItem) patch.itens = itens
     if (!Object.keys(patch).length) continue
@@ -310,10 +321,10 @@ export async function folhaConclusao(p, who) {
     startY: y,
     margin: { left: M, right: M, bottom: 18 },
     head: [['Item', 'Observação', 'Valor (R$)', 'Status', 'Liquidado em']],
-    body: itens.map((x) => [x.label, x.obs || '', fmtBR(x.v), x.status === LIQ ? 'Liquidado' : 'Pendente', x.status === LIQ ? br(x.data) : '']),
+    body: itens.map((x) => [x.label, x.obs || '', x.v ? fmtBR(x.v) : '—', x.status === LIQ ? 'Liquidado' : 'Pendente', x.status === LIQ ? br(x.data) : '']),
     foot: [['Total', '', fmtBR(r.total), r.pendente ? `Pendente R$ ${fmtBR(r.pendente)}` : 'Tudo liquidado', '']],
     theme: 'plain',
-    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: { top: 2.3, bottom: 2.3, left: 2.5, right: 2.5 }, textColor: ESCURO, overflow: 'linebreak' },
+    styles: { font: 'helvetica', fontSize: 8.2, cellPadding: { top: 1.5, bottom: 1.5, left: 2.5, right: 2.5 }, textColor: ESCURO, overflow: 'linebreak' },
     headStyles: { fillColor: VERDE, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
     footStyles: { fillColor: [236, 243, 232], textColor: ESCURO, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [248, 250, 247] },
@@ -363,4 +374,118 @@ export async function folhaConclusao(p, who) {
   }
   const slug = String(p.fundo || 'fundo').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
   pdf.save(`folha_conclusao_${slug}_${todayISO()}.pdf`)
+}
+
+// ---- PDF "Resumo geral": todos os fundos (da lista filtrada), no formato da planilha ----
+const ABREV = { tarifa: 'Tarifa', adm: 'ADM', custodia: 'Custód.', gestao: 'Gestão', anbima: 'ANBIMA', cvm: 'CVM', banco: 'Banco', auditoria: 'Audit.', lastro: 'Lastro', notas: 'NF', zitec: 'Zitec', iof: 'IOF', ir: 'IR', aportes: 'Aportes', reembolso: 'Reemb.', escrow: 'Escrow', ativos: 'Ativos' }
+const curto = (v) => { v = Math.abs(v); return v >= 1e6 ? (v / 1e6).toFixed(1).replace('.', ',') + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1).replace('.', ',') + 'K' : fmtBR(v) }
+
+export async function resumoGeral(processos, { filtro = '', who = '' } = {}) {
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
+  const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight(), M = 10
+  const agora = new Date()
+  const agoraTxt = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  const logo = await carregarLogo().catch(() => null)
+  const lista = [...processos].sort((a, b) => String(a.data || '').localeCompare(String(b.data || '')) || a.fundo.localeCompare(b.fundo))
+  const rs = lista.map((p) => resumo(p))
+  const soma = (k) => rs.reduce((a, r) => a + r[k], 0)
+
+  pdf.setFillColor(...ESCURO); pdf.rect(0, 0, W, 26, 'F')
+  pdf.setFillColor(...VERDE_CLARO); pdf.rect(0, 26, W, 1, 'F')
+  if (logo) pdf.addImage(logo, 'PNG', M, 5, 13, 14.5)
+  pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(15); pdf.text('Resumo Transfer / Closed', M + 18, 12)
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(200, 220, 190)
+  pdf.text(`${EMPRESA}${filtro ? ` · ${filtro}` : ''}`, M + 18, 18)
+  pdf.text('Emitido em ' + agoraTxt, W - M, 12, { align: 'right' })
+
+  // resumo
+  let y = 32
+  const conc = lista.filter((p) => p.situacao === CONC).length
+  const cards = [['Fundos', String(lista.length), ESCURO], ['Concluídos', String(conc), VERDE], ['Pendentes', String(lista.length - conc), lista.length - conc ? AMBAR : VERDE],
+    ['Total lançado', 'R$ ' + fmtBR(soma('total')), ESCURO], ['Liquidado', 'R$ ' + fmtBR(soma('liquidado')), VERDE], ['Pendente', 'R$ ' + fmtBR(soma('pendente')), soma('pendente') ? AMBAR : VERDE],
+    ['Caixa retido', 'R$ ' + fmtBR(soma('caixaRetido')), ESCURO]]
+  const cw = (W - 2 * M - 6 * 2.5) / 7
+  cards.forEach(([k, v, cor], i) => {
+    const x = M + i * (cw + 2.5)
+    pdf.setFillColor(255, 255, 255); pdf.setDrawColor(...LINHA); pdf.roundedRect(x, y, cw, 14, 1.2, 1.2, 'FD')
+    pdf.setFillColor(...cor); pdf.rect(x, y + 1.2, 0.9, 11.6, 'F')
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6.3); pdf.setTextColor(...CINZA); pdf.text(k.toUpperCase(), x + 3, y + 4.6)
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(...cor); pdf.text(v, x + 3, y + 10.6)
+  })
+  y += 19
+
+  // matriz no formato da planilha
+  const st = (v) => (v === CONC ? 'Concluído' : 'Pendente')
+  const head = [['Fundo', 'CNPJ', 'Atividade', 'Situação', 'Data', ...ITENS.map(([k]) => ABREV[k]), 'Status desp.', 'Transf./encerr.']]
+  const cel = (p, k) => { const x = p.itens?.[k]; if (!x || x.status === EXC) return ''; const v = parseValor(x.valor); return x.status === LIQ ? (v ? curto(v) : '') : v ? curto(v) : '' }
+  const body = lista.map((p) => [p.fundo, p.cnpj, ATIVIDADES[p.atividade] || '', st(p.situacao), br(p.data), ...ITENS.map(([k]) => cel(p, k)), st(p.statusDespesas), st(p.transferido)])
+  const nI = ITENS.length, i0 = 5
+  autoTable(pdf, {
+    startY: y, head, body,
+    margin: { left: M, right: M, bottom: 14, top: 12 },
+    theme: 'plain',
+    styles: { font: 'helvetica', fontSize: 6.2, cellPadding: { top: 1.6, bottom: 1.6, left: 1.2, right: 1.2 }, textColor: ESCURO, overflow: 'linebreak', valign: 'middle' },
+    headStyles: { fillColor: VERDE, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 5.8, halign: 'center' },
+    alternateRowStyles: { fillColor: [248, 250, 247] },
+    columnStyles: {
+      0: { cellWidth: 52, fontStyle: 'bold' }, 1: { cellWidth: 24, fontSize: 5.8 }, 2: { cellWidth: 17, fontSize: 5.6 }, 3: { cellWidth: 14 }, 4: { cellWidth: 13 },
+      ...Object.fromEntries(Array.from({ length: nI }, (_, j) => [i0 + j, { cellWidth: 7.6, halign: 'center', fontSize: 5.2 }])),
+      [i0 + nI]: { cellWidth: 14 }, [i0 + nI + 1]: { cellWidth: 14 },
+    },
+    didParseCell: (h) => {
+      if (h.section !== 'body') return
+      const p = lista[h.row.index], c = h.column.index
+      if (c === 3 || c >= i0 + nI) { h.cell.styles.fontStyle = 'bold'; h.cell.styles.textColor = h.cell.raw === 'Concluído' ? VERDE : AMBAR }
+      if (c >= i0 && c < i0 + nI) { const x = p.itens?.[ITENS[c - i0][0]]; if (x && x.status !== LIQ) h.cell.styles.textColor = AMBAR }
+    },
+    didDrawCell: (h) => {
+      if (h.section === 'body') { pdf.setDrawColor(...LINHA); pdf.setLineWidth(0.12); pdf.line(h.cell.x, h.cell.y + h.cell.height, h.cell.x + h.cell.width, h.cell.y + h.cell.height) }
+      const c = h.column.index
+      if (h.section !== 'body' || c < i0 || c >= i0 + nI) return
+      const x = lista[h.row.index].itens?.[ITENS[c - i0][0]]
+      if (!x || x.status !== LIQ) return
+      // ✓ desenhado (a fonte padrão do PDF não tem o caractere)
+      const cx = h.cell.x + h.cell.width / 2, cy = h.cell.y + h.cell.height / 2 - (parseValor(x.valor) ? 1.3 : 0)
+      pdf.setDrawColor(...VERDE); pdf.setLineWidth(0.45)
+      pdf.line(cx - 1.3, cy, cx - 0.4, cy + 0.9); pdf.line(cx - 0.4, cy + 0.9, cx + 1.4, cy - 1)
+    },
+    didDrawPage: () => {
+      if (pdf.internal.getCurrentPageInfo().pageNumber > 1) {
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); pdf.setTextColor(...ESCURO); pdf.text('Resumo Transfer / Closed', M, 8)
+      }
+    },
+  })
+  y = pdf.lastAutoTable.finalY + 4
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6.5); pdf.setTextColor(...CINZA)
+  pdf.setDrawColor(...VERDE); pdf.setLineWidth(0.45); pdf.line(M + 0.5, y, M + 1.4, y + 0.9); pdf.line(M + 1.4, y + 0.9, M + 3.2, y - 1)
+  pdf.text('liquidado/concluído   ·   valor em amarelo = lançado e ainda pendente   ·   vazio = nada lançado', M + 5, y + 0.6)
+
+  // valores por fundo
+  autoTable(pdf, {
+    startY: y + 6,
+    head: [['Fundo', 'Atividade', 'Itens', 'Total', 'Liquidado', 'Pendente', 'Caixa retido', 'Evidência do looping']],
+    body: lista.map((p, i) => [p.fundo, ATIVIDADES[p.atividade] || '', `${rs[i].qtd - rs[i].qtdPend}/${rs[i].qtd}`, fmtBR(rs[i].total), fmtBR(rs[i].liquidado), fmtBR(rs[i].pendente), rs[i].caixaRetido ? fmtBR(rs[i].caixaRetido) : '', p.evidencia ? 'link' : '']),
+    foot: [['Total', '', '', fmtBR(soma('total')), fmtBR(soma('liquidado')), fmtBR(soma('pendente')), fmtBR(soma('caixaRetido')), '']],
+    margin: { left: M, right: M, bottom: 14, top: 12 },
+    theme: 'plain',
+    styles: { font: 'helvetica', fontSize: 6.8, cellPadding: { top: 1.2, bottom: 1.2, left: 2, right: 2 }, textColor: ESCURO },
+    headStyles: { fillColor: VERDE, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6.8 },
+    footStyles: { fillColor: [236, 243, 232], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 247] },
+    columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', textColor: VERDE }, 5: { halign: 'right', textColor: AMBAR }, 6: { halign: 'right' }, 7: { textColor: [40, 90, 160] } },
+    didParseCell: (h) => { if ((h.section === 'head' || h.section === 'foot') && h.column.index >= 3 && h.column.index <= 6) h.cell.styles.halign = 'right' },
+    didDrawCell: (h) => {
+      if (h.section === 'body' && h.column.index === 7 && lista[h.row.index].evidencia) pdf.link(h.cell.x, h.cell.y, h.cell.width, h.cell.height, { url: lista[h.row.index].evidencia })
+    },
+  })
+
+  const n = pdf.getNumberOfPages()
+  for (let i = 1; i <= n; i++) {
+    pdf.setPage(i)
+    pdf.setDrawColor(...LINHA); pdf.setLineWidth(0.3); pdf.line(M, H - 9, W - M, H - 9)
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6.5); pdf.setTextColor(...CINZA)
+    pdf.text(`${EMPRESA} · Gerado em ${agoraTxt}${who ? ` por ${who}` : ''}`, M, H - 5)
+    pdf.text(`Página ${i} de ${n}`, W - M, H - 5, { align: 'right' })
+  }
+  pdf.save(`resumo_transfer_closed_${todayISO()}.pdf`)
 }
