@@ -168,12 +168,12 @@ export function parsePlanilha(buffer) {
   for (const name of wb.SheetNames) {
     const grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: true })
     const hi = grid.slice(0, 15).findIndex((r) => r.some((c) => /^FUNDO/.test(norm(c))) && r.some((c) => /CNPJ/.test(norm(c))))
-    if (hi < 0) continue
+    if (hi < 0) { const v = fichaVertical(grid); if (v) out.push(v); continue }
     const head = grid[hi].map((c) => norm(c).replace(/[^A-Z0-9/ ]/g, '').trim())
     const col = (re) => head.findIndex((h) => re.test(h))
     const C = {
       fundo: col(/^FUNDO|RAZAO/), cnpj: col(/^CNPJ/), cat: col(/CATEG|CLASSIF/), sit: col(/^SITUA/), ativ: col(/^ATIVIDADE|^TIPO/),
-      data: col(/^DATA/), despesas: col(/STATUS DESP/), transf: col(/^TRANSFERIDO|ENCERRADO$/), evid: col(/EVIDENC|LOOPING/), incorp: col(/INCORPORAD.* PARA|DESTINO/), retido: col(/CAIXA RETIDO|^RETIDO/),
+      data: col(/^DATA/), despesas: col(/STATUS DESP/), transf: col(/^TRANSFERIDO|ENCERRADO$|^STATUS TRANSF/), evid: col(/EVIDENC|LOOPING/), incorp: col(/INCORPORAD.* PARA|DESTINO/), retido: col(/CAIXA RETIDO|^RETIDO/),
     }
     const itemCol = Object.fromEntries(ITENS.map(([k, l]) => [k, head.findIndex((h) => h === norm(l).replace(/[^A-Z0-9/ ]/g, '') || h === k.toUpperCase())]))
     for (const r of grid.slice(hi + 1)) {
@@ -205,6 +205,32 @@ export function parsePlanilha(buffer) {
   }
   return out
 }
+// Aba de um fundo só, em pé: "FUNDO | nome", "CNPJ | …", e um item por linha ("ADM | ✓ ou valor")
+function fichaVertical(grid) {
+  const lab = (r) => norm(r[0]).replace(/[^A-Z0-9/ ]/g, '').trim()
+  const iF = grid.findIndex((r) => lab(r) === 'FUNDO' && String(r[1] ?? '').trim())
+  if (iF < 0 || iF > 5) return null
+  const campo = {}
+  grid.slice(iF).forEach((r) => { const k = lab(r); if (k && !(k in campo)) campo[k] = r[1] })
+  const txt = (k) => (typeof campo[k] === 'string' ? campo[k].trim() : '')
+  let cnpj = txt('CNPJ'), fundo = String(campo.FUNDO).replace(/\s+/g, ' ').trim()
+  if (!cnpj) { const m = /(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/.exec(fundo); if (m) cnpj = m[1] }
+  const itens = {}
+  ITENS.forEach(([k, l]) => {
+    const c = campo[norm(l).replace(/[^A-Z0-9/ ]/g, '')] ?? campo[k.toUpperCase()]
+    if (c === true || /^(VERDADEIRO|TRUE|OK|LIQUIDADO)$/.test(norm(c))) itens[k] = { status: LIQ }
+    else if (typeof c !== 'boolean' && parseValor(c)) itens[k] = { valor: parseValor(c), status: PEND }
+  })
+  const ativ = norm(txt('ATIVIDADE'))
+  return {
+    fundo, cnpj, categoria: txt('CATEGORIA'),
+    atividade: ativ ? (/INCORP/.test(ativ) ? 'INCORPORADO' : /TRANSF/.test(ativ) ? 'TRANSF_ADM' : 'ENCERRAMENTO') : undefined,
+    situacao: txt('SITUACAO') ? conc(campo.SITUACAO) : undefined,
+    statusDespesas: 'STATUS DESPESAS' in campo ? conc(campo['STATUS DESPESAS']) : undefined,
+    transferido: ['TRANSFERIDO/ENCERRADO', 'STATUS TRANSFERENCIA'].some((k) => k in campo) ? conc(campo['TRANSFERIDO/ENCERRADO'] ?? campo['STATUS TRANSFERENCIA']) : undefined,
+    evidencia: txt('EVIDENCIA LOOPING'), data: toISO(campo.DATA), itens, ficha: true,
+  }
+}
 const conc = (v) => (v === true || /CONCLU|FINALIZ|^OK|^SIM|LIQUID|VERDADEIRO|^TRUE/.test(norm(v)) ? CONC : PEND)
 function toISO(v) {
   if (typeof v === 'number' && v > 20000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10)
@@ -223,9 +249,10 @@ export function mergePlanilha(processos, linhas, who) {
   for (const l of linhas) {
     const p = atual.get(key(l))
     const limpo = Object.fromEntries(Object.entries(l).filter(([, v]) => v !== undefined && v !== ''))
-    if (!p) { out.push(novoProcesso(limpo, who, 'Incluído pela planilha')); novos++; continue }
+    if (!p) { const n = novoProcesso(limpo, who, 'Incluído pela planilha'); delete n.ficha; out.push(n); atual.set(key(n), n); novos++; continue }
     const patch = {}
-    ;['fundo', 'cnpj', 'categoria', 'atividade', 'data', 'evidencia', 'incorporadoPara', 'situacao', 'statusDespesas', 'transferido', 'caixaRetido'].forEach((f) => { if (limpo[f] && limpo[f] !== p[f]) patch[f] = limpo[f] })
+    // aba de um fundo só (anotação) não troca o cadastro que já existe, só completa
+    ;['fundo', 'cnpj', 'categoria', 'atividade', 'data', 'evidencia', 'incorporadoPara', 'situacao', 'statusDespesas', 'transferido', 'caixaRetido'].forEach((f) => { if (limpo[f] && limpo[f] !== p[f] && !(l.ficha && p[f])) patch[f] = limpo[f] })
     const itens = { ...(p.itens || {}) }
     let mudouItem = false
     Object.entries(l.itens || {}).forEach(([k, x]) => {
@@ -236,10 +263,21 @@ export function mergePlanilha(processos, linhas, who) {
     })
     if (mudouItem) patch.itens = itens
     if (!Object.keys(patch).length) continue
-    out[out.indexOf(p)] = { ...p, ...patch, updatedAt: now, updatedBy: who, historico: [...(p.historico || []), { ts: now, quem: who, texto: 'Atualizado pela planilha' }] }
-    atualizados++
+    const np = { ...p, ...patch }
+    out[out.indexOf(p)] = np; atual.set(key(np), np)
   }
-  return { processos: out, novos, atualizados }
+  // só conta (e registra no histórico) quem terminou diferente do que era —
+  // o mesmo fundo pode aparecer em mais de uma linha/aba da planilha
+  const original = new Map(processos.map((p) => [p.id, p]))
+  const sem = (p) => JSON.stringify({ ...p, historico: 0, updatedAt: 0, updatedBy: 0 })
+  const final = out.map((p) => {
+    const o = original.get(p.id)
+    if (!o || o === p) return p
+    if (sem(o) === sem(p)) return o
+    atualizados++
+    return { ...p, updatedAt: now, updatedBy: who, historico: [...(o.historico || []), { ts: now, quem: who, texto: 'Atualizado pela planilha' }] }
+  })
+  return { processos: final, novos, atualizados }
 }
 
 export const statusTxt = (v) => (v === CONC ? 'Concluído' : 'Pendente')
