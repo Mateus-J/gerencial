@@ -6,12 +6,13 @@ import { doc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import {
   Plus, Upload, Download, X, Landmark, Wallet, CheckCircle2, Clock, Trash2, RefreshCw, Loader2, Lock, Unlock,
-  KeyRound, FileText, Paperclip, Link2, ExternalLink, Ban, Users, LayoutDashboard, Table2, Archive, CheckSquare, Square, ChevronDown,
+  KeyRound, FileText, Paperclip, Ban, Users, LayoutDashboard, Table2, Archive, CheckSquare, Square, ChevronDown,
 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
 import { useToast } from '../components/Toast'
 import { useOptionalAuth } from '../context/AuthContext'
+import SlackIcon from '../components/SlackIcon'
 import AnimatedNumber from '../components/AnimatedNumber'
 import { StatCard, RankCard, Overlay } from '../components/taxa/Cards'
 import { DonutChart } from '../components/charts/Charts'
@@ -392,7 +393,7 @@ export default function TransferClosed({ search }) {
                       <td className={`${TD} text-right tabular-nums whitespace-nowrap`} title={p.caixaRetidoObs || ''}>{r.caixaRetido ? fmtFull(r.caixaRetido) : <span className="text-[var(--tx4)]">—</span>}</td>
                       <td className={TD}><StatusPill v={p.statusDespesas} onClick={canEdit ? () => alternarControle(p, 'statusDespesas') : undefined} /></td>
                       <td className={TD}><StatusPill v={p.transferido} onClick={canEdit ? () => alternarControle(p, 'transferido') : undefined} /></td>
-                      <td className={`${TD} max-w-[200px]`}>{p.evidencia ? <a href={p.evidencia} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11.5px] text-sky-600 dark:text-sky-300 hover:underline truncate max-w-[190px]" title={p.evidencia}><Link2 size={12} className="shrink-0" /> {p.evidencia.replace(/^https?:\/\//, '').slice(0, 26)}…</a> : <span className="text-[var(--tx4)]">—</span>}</td>
+                      <td className={`${TD} text-center`}>{p.evidencia ? <a href={p.evidencia} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[var(--bdr)] hover:bg-[var(--sur2)] hover:scale-110 transition" title={'Abrir no Slack: ' + p.evidencia}><SlackIcon size={16} /></a> : <span className="text-[var(--tx4)]">—</span>}</td>
                       <td className={`${TD} whitespace-nowrap`}>
                         {(p.arquivos || []).length > 0 && <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--tx3)] mr-2" title={p.arquivos.map((a) => a.nome).join('\n')}><Paperclip size={12} />{p.arquivos.length}</span>}
                         <button onClick={() => folhaConclusao(p, who).catch((e) => toast.error('Erro no PDF: ' + e.message))} className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[var(--bdr)] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]" title="Resumo do fundo (PDF)"><FileText size={13} /></button>
@@ -680,7 +681,7 @@ function ProcessoDrawer({ proc, who, toast, existentes, canEdit, onClose, onSave
                 </div>
                 <div><div className="label">Evidência do looping (link do Slack)</div>
                   <div className="flex gap-2"><input value={f.evidencia} onChange={set('evidencia')} className="field" placeholder="https://….slack.com/archives/…" />
-                    {/^https?:\/\//.test(f.evidencia) && <a href={f.evidencia} target="_blank" rel="noreferrer" className="btn btn-sm shrink-0"><ExternalLink size={12} /> Abrir</a>}</div>
+                    {/^https?:\/\//.test(f.evidencia) && <a href={f.evidencia} target="_blank" rel="noreferrer" className="btn btn-sm shrink-0"><SlackIcon size={13} /> Abrir no Slack</a>}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><div className="label">Caixa retido após {f.atividade === 'ENCERRAMENTO' ? 'o encerramento' : 'a transferência'} (R$)</div><input value={fmtInput(f.caixaRetido)} onChange={set('caixaRetido')} onBlur={(e) => setF((s) => ({ ...s, caixaRetido: e.target.value === '' ? '' : parseValor(e.target.value) }))} inputMode="decimal" className="field text-right font-mono" placeholder="0,00" /></div>
