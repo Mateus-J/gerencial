@@ -6,7 +6,7 @@ import { doc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore'
 import * as XLSX from 'xlsx'
 import {
   Plus, Upload, Download, X, Landmark, Wallet, CheckCircle2, Clock, Trash2, RefreshCw, Loader2, Lock, Unlock,
-  KeyRound, FileText, Paperclip, Link2, ExternalLink, Ban, Users, LayoutDashboard, Table2, Archive,
+  KeyRound, FileText, Paperclip, Link2, ExternalLink, Ban, Users, LayoutDashboard, Table2, Archive, CheckSquare, Square, ChevronDown,
 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { PageHeader, Card } from '../components/PageShell'
@@ -18,7 +18,7 @@ import { DonutChart } from '../components/charts/Charts'
 import { useChartTheme } from '../components/charts/theme'
 import { norm, onlyDigits, fmtFull, fmtShort, todayISO, brDate } from '../lib/taxaCore'
 import {
-  CONTA_NOME, ATIVIDADES, CATEGORIAS, CONTROLES, ITENS, PEND, LIQ, EXC, CONC, parseValor, novoId, itensDe, resumo,
+  CONTA_NOME, ATIVIDADES, CATEGORIAS, CONTROLES, ITENS, ITEM_LABEL, resumoGeral, PEND, LIQ, EXC, CONC, parseValor, novoId, itensDe, resumo,
   novoProcesso, carregarBases, fundoPorCnpj, pendenciasDoSistema, enviarArquivo, baixarArquivo, apagarArquivo, MAX_ARQUIVO,
   ACESSO_REF, sha256, salvarCodigo, parsePlanilha, mergePlanilha, statusTxt, EXPORT_HEADERS, toSheetRow, folhaConclusao,
 } from '../lib/transfer'
@@ -28,6 +28,23 @@ const USERS_REF = () => doc(db, 'controle', 'users')
 const OWNER_EMAIL = 'mateus.jesus@idsf.com.br'
 const UNLOCK_KEY = 'tc_desbloqueio'
 const VIEW_KEY = 'tc_view'
+const TH = 'px-3 py-2.5 font-medium whitespace-nowrap bg-[var(--sur-solid)] border-b border-[var(--bdr)]'
+const TD = 'px-3 py-2 bg-[var(--sur-solid)] group-hover:bg-[var(--sur2)] border-b border-[var(--bdr)]/60'
+
+// Célula de item na base: ✓ liquidado · valor pendente em amarelo · excluído riscado
+function CelulaItem({ x, canEdit, onToggle }) {
+  const v = parseValor(x?.valor)
+  if (x?.status === EXC) return <span className="text-[10.5px] text-[var(--tx4)] line-through" title="Excluído">{v ? fmtShort(v) : 'excl.'}</span>
+  const liq = x?.status === LIQ
+  const Icon = liq ? CheckSquare : Square
+  const Tag = canEdit ? 'button' : 'span'
+  return (
+    <Tag onClick={canEdit ? onToggle : undefined} title={liq ? 'Liquidado' + (x.data ? ' em ' + brDate(x.data) : '') : v ? 'Pendente' : 'Nada lançado'} className={`inline-flex flex-col items-center leading-tight ${canEdit ? 'cursor-pointer hover:scale-110 transition-transform' : ''}`}>
+      <Icon size={15} className={liq ? 'text-id-dark dark:text-id-light' : 'text-[var(--tx4)]'} />
+      {v ? <span className={`text-[10px] font-mono tabular-nums ${liq ? 'text-[var(--tx3)]' : 'text-amber-600 dark:text-amber-400'}`}>{fmtShort(v)}</span> : null}
+    </Tag>
+  )
+}
 const fmtInput = (v) => (v === '' || v == null ? '' : typeof v === 'number' ? (v ? v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '') : v)
 
 function StatusPill({ v, onClick, disabled }) {
@@ -60,7 +77,8 @@ export default function TransferClosed({ search }) {
   const [qLocal, setQLocal] = useState('')
   const q = search || qLocal
   const [aberto, setAberto] = useState(null)
-  const [modal, setModal] = useState(null) // 'codigo' | 'acesso' | 'saldo'
+  const [modal, setModal] = useState(null) // 'codigo' | 'acesso' | 'saldo' | 'pdfFundo'
+  const [menuPdf, setMenuPdf] = useState(false)
   const [view, setViewState] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'dash' } catch { return 'dash' } })
   const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* sem storage */ } }
   const chart = useChartTheme()
@@ -101,6 +119,22 @@ export default function TransferClosed({ search }) {
   async function excluirProcesso(p) {
     await mutate((list) => list.filter((x) => x.id !== p.id), { msg: `${p.fundo || 'Fundo'} excluído.` })
     ;(p.arquivos || []).forEach((a) => apagarArquivo(a))
+  }
+
+  // edição direto na base
+  function alternarItem(p, k) {
+    const cur = p.itens?.[k] || {}
+    const liq = cur.status === LIQ
+    const now = Date.now()
+    const novo = { ...p, itens: { ...(p.itens || {}), [k]: { ...cur, status: liq ? PEND : LIQ, data: liq ? cur.data : cur.data || todayISO() } }, updatedAt: now, updatedBy: who,
+      historico: [...(p.historico || []), { ts: now, quem: who, texto: `${ITEM_LABEL[k]} ${liq ? 'voltou para pendente' : 'liquidado'}` }] }
+    salvarProcesso(novo)
+  }
+  function alternarControle(p, k) {
+    const v = p[k] === CONC ? PEND : CONC
+    const now = Date.now()
+    const label = CONTROLES.find(([c]) => c === k)?.[1] || k
+    salvarProcesso({ ...p, [k]: v, updatedAt: now, updatedBy: who, historico: [...(p.historico || []), { ts: now, quem: who, texto: `${label}: ${statusTxt(v)}` }] })
   }
 
   async function desbloquear(codigo) {
@@ -156,6 +190,11 @@ export default function TransferClosed({ search }) {
       .sort((a, b) => (a.r.concluido - b.r.concluido) || (b.r.pendente - a.r.pendente) || a.p.fundo.localeCompare(b.p.fundo))
   }, [comResumo, fSit, fAtiv, q])
 
+  function gerarGeral() {
+    if (!lista.length) { toast.error('Nenhum fundo no filtro atual.'); return }
+    const partes = [fSit === CONC ? 'Concluídos' : fSit === PEND ? 'Pendentes' : 'Todos os fundos', fAtiv && ATIVIDADES[fAtiv], q && `busca “${q}”`].filter(Boolean)
+    resumoGeral(lista.map((x) => x.p), { filtro: partes.join(' · '), who }).catch((e) => toast.error('Erro no PDF: ' + e.message))
+  }
   const irBase = (patch = {}) => { if ('sit' in patch) setFSit(patch.sit); if ('ativ' in patch) setFAtiv(patch.ativ); setView('base') }
   const caixaRetido = comResumo.reduce((a, x) => a + parseValor(x.p.caixaRetido), 0)
   const porAtividade = Object.keys(ATIVIDADES).map((k) => ({ name: ATIVIDADES[k], key: k, value: pendentes.filter((x) => x.p.atividade === k).reduce((a, x) => a + x.r.total, 0), n: comResumo.filter((x) => x.p.atividade === k).length }))
@@ -177,6 +216,22 @@ export default function TransferClosed({ search }) {
       {isOwner && <button onClick={() => setModal('acesso')} className="btn" title="Código e quem pode editar"><KeyRound size={14} /> Acesso</button>}
       <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
       {canEdit && <button onClick={() => fileRef.current?.click()} className="btn" title="Planilha com Fundo, CNPJ, Categoria, Situação, Atividade, Data e uma coluna por item (Tarifa, ADM, Custódia…)"><Upload size={14} /> Importar planilha</button>}
+      <div className="relative">
+        <button onClick={() => setMenuPdf((v) => !v)} className="btn"><FileText size={14} /> Resumo PDF <ChevronDown size={13} /></button>
+        {menuPdf && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenuPdf(false)} />
+            <div className="absolute right-0 top-full mt-1 z-50 w-[260px] rounded-xl border border-[var(--bdr)] bg-[var(--sur-solid)] shadow-[var(--shadow-pop)] p-1.5">
+              <button onClick={() => { setMenuPdf(false); gerarGeral() }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-[var(--sur2)]">
+                <div className="text-[12.5px] font-medium">Geral</div><div className="text-[11px] text-[var(--tx3)]">Todos os fundos do filtro da base, no formato da planilha</div>
+              </button>
+              <button onClick={() => { setMenuPdf(false); setModal('pdfFundo') }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-[var(--sur2)]">
+                <div className="text-[12.5px] font-medium">De um fundo</div><div className="text-[11px] text-[var(--tx3)]">Escolha o fundo · folha de conclusão</div>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
       <button onClick={exportar} className="btn"><Download size={14} /> Exportar</button>
       {canEdit && <button onClick={() => setAberto('novo')} className="btn btn-primary"><Plus size={14} /> Novo fundo</button>}
     </>
@@ -307,59 +362,57 @@ export default function TransferClosed({ search }) {
           </Card>
 
           <Card className="overflow-hidden mb-3">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="text-[10.5px] uppercase tracking-wider text-[var(--tx3)] border-b border-[var(--bdr)]">
-                    <th className="px-4 py-2.5 font-medium min-w-[200px]">Fundo</th>
-                    <th className="px-3 py-2.5 font-medium">Atividade</th>
-                    <th className="px-3 py-2.5 font-medium">Situação</th>
-                    <th className="px-3 py-2.5 font-medium text-right">Total</th>
-                    <th className="px-3 py-2.5 font-medium text-right">Liquidado</th>
-                    <th className="px-3 py-2.5 font-medium text-right">Pendente</th>
-                    <th className="px-3 py-2.5 font-medium text-right">Caixa retido</th>
-                    <th className="px-3 py-2.5 font-medium">Status despesas</th>
-                    <th className="px-3 py-2.5 font-medium">Transf./encerr.</th>
-                    <th className="px-3 py-2.5 font-medium">Evidência</th>
-                    <th className="px-3 py-2.5 font-medium" />
+            <div className="overflow-auto max-h-[72vh]">
+              <table className="text-left border-separate border-spacing-0 text-[12px]">
+                <thead className="sticky top-0 z-20">
+                  <tr className="text-[10px] uppercase tracking-wider text-[var(--tx3)]">
+                    <th className={`${TH} sticky left-0 z-30 min-w-[260px] max-w-[260px]`}>Fundo</th>
+                    <th className={`${TH} sticky left-[260px] z-30 min-w-[140px] border-r border-r-[var(--bdr)]`}>CNPJ</th>
+                    <th className={TH}>Categoria</th><th className={TH}>Situação</th><th className={TH}>Atividade</th><th className={TH}>Data</th>
+                    {ITENS.map(([k, l]) => <th key={k} className={`${TH} text-center min-w-[74px]`}>{l}</th>)}
+                    <th className={`${TH} text-right`}>Total</th><th className={`${TH} text-right`}>Pendente</th><th className={`${TH} text-right`}>Caixa retido</th>
+                    <th className={TH}>Status despesas</th><th className={TH}>Transferido / encerrado</th><th className={TH}>Evidência looping</th><th className={TH} />
                   </tr>
                 </thead>
                 <tbody>
                   {lista.map(({ p, r }) => (
-                    <tr key={p.id} onClick={() => setAberto(p.id)} className="border-b border-[var(--bdr)]/60 hover:bg-[var(--sur2)]/60 text-[12.5px] cursor-pointer">
-                      <td className="px-4 py-2.5 max-w-[320px]">
-                        <div className="font-medium truncate" title={p.fundo}>{p.fundo || '—'}</div>
-                        <div className="text-[11px] text-[var(--tx3)] truncate"><span className="font-mono">{p.cnpj || 'sem CNPJ'}</span>{p.categoria ? ` · ${p.categoria}` : ''}{p.data ? ` · ${brDate(p.data)}` : ''}</div>
+                    <tr key={p.id} className="group">
+                      <td className={`${TD} sticky left-0 z-10 min-w-[260px] max-w-[260px] cursor-pointer`} onClick={() => setAberto(p.id)} title={p.fundo}>
+                        <div className="font-medium truncate group-hover:text-id-dark dark:group-hover:text-id-light">{p.fundo || '—'}</div>
+                        {p.atividade === 'INCORPORADO' && p.incorporadoPara && <div className="text-[10.5px] text-[var(--tx3)] truncate">→ {p.incorporadoPara}</div>}
                       </td>
-                      <td className="px-3 py-2.5">
-                        <AtividadeBadge a={p.atividade} />
-                        {p.atividade === 'INCORPORADO' && p.incorporadoPara && <div className="text-[10.5px] text-[var(--tx3)] mt-0.5 max-w-[180px] truncate" title={p.incorporadoPara}>→ {p.incorporadoPara}</div>}
-                      </td>
-                      <td className="px-3 py-2.5"><StatusPill v={p.situacao} /></td>
-                      <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap font-medium">{fmtFull(r.total)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-id-dark dark:text-id-light">{fmtFull(r.liquidado)}</td>
-                      <td className={`px-3 py-2.5 text-right tabular-nums whitespace-nowrap ${r.pendente ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--tx3)]'}`}>{fmtFull(r.pendente)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap" title={p.caixaRetidoObs || ''}>{parseValor(p.caixaRetido) ? fmtFull(parseValor(p.caixaRetido)) : <span className="text-[var(--tx4)]">—</span>}</td>
-                      <td className="px-3 py-2.5"><StatusPill v={p.statusDespesas} /></td>
-                      <td className="px-3 py-2.5"><StatusPill v={p.transferido} /></td>
-                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        {p.evidencia ? <a href={p.evidencia} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11.5px] text-sky-600 dark:text-sky-300 hover:underline"><Link2 size={12} /> Slack</a> : <span className="text-[var(--tx4)]">—</span>}
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <td className={`${TD} sticky left-[260px] z-10 font-mono text-[11px] whitespace-nowrap border-r border-r-[var(--bdr)] cursor-pointer`} onClick={() => setAberto(p.id)}>{p.cnpj || '—'}</td>
+                      <td className={`${TD} text-[var(--tx2)]`}>{p.categoria || '—'}</td>
+                      <td className={TD}><StatusPill v={p.situacao} onClick={canEdit ? () => alternarControle(p, 'situacao') : undefined} /></td>
+                      <td className={TD}><AtividadeBadge a={p.atividade} /></td>
+                      <td className={`${TD} whitespace-nowrap text-[var(--tx2)]`}>{brDate(p.data) || '—'}</td>
+                      {ITENS.map(([k]) => <td key={k} className={`${TD} text-center`}><CelulaItem x={p.itens?.[k]} canEdit={canEdit} onToggle={() => alternarItem(p, k)} /></td>)}
+                      <td className={`${TD} text-right tabular-nums whitespace-nowrap font-medium`}>{fmtFull(r.total)}</td>
+                      <td className={`${TD} text-right tabular-nums whitespace-nowrap ${r.pendente ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--tx3)]'}`}>{fmtFull(r.pendente)}</td>
+                      <td className={`${TD} text-right tabular-nums whitespace-nowrap`} title={p.caixaRetidoObs || ''}>{r.caixaRetido ? fmtFull(r.caixaRetido) : <span className="text-[var(--tx4)]">—</span>}</td>
+                      <td className={TD}><StatusPill v={p.statusDespesas} onClick={canEdit ? () => alternarControle(p, 'statusDespesas') : undefined} /></td>
+                      <td className={TD}><StatusPill v={p.transferido} onClick={canEdit ? () => alternarControle(p, 'transferido') : undefined} /></td>
+                      <td className={`${TD} max-w-[200px]`}>{p.evidencia ? <a href={p.evidencia} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11.5px] text-sky-600 dark:text-sky-300 hover:underline truncate max-w-[190px]" title={p.evidencia}><Link2 size={12} className="shrink-0" /> {p.evidencia.replace(/^https?:\/\//, '').slice(0, 26)}…</a> : <span className="text-[var(--tx4)]">—</span>}</td>
+                      <td className={`${TD} whitespace-nowrap`}>
                         {(p.arquivos || []).length > 0 && <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--tx3)] mr-2" title={p.arquivos.map((a) => a.nome).join('\n')}><Paperclip size={12} />{p.arquivos.length}</span>}
-                        <button onClick={() => folhaConclusao(p, who).catch((e) => toast.error('Erro no PDF: ' + e.message))} className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[var(--bdr)] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]" title="Folha de conclusão (PDF)"><FileText size={13} /></button>
+                        <button onClick={() => folhaConclusao(p, who).catch((e) => toast.error('Erro no PDF: ' + e.message))} className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-[var(--bdr)] text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--sur2)]" title="Resumo do fundo (PDF)"><FileText size={13} /></button>
                       </td>
                     </tr>
                   ))}
                   {!lista.length && (
-                    <tr><td colSpan={11} className="text-center py-12 text-[12.5px] text-[var(--tx3)]">
+                    <tr><td colSpan={ITENS.length + 14} className="text-center py-12 text-[12.5px] text-[var(--tx3)]">
                       {processos.length ? 'Nenhum fundo para esse filtro.' : canEdit ? <>Nenhum fundo ainda.<br /><button onClick={() => setAberto('novo')} className="btn btn-primary btn-sm mt-3"><Plus size={13} /> Incluir o primeiro</button></> : 'Nenhum fundo ainda.'}
                     </td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)]">{lista.length} de {processos.length} fundos{!canEdit && ' · somente leitura'}</div>
+            <div className="px-4 py-2.5 text-[11px] text-[var(--tx3)] border-t border-[var(--bdr)] flex flex-wrap gap-x-4 gap-y-1">
+              <span>{lista.length} de {processos.length} fundos{!canEdit && ' · somente leitura'}</span>
+              <span className="inline-flex items-center gap-1"><CheckSquare size={12} className="text-id-dark dark:text-id-light" /> liquidado</span>
+              <span className="inline-flex items-center gap-1"><Square size={12} /> pendente{canEdit ? ' (clique para marcar)' : ''}</span>
+              <span>valor em amarelo = lançado e pendente · clique no fundo para abrir a ficha</span>
+            </div>
           </Card>
 
         </div>
@@ -372,9 +425,35 @@ export default function TransferClosed({ search }) {
           onDelete={procAberto ? () => { excluirProcesso(procAberto); setAberto(null) } : null} />
       )}
       {modal === 'codigo' && <CodigoModal onClose={() => setModal(null)} onOk={async (c) => { if (await desbloquear(c)) setModal(null) }} semCodigo={!acesso?.hash} />}
+      {modal === 'pdfFundo' && <FundoPdfModal processos={processos} onClose={() => setModal(null)} onPick={(p) => { setModal(null); folhaConclusao(p, who).catch((e) => toast.error('Erro no PDF: ' + e.message)) }} />}
       {modal === 'acesso' && <AcessoModal acesso={acesso} who={who} toast={toast} onClose={() => setModal(null)} />}
       {modal === 'saldo' && <SaldoContaModal atual={informado} soma={saldoConta} onClose={() => setModal(null)} onSave={(v) => { mutate((l) => l, { contaPatch: { saldoInformado: v, informadoEm: Date.now(), informadoPor: who }, msg: 'Saldo da conta atualizado.' }); setModal(null) }} />}
     </div>
+  )
+}
+
+function FundoPdfModal({ processos, onClose, onPick }) {
+  const [q, setQ] = useState('')
+  const qq = norm(q), qd = onlyDigits(q)
+  const l = processos.filter((p) => !q || norm(p.fundo).includes(qq) || (qd && onlyDigits(p.cnpj).includes(qd))).sort((a, b) => a.fundo.localeCompare(b.fundo))
+  return (
+    <Overlay onClose={onClose}>
+      <Card className="relative w-full max-w-[520px] max-h-[80vh] flex flex-col animate-fade-up">
+        <div className="px-5 py-4 border-b border-[var(--bdr)]">
+          <div className="flex items-center mb-3"><div className="font-display font-semibold text-[15px] flex-1">Resumo de um fundo (PDF)</div><button onClick={onClose} className="text-[var(--tx3)]"><X size={16} /></button></div>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} className="field" placeholder="Buscar fundo ou CNPJ…" />
+        </div>
+        <div className="overflow-y-auto p-2">
+          {l.map((p) => (
+            <button key={p.id} onClick={() => onPick(p)} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-[var(--sur2)]">
+              <div className="flex-1 min-w-0"><div className="text-[12.5px] font-medium truncate">{p.fundo}</div><div className="text-[11px] text-[var(--tx3)] font-mono">{p.cnpj}</div></div>
+              <StatusPill v={p.situacao} /><FileText size={14} className="text-[var(--tx3)]" />
+            </button>
+          ))}
+          {!l.length && <div className="text-center text-[12px] text-[var(--tx3)] py-6">Nenhum fundo encontrado.</div>}
+        </div>
+      </Card>
+    </Overlay>
   )
 }
 
